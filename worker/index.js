@@ -77,7 +77,10 @@ export default {
       if (!env.DB) return jsonResponse(500, { error: "D1 binding DB is not configured." });
       let body = null;
       if (request.method !== "GET" && request.method !== "HEAD") {
-        try { body = await request.json(); } catch (_) { return jsonResponse(400, { error: "Body must be JSON." }); }
+        const text = await request.text();
+        if (text.trim()) {
+          try { body = JSON.parse(text); } catch (_) { return jsonResponse(400, { error: "Body must be JSON." }); }
+        }
       }
       const query = Object.fromEntries(url.searchParams.entries());
       try {
