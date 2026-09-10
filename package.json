@@ -1,0 +1,26 @@
+{
+  "name": "alie-product-manager",
+  "version": "1.0.0",
+  "description": "ALIE Product Manager: roadmap, features, spaces and R&D for the ALIE product team.",
+  "private": true,
+  "type": "module",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js",
+    "test": "node --test test/*.test.js",
+    "cf:dev": "wrangler dev",
+    "cf:db:create": "wrangler d1 create product-manager",
+    "cf:db:migrate": "wrangler d1 execute product-manager --remote --file=worker/schema.sql",
+    "cf:db:migrate:local": "wrangler d1 execute product-manager --local --file=worker/schema.sql",
+    "cf:secret": "wrangler secret put APP_PASSCODE",
+    "deploy": "wrangler deploy"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

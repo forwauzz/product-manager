@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALIE Product · Sign in</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23b8963e'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='20' text-anchor='middle' fill='%230f172a'%3EA%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .login { min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--ink); }
+  .box { width:380px; max-width:100%; background:var(--bone); border-radius:var(--r-lg); padding:34px 34px 30px; box-shadow:0 30px 80px rgba(0,0,0,.35); }
+  .box .brand { padding:0 0 22px; border:0; }
+  .box .brand b { color:var(--ink); }
+  .box h1 { margin:0 0 6px; font-family:var(--read); font-weight:400; font-size:26px; color:var(--slate); }
+  .box p { margin:0 0 20px; color:var(--slate); font-size:13.5px; }
+  .box label { display:block; font-size:11px; letter-spacing:.14em; color:var(--gold); text-transform:uppercase; margin-bottom:8px; }
+  .box input { width:100%; border:1px solid var(--line); border-radius:var(--r-sm); padding:12px 14px; font-size:15px; background:var(--bone); margin-bottom:14px; }
+  .box input:focus { outline:none; border-color:var(--slate); }
+  .box .btn { width:100%; justify-content:center; }
+  .box .err { color:var(--red); font-size:13px; min-height:18px; margin:-6px 0 10px; }
+</style>
+</head>
+<body>
+<div class="login">
+  <form class="box" id="form" autocomplete="off">
+    <div class="brand"><div class="sq">A</div><b>ALIE</b></div>
+    <h1>Product Manager</h1>
+    <p>Enter the passcode to open the roadmap.</p>
+    <label for="pass">Passcode</label>
+    <input id="pass" type="password" autocomplete="current-password" autofocus required>
+    <div class="err" id="err" aria-live="polite"></div>
+    <button class="btn" type="submit" id="go">Open</button>
+  </form>
+</div>
+<script>
+  (function () {
+    var form = document.getElementById("form"), pass = document.getElementById("pass"), err = document.getElementById("err"), go = document.getElementById("go");
+    fetch("/api/session").then(function (r) { return r.json(); }).then(function (s) {
+      if (s.authed || !s.required) location.replace("/");
+    }).catch(function () {});
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      err.textContent = ""; go.disabled = true; go.textContent = "Checking…";
+      fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: pass.value }) })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+        .then(function (res) {
+          if (res.ok) { location.replace("/"); return; }
+          err.textContent = res.body.error || "Could not sign in.";
+          go.disabled = false; go.textContent = "Open"; pass.select();
+        })
+        .catch(function () { err.textContent = "Network problem. Try again."; go.disabled = false; go.textContent = "Open"; });
+    };
+  })();
+</script>
+</body>
+</html>

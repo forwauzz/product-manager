@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "product-manager",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "product-manager",
+      "database_id": "e13f43ef-b831-47aa-913c-3224eef3b534"
+    }
+  ],
+  "observability": { "enabled": true }
+}
