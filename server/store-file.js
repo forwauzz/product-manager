@@ -14,7 +14,9 @@ export class FileStore {
     try {
       const doc = JSON.parse(fs.readFileSync(this.file, "utf8"));
       this.version = Number(doc.version) || 1;
+      const hadIcps = !!(doc.state && Array.isArray(doc.state.icps));
       this.state = normalize(doc.state);
+      if (!hadIcps) this._write(); // seeded profiles must keep their ids across restarts
     } catch (e) {
       if (e.code !== "ENOENT") {
         // Corrupt file: keep a copy so nothing is lost, then start again from the seed.

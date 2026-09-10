@@ -13,7 +13,16 @@ export class D1Store {
 
   async load() {
     const row = await this._row();
-    if (row) return { version: Number(row.version), state: normalize(JSON.parse(row.state)) };
+    if (row) {
+      const raw = JSON.parse(row.state);
+      const state = normalize(raw);
+      // A document written before profiles existed gets them seeded; persist so their ids stay stable.
+      if (!Array.isArray(JSON.parse(row.state).icps)) {
+        await this.db.prepare("UPDATE documents SET state = ? WHERE id = ? AND version = ?")
+          .bind(JSON.stringify(state), ID, Number(row.version)).run();
+      }
+      return { version: Number(row.version), state };
+    }
     const state = normalize(seed());
     await this.db.prepare("INSERT OR IGNORE INTO documents (id, version, state, updated_at) VALUES (?, 1, ?, ?)")
       .bind(ID, JSON.stringify(state), new Date().toISOString()).run();
