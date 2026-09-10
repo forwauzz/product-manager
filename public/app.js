@@ -722,7 +722,11 @@
     grow.appendChild(el("div", "eyebrow", eyebrow));
     grow.appendChild(el("h1", null, title));
     row.appendChild(grow);
-    (actions || []).forEach(function (a) { row.appendChild(a); });
+    if (actions && actions.length) {
+      var acts = el("div", "headacts");
+      actions.forEach(function (a) { acts.appendChild(a); });
+      row.appendChild(acts);
+    }
     h.appendChild(row);
     return h;
   }
