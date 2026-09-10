@@ -1285,8 +1285,10 @@
   ];
   function thumbKind(f) {
     if (f.thumb && f.thumb !== "auto" && THUMB_SVG[f.thumb]) return f.thumb;
-    var hay = f.name + " " + (f.note || "").slice(0, 80);
-    for (var i = 0; i < THUMB_RULES.length; i++) if (THUMB_RULES[i][1].test(hay)) return THUMB_RULES[i][0];
+    var i;
+    for (i = 0; i < THUMB_RULES.length; i++) if (THUMB_RULES[i][1].test(f.name)) return THUMB_RULES[i][0];
+    var note = (f.note || "").slice(0, 80);
+    for (i = 0; i < THUMB_RULES.length; i++) if (THUMB_RULES[i][1].test(note)) return THUMB_RULES[i][0];
     return "spark";
   }
   function thumbEl(f, cls) {
