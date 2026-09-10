@@ -79,3 +79,29 @@ test("spaces are URL-decoded and cleaned from features when deleted", async () =
   const got = await handleApi({ method: "GET", path: "/features/" + f.body.id }, store);
   assert.deepEqual(got.body.spaces, []);
 });
+
+test("ideal client profiles: seeded for old documents, CRUD, and tags cleaned on delete", async () => {
+  const store = new MemoryStore();
+  const doc = await store.load();
+  assert.ok(doc.state.icps.filter(i => i.kind === "Regime").length === 4, "seed carries the four regimes");
+  const legacy = normalize({ projects: [{ id: "p" }], features: [{ id: "f", project: "p", icps: ["nope"] }] });
+  assert.ok(legacy.icps.length >= 4, "documents without an icps array get the seeded profiles");
+  assert.deepEqual(legacy.features[0].icps, [], "unknown profile ids are dropped");
+  const keep = normalize({ projects: [{ id: "p" }], features: [], icps: [] });
+  assert.equal(keep.icps.length, 0, "an explicitly empty list stays empty");
+
+  const c = await handleApi({ method: "POST", path: "/icps", body: { name: "Insurers", kind: "Payer", tam: "$4M" } }, store);
+  assert.equal(c.status, 201);
+  assert.equal(c.body.tam, "$4M");
+  const f = await handleApi({ method: "POST", path: "/features", body: { name: "Bulk export", icps: [c.body.id, "bogus"] } }, store);
+  assert.deepEqual(f.body.icps, [c.body.id]);
+  const p = await handleApi({ method: "PATCH", path: "/features/" + f.body.id, body: { icps: [c.body.id] } }, store);
+  assert.deepEqual(p.body.icps, [c.body.id], "patch response keeps valid profile tags");
+  const bad = await handleApi({ method: "PATCH", path: "/icps/" + c.body.id, body: { name: "  " } }, store);
+  assert.equal(bad.body.name, "Insurers", "blank names are ignored");
+  const d = await handleApi({ method: "DELETE", path: "/icps/" + c.body.id }, store);
+  assert.equal(d.status, 204);
+  const got = await handleApi({ method: "GET", path: "/features/" + f.body.id }, store);
+  assert.deepEqual(got.body.icps, []);
+  assert.equal((await handleApi({ method: "DELETE", path: "/icps/nope" }, store)).status, 404);
+});

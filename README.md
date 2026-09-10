@@ -37,6 +37,7 @@ runs the core and API test suites.
   - setting its state to Research,
   - dragging it onto Research & Development in the left nav,
   - or creating it directly on the board with "New research item".
+- **Market / ICP**: ideal client profiles, one per customer segment (seeded from the September 2026 segmentation research: the four regimes CNESST, SAAQ, IVAC and Civil, plus the top-scored buyer segments). Each profile carries a description, TAM / SAM / SOM and notes. Tag features to profiles in the overlap matrix (or drag cards in the By profile view) to see which features are core (every profile asks for them), shared, or independent (one profile only). Click a profile card to focus on what it asks for; the same profile filter is available on the roadmap and the features list.
 - **Projects**: the switcher at the top of the nav creates, renames and deletes projects (ALIE, Teche Health, GEO-Pulse...). Each has its own roadmap and research.
 - **Search**: the box top-right or Ctrl/Cmd+K searches every project.
 - Every change saves automatically. If the same document was changed from another device in the meantime, the two copies are merged and saved again.
@@ -72,6 +73,8 @@ All endpoints are under `/api` and speak JSON.
 | GET | `/state` | Whole document `{ version, state }` |
 | PUT | `/state` | Replace the document. Send `{ version, state }`; a stale `version` gets `409` with the current copy |
 | GET/POST | `/projects`, `/spaces`, `/people`, `/students` | List or add |
+| GET/POST | `/icps` | List or create ideal client profiles (`name`, `kind`, `description`, `tam`, `sam`, `som`, `notes`) |
+| PATCH/DELETE | `/icps/:id` | Edit or delete a profile (features lose the tag) |
 | PATCH/DELETE | `/projects/:id` | Rename or delete (features go with it) |
 | DELETE | `/spaces/:name`, `/people/:name`, `/students/:name` | Remove and clean up references |
 | GET/POST | `/features` | List (filters: `project`, `space`, `rnd=true`) or create |

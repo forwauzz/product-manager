@@ -45,9 +45,42 @@ export function seed() {
     spaces: ["Health", "Legal", "Administrative"],
     people: ["Uzziel", "David", "Faical", "Unassigned"],
     students: ["Student A", "Student B"],
+    icps: seedIcps(),
     features: F,
     current: A
   };
+}
+
+export function seedIcps() {
+  /* Seeded from the 9 Sept 2026 segmentation research ("The regime is the segment"): the statute that
+     commissions the work is the primary axis; buyers are the parties it forces to produce a defensible package. */
+  const mk = (name, kind, description, tam, notes) => ({ id: uid(), name, kind, description, tam, sam: "", som: "", notes });
+  return [
+    mk("CNESST", "Regime", "Workers' compensation under the LATMP: art. 204 (CNESST-designated) and art. 209 (employer-commissioned) expertises converging on the BEM. One closed list of five contested subjects.",
+      "~24,457 medico-legal evaluations / yr (8,507 BEM + 5,983 art. 204 + ~9,967 employer)",
+      "107,124 accepted injuries and 31,364 refused claims (2024); 78,475 demandes de révision (2025, 68.9% by employers); 43,256 TAT files opened. Tariff: $730 public lane vs ~$2,300 private lane (art. 196 carve-out). Sources: CNESST Statistiques annuelles, TAT, UTTAM (attribute by name)."),
+    mk("SAAQ", "Regime", "Road-accident victims under the no-fault SAAQ regime: expert reports and chronologies for counsel and physicians. Voluminous file defined as more than 500 pages (directive in force 2025-01-01).",
+      "91,418 claims processed (2025), $1,535M in indemnities",
+      "Tariffs: $791 other specialties, $1,180 psychiatry (entente SAAQ–FMSQ). No bodily-injury action exists (art. 83.57), so settlement-demand tools do not transfer."),
+    mk("IVAC", "Regime", "Crime-victim compensation files, including the CNESST forms filed inside them. Fastest-growing regime by volume.",
+      "27,904 requests (2024), up 3.25x in five years",
+      "383,720 documents processed in one year (+35.7%). Source: MJQ LAPVIC 2024–25."),
+    mk("Civil", "Regime", "Civil liability and insurance litigation built on hospital and clinic records. One expertise per discipline; the report stands as testimony (art. 232, 293 CPC) and can be rejected for irregularity (art. 241).",
+      "Not sized",
+      "Includes private disability insurers (LTD/STD, 2.9M Quebecers covered) as a reviewer segment: signal only."),
+    mk("Médecin expert — private lane", "Buyer", "Expertise physicians working art. 209, insurer and lawyer-commissioned IMEs. Files of 50–200 pages, private-market billing, solo buyer with no procurement.",
+      "83 named in the directory (55 published emails); ~300 experts at $5k/yr is a $1.5M ARR ceiling",
+      "Research score 30/35, rank 1. Live lead. Competitive headroom is the weak point (ExpertMedical.ai targets this ICP)."),
+    mk("Cabinet d'avocats — côté travailleur", "Buyer", "Worker-side law firms contesting CNESST, SAAQ and IVAC decisions. Files of 200–3,000 pages; legal aid pays a fixed $385 per review and $1,115 per tribunal recourse.",
+      "~170–250 firms",
+      "Research score 27/35, rank 2. Active pilot (Le Cabinet M). A hand-built chronology consumes 56.6% of a legal-aid révision mandate."),
+    mk("Mutuelle managers & IME coordinators", "Buyer", "The intermediary layer that reviews and coordinates independent medical examinations for employer groups.",
+      "~35 firms · 27,724 employers",
+      "Research score 23/35, rank 3. No lead yet."),
+    mk("Cabinet d'avocats — côté employeur", "Buyer", "Employer-side firms handling CNESST contestation; both contester and reviewer of the medical record.",
+      "Subset of the same bar",
+      "Research score 23/35, rank 3. Mailed.")
+  ];
 }
 
 /* Make sure every record has every field the UI relies on. Mutates and returns the state. */
@@ -62,6 +95,13 @@ export function normalize(state) {
   if (s.people.indexOf("Unassigned") === -1) s.people.push("Unassigned");
   if (!Array.isArray(s.students)) s.students = [];
   s.students = s.students.filter(x => typeof x === "string" && x.trim()).map(x => x.trim());
+  if (s.icps === undefined) s.icps = seedIcps(); // documents created before profiles existed get the four regimes
+  if (!Array.isArray(s.icps)) s.icps = [];
+  s.icps = s.icps.filter(x => x && typeof x === "object").map(x => ({
+    id: String(x.id || uid()), name: String(x.name || "Untitled profile"), kind: String(x.kind || ""),
+    description: String(x.description || ""), tam: String(x.tam || ""), sam: String(x.sam || ""), som: String(x.som || ""), notes: String(x.notes || "")
+  }));
+  const icpIds = new Set(s.icps.map(x => x.id));
   if (!Array.isArray(s.features)) s.features = [];
   const ids = new Set(s.projects.map(p => p.id));
   if (!ids.has(s.current)) s.current = s.projects[0].id;
@@ -82,6 +122,8 @@ export function normalize(state) {
     if (typeof f.student !== "string") f.student = "";
     if (typeof f.rndQuestion !== "string") f.rndQuestion = "";
     if (typeof f.rndFindings !== "string") f.rndFindings = "";
+    if (!Array.isArray(f.icps)) f.icps = [];
+    f.icps = f.icps.filter(x => typeof x === "string" && icpIds.has(x));
     if (!f.created) f.created = f.updated || Date.now();
     if (!f.updated) f.updated = Date.now();
   });
@@ -119,7 +161,7 @@ async function mutate(store, fn) {
 }
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
-const EDITABLE = ["name", "state", "owner", "spaces", "period", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project"];
+const EDITABLE = ["name", "state", "owner", "spaces", "period", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps"];
 
 /* Handle one API request. `req` = { method, path, query, body } where `path` is relative to /api
    (for example "/features/abc") and `query` is a plain object. Returns { status, body, headers }. */
@@ -217,11 +259,13 @@ export async function handleApi(req, store) {
         note: String(body.note || ""), link: String(body.link || ""), rnd: !!body.rnd,
         rndStage: RND_STAGES.indexOf(body.rndStage) !== -1 ? body.rndStage : "Backlog",
         student: String(body.student || ""), rndQuestion: String(body.rndQuestion || ""), rndFindings: String(body.rndFindings || ""),
+        icps: Array.isArray(body.icps) ? body.icps.filter(x => typeof x === "string") : [],
         created: now, updated: now
       };
       const r = await mutate(store, s => {
         if (!f.project) f.project = s.current;
         if (!s.projects.some(p => p.id === f.project)) return { error: json(400, { error: "unknown project" }) };
+        f.icps = f.icps.filter(x => s.icps.some(i => i.id === x));
         s.features.push(f);
         return { result: f };
       });
@@ -240,14 +284,46 @@ export async function handleApi(req, store) {
         if (body.project !== undefined && !s.projects.some(p => p.id === body.project)) return { error: json(400, { error: "unknown project" }) };
         EDITABLE.forEach(k => { if (body[k] !== undefined) f[k] = body[k]; });
         f.updated = Date.now();
-        return { result: f };
+        return { result: { feature: f, icps: s.icps } };
       });
-      return r.error || json(200, normalize({ projects: [{ id: r.result.project }], features: [r.result] }).features[0]);
+      return r.error || json(200, normalize({ projects: [{ id: r.result.feature.project }], icps: r.result.icps, features: [r.result.feature] }).features[0]);
     }
     if (seg.length === 2 && method === "DELETE") {
       const r = await mutate(store, s => {
         if (!s.features.some(x => x.id === seg[1])) return { error: json(404, { error: "not found" }) };
         s.features = s.features.filter(x => x.id !== seg[1]);
+        return { result: null };
+      });
+      return r.error || json(204, null);
+    }
+  }
+
+  /* Ideal client profiles (market segments) */
+  if (seg[0] === "icps") {
+    const ICP_FIELDS = ["name", "kind", "description", "tam", "sam", "som", "notes"];
+    if (seg.length === 1 && method === "GET") return json(200, (await store.load()).state.icps);
+    if (seg.length === 1 && method === "POST") {
+      const name = String(body.name || "").trim();
+      if (!name) return json(400, { error: "name is required" });
+      const icp = { id: uid(), name, kind: "", description: "", tam: "", sam: "", som: "", notes: "" };
+      ICP_FIELDS.slice(1).forEach(k => { if (typeof body[k] === "string") icp[k] = body[k].trim(); });
+      await mutate(store, s => { s.icps.push(icp); });
+      return json(201, icp);
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      const r = await mutate(store, s => {
+        const icp = s.icps.find(x => x.id === seg[1]);
+        if (!icp) return { error: json(404, { error: "not found" }) };
+        ICP_FIELDS.forEach(k => { if (typeof body[k] === "string" && (k !== "name" || body[k].trim())) icp[k] = body[k].trim(); });
+        return { result: icp };
+      });
+      return r.error || json(200, r.result);
+    }
+    if (seg.length === 2 && method === "DELETE") {
+      const r = await mutate(store, s => {
+        if (!s.icps.some(x => x.id === seg[1])) return { error: json(404, { error: "not found" }) };
+        s.icps = s.icps.filter(x => x.id !== seg[1]);
+        s.features.forEach(f => { f.icps = (f.icps || []).filter(x => x !== seg[1]); });
         return { result: null };
       });
       return r.error || json(204, null);

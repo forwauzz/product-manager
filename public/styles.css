@@ -297,3 +297,50 @@
     .stat { padding:12px 14px; }
     .stat b { font-size:22px; }
   }
+
+  /* ---------- market / ICP ---------- */
+  .icpcards { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; margin-bottom:26px; }
+  .icpcard { border:1px solid var(--line); border-radius:var(--r-md); background:var(--bone); padding:18px 20px; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:8px; }
+  .icpcard:hover { border-color:transparent; box-shadow:var(--lift); }
+  .icpcard[aria-pressed="true"] { border-color:var(--gold); box-shadow:inset 0 0 0 1px var(--gold); }
+  .icpcard .kind { font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); }
+  .icpcard h3 { margin:0; font-size:18px; font-weight:600; letter-spacing:-.018em; }
+  .icpcard p { margin:0; color:var(--slate); font-size:12.5px; line-height:1.45; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .icpcard .tam { display:flex; gap:14px; margin-top:4px; }
+  .icpcard .tam div { min-width:0; }
+  .icpcard .tam b { display:block; font-family:var(--read); font-size:18px; font-weight:500; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .icpcard .tam span { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--slate); }
+  .icpcard .foot { display:flex; gap:6px; flex-wrap:wrap; margin-top:auto; padding-top:6px; }
+  .icpcard.add { border-style:dashed; justify-content:center; align-items:center; color:var(--slate); min-height:150px; }
+  .icpcard.add:hover { color:var(--ink); border-color:var(--slate); box-shadow:none; }
+
+  .matrix { border:1px solid var(--line); border-radius:var(--r-md); background:var(--bone); overflow-x:auto; }
+  .matrix table { border-collapse:collapse; width:100%; min-width:max-content; }
+  .matrix th, .matrix td { border-bottom:1px solid var(--hair); padding:10px 12px; text-align:center; font-size:12.5px; vertical-align:middle; }
+  .matrix th { font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--slate); background:var(--tint); position:sticky; top:0; z-index:2; white-space:nowrap; }
+  .matrix th.icp { cursor:pointer; }
+  .matrix th.icp:hover { color:var(--ink); }
+  .matrix th:first-child, .matrix td:first-child { text-align:left; position:sticky; left:0; background:var(--bone); z-index:1; min-width:240px; max-width:340px; border-right:1px solid var(--line); }
+  .matrix th:first-child { background:var(--tint); z-index:3; }
+  .matrix td:first-child b { display:block; font-size:13.5px; font-weight:600; letter-spacing:-.012em; cursor:pointer; }
+  .matrix td:first-child b:hover { text-decoration:underline; }
+  .matrix td:first-child span { display:block; color:var(--slate); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .matrix tr.group td { background:var(--tint); text-align:left; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink); padding:9px 12px; border-top:1px solid var(--gold); position:static; }
+  .matrix tr.group td em { font-style:normal; color:var(--slate); letter-spacing:0; text-transform:none; margin-left:8px; font-size:12px; }
+  .matrix tr:hover td { background:var(--tint); }
+  .matrix tr.group:hover td { background:var(--tint); }
+  .tick { width:30px; height:30px; border-radius:8px; border:1px solid var(--line); background:var(--bone); color:transparent; font-size:14px; line-height:1; display:inline-flex; align-items:center; justify-content:center; }
+  .tick:hover { border-color:var(--slate); color:var(--line); }
+  .tick[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:var(--bone); }
+  .cov { font-family:var(--mono); font-size:11.5px; color:var(--slate); }
+  .cov.core { color:#8c6f26; font-weight:600; }
+  .icpdesc { font-family:var(--read); font-size:16px; line-height:1.55; color:var(--ink); margin:0 0 18px; max-width:760px; }
+  .modal textarea { width:100%; border:1px solid var(--line); border-radius:var(--r-sm); padding:10px 14px; font-size:13.5px; background:var(--bone); margin-bottom:10px; min-height:72px; resize:vertical; }
+  .modal textarea:focus { outline:none; border-color:var(--slate); }
+  .modal .cols { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .modal label.sm { display:block; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); margin:4px 0 6px; }
+  .pill.icp { border-color:var(--ink); }
+  @media (max-width:860px) {
+    .icpcards { grid-template-columns:1fr; }
+    .modal .cols { grid-template-columns:1fr; }
+  }
