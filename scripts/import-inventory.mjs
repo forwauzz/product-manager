@@ -69,7 +69,7 @@ for (const p of inv.patches || []) {
   const f = byName.get(p.name.toLowerCase());
   if (!f) continue;
   const body = {};
-  ["state", "spaces", "note"].forEach(k => { if (p[k] !== undefined) body[k] = p[k]; });
+  ["state", "spaces", "note", "owner"].forEach(k => { if (p[k] !== undefined) body[k] = p[k]; });
   await api("PATCH", "/api/features/" + f.id, body);
   patched++;
 }

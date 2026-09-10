@@ -435,3 +435,78 @@
   .tile.st-needs-work { border-left-color:var(--c-needs); } .tile.st-needs-work .st { color:var(--c-needs); }
   .tile.st-feature-flag { border-left-color:var(--c-flag); } .tile.st-feature-flag .st { color:var(--c-flag); }
   @media (max-width:860px) { .group .subrows .frow { padding-left:28px; } .group .addsub { padding-left:28px; } }
+
+  /* ---------- iPhone / iPad ---------- */
+  .app { height:100vh; height:100dvh; }
+  .grid2 > div { min-width:0; }
+  .field select, .field input { width:0; flex:1 1 auto; max-width:100%; }
+  select { max-width:100%; }
+  .topbar { padding-top:max(12px, env(safe-area-inset-top)); }
+  .nav { padding-bottom:env(safe-area-inset-bottom); }
+  .pad { padding-bottom:calc(64px + env(safe-area-inset-bottom)); }
+  .toasts { bottom:calc(22px + env(safe-area-inset-bottom)); }
+  .drawer { padding-bottom:calc(40px + env(safe-area-inset-bottom)); }
+
+  @media (hover:none) and (pointer:coarse) {
+    /* touch: bigger targets, no drag cursors, no hover-only affordances */
+    .tick { width:36px; height:36px; }
+    .frow, .card, .tile, .gt .bar { cursor:default; }
+    .frow .go, .fl .x, .fact .x { padding:8px 12px; }
+    .navitem { padding:12px 12px; }
+    .seg button { padding:9px 14px; }
+    .chip { padding:8px 14px; }
+    .menu button { padding:12px 14px; }
+    .cardsel { display:block; }
+  }
+
+  @media (max-width:860px) {
+    /* iOS zooms into inputs smaller than 16px; keep text controls at 16px */
+    input, textarea, .find { font-size:16px; }
+    select { font-size:14px; }
+    .frow select { font-size:13px; }
+    .writer { font-size:17px; padding:16px 18px; }
+    .namein { font-size:20px; }
+    .modal { padding:22px 20px; border-radius:var(--r-md); }
+    .mscrim { padding:12px; align-items:flex-end; }
+    .modal { max-height:calc(100dvh - 24px - env(safe-area-inset-bottom)); overflow-y:auto; }
+    .topbar { gap:8px; }
+    .savestate { min-width:0; }
+    .head h1 { font-size:23px; }
+    .bar { gap:8px; padding-top:18px; }
+    .seg { max-width:100%; overflow-x:auto; }
+    .rndhead { grid-template-columns:repeat(2,1fr); }
+    .icpcards { grid-template-columns:1fr; }
+    .tiles { grid-template-columns:repeat(2,1fr); }
+    .matrix th:first-child, .matrix td:first-child { min-width:170px; max-width:220px; }
+    .matrix th, .matrix td { padding:8px 8px; }
+    .matrix td:first-child span { display:none; }
+    .group .frow.head .body b { font-size:14.5px; }
+    .frow .tags { order:5; flex-basis:100%; }
+    .frow select { flex:1 1 40%; }
+    .frow .go { margin-left:auto; }
+    .gt .nc { min-width:170px; }
+    .drawer { height:88%; }
+    .idrow { gap:12px; }
+    .avatar.lg { width:52px; height:52px; }
+  }
+  @media (max-width:480px) {
+    .tiles { grid-template-columns:1fr; }
+    .head { padding-top:18px; }
+    .btn { padding:11px 16px; }
+    .headacts .btn { flex:1 1 auto; justify-content:center; }
+    .frow { padding:12px 14px; }
+    .frow .seq { display:none; }
+    .frow .grip { display:none; }
+  }
+  /* iPad landscape and small laptops: keep the nav but give content room */
+  @media (min-width:861px) and (max-width:1180px) {
+    :root { --nav:232px; }
+    .head, .bar, .pad { padding-left:24px; padding-right:24px; }
+    .topbar { padding-left:18px; padding-right:18px; }
+    .grid2 { gap:20px; }
+  }
+  @media (min-width:600px) and (max-width:860px) {
+    .icpcards { grid-template-columns:repeat(2,1fr); }
+    .rndhead { grid-template-columns:repeat(3,1fr); }
+  }
+  @media (max-width:480px) { .namein { font-size:18px; } }

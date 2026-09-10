@@ -1,236 +1,1073 @@
 {
   "capturedAt": "2026-09-10",
-  "sources": ["https://health.alie.app (workspace Demo_Health, desktop)", "https://legal.alie.app (workspace Le Cabinet M, desktop)"],
+  "sources": [
+    "https://health.alie.app (workspace Demo_Health, desktop)",
+    "https://legal.alie.app (workspace Le Cabinet M, desktop)"
+  ],
   "note": "Features nest one level: a parent feature and its sub-features (children). Names are the match key when re-importing.",
   "features": [
-    { "name": "Command Center dashboard", "spaces": ["Health"], "state": "Live",
+    {
+      "name": "Command Center dashboard",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Health home. Widgets for Today's schedule, Action required and My cases; Edit layout rearranges them.",
       "children": [
-        { "name": "Today's schedule widget", "spaces": ["Health"], "note": "Appointments for the day with View all and Add appointment." },
-        { "name": "Action required widget", "spaces": ["Health"], "note": "Per case: pages to review, citations to verify, drafts awaiting approval, drafts not yet scanned." },
-        { "name": "My cases widget", "spaces": ["Health"], "note": "Recent cases with status, mandate type, stale flag and age." },
-        { "name": "Edit layout (dashboard widgets)", "spaces": ["Health"], "note": "Rearrange the dashboard widgets." }
-      ] },
-    { "name": "Schedule calendar", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "Today's schedule widget",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Appointments for the day with View all and Add appointment."
+        },
+        {
+          "name": "Action required widget",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Per case: pages to review, citations to verify, drafts awaiting approval, drafts not yet scanned."
+        },
+        {
+          "name": "My cases widget",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Recent cases with status, mandate type, stale flag and age."
+        },
+        {
+          "name": "Edit layout (dashboard widgets)",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Rearrange the dashboard widgets."
+        }
+      ]
+    },
+    {
+      "name": "Schedule calendar",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Day, week and month views with date navigation, All calendars toggle, Compare Providers and Add to Schedule.",
       "children": [
-        { "name": "Day / week / month views", "spaces": ["Health"], "note": "Calendar grain switch with previous / next navigation and All calendars toggle." },
-        { "name": "Compare providers", "spaces": ["Health"], "note": "Side-by-side provider schedules for a date." },
-        { "name": "Add to schedule", "spaces": ["Health"], "note": "Create an appointment from the schedule page or the dashboard." }
-      ] },
-    { "name": "Structured case registry", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "Day / week / month views",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Calendar grain switch with previous / next navigation and All calendars toggle."
+        },
+        {
+          "name": "Compare providers",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Side-by-side provider schedules for a date."
+        },
+        {
+          "name": "Add to schedule",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Create an appointment from the schedule page or the dashboard."
+        }
+      ]
+    },
+    {
+      "name": "Structured case registry",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Case list with status tabs, search, status filter, list / grid / column views, sortable columns, bulk selection, Edit and Open actions.",
       "children": [
-        { "name": "Status tabs (Intake, Processing, Review, Complete, Archived)", "spaces": ["Health"], "note": "Counts per status across the registry." },
-        { "name": "Case search and status filter", "spaces": ["Health"], "note": "Search by number, name or case ID; All statuses filter." },
-        { "name": "List, grid and column views", "spaces": ["Health"], "note": "Three layouts for the registry." },
-        { "name": "Bulk selection and row actions", "spaces": ["Health"], "note": "Checkbox per row, Edit case, Open case." }
-      ] },
-    { "name": "Case creation and editing", "spaces": ["Health", "Legal"], "state": "Live",
-      "note": "New Case in Health (mandate type such as CNESST Expertise) and Create case in Legal (mandate tag, employer). Edit case details and Delete case on the legal case page." },
-    { "name": "Cross-case document registry", "spaces": ["Health"], "state": "Live",
-      "note": "All documents across cases with upload, filename search, status and case filters, page counts and pagination." },
-
-    { "name": "Case step 1 · Sources", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "Status tabs (Intake, Processing, Review, Complete, Archived)",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Counts per status across the registry."
+        },
+        {
+          "name": "Case search and status filter",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Search by number, name or case ID; All statuses filter."
+        },
+        {
+          "name": "List, grid and column views",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Three layouts for the registry."
+        },
+        {
+          "name": "Bulk selection and row actions",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Checkbox per row, Edit case, Open case."
+        }
+      ]
+    },
+    {
+      "name": "Case creation and editing",
+      "spaces": [
+        "Health",
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "New Case in Health (mandate type such as CNESST Expertise) and Create case in Legal (mandate tag, employer). Edit case details and Delete case on the legal case page."
+    },
+    {
+      "name": "Cross-case document registry",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
+      "note": "All documents across cases with upload, filename search, status and case filters, page counts and pagination."
+    },
+    {
+      "name": "Case step 1 · Sources",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "First step of the case workflow: get every page in, classified and OCR'd, before the overview.",
       "children": [
-        { "name": "Case file upload with OCR and auto-classification", "spaces": ["Health"], "note": "Drag and drop or select PDF, TIFF, JPEG, PNG up to 100 MB. ALIE classifies and OCRs each page. Per-file status, type, pages, size, uploader." },
-        { "name": "Archive / Binder / Timeline views", "spaces": ["Health"], "note": "Three views of the case file: the archive table, the binder, and a timeline." },
-        { "name": "Scope and report-unit summary", "spaces": ["Health"], "note": "Total files and pages, report units found and how many need a look, Open report units." }
-      ] },
-    { "name": "Case step 2 · Overview", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "Case file upload with OCR and auto-classification",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Drag and drop or select PDF, TIFF, JPEG, PNG up to 100 MB. ALIE classifies and OCRs each page. Per-file status, type, pages, size, uploader."
+        },
+        {
+          "name": "Archive / Binder / Timeline views",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Three views of the case file: the archive table, the binder, and a timeline."
+        },
+        {
+          "name": "Scope and report-unit summary",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Total files and pages, report units found and how many need a look, Open report units."
+        }
+      ]
+    },
+    {
+      "name": "Case step 2 · Overview",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Second step: the case brief and the gate into critical review.",
       "children": [
-        { "name": "Case brief extraction", "spaces": ["Health"], "state": "Needs work", "note": "Extract Brief builds the case brief from the processed documents; workspace automation can run it after OCR. Observed on case 514882885: 'Brief extraction failed. Click Extract Brief to retry.'" },
-        { "name": "Ready for critical review gate", "spaces": ["Health"], "note": "Confirms all documents are processed and hands off to Begin Critical Review." },
-        { "name": "Case document search", "spaces": ["Health"], "note": "Search box over the case documents at the top of every step." }
-      ] },
-    { "name": "Case step 3 · Review (critical review)", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "Case brief extraction",
+          "spaces": [
+            "Health"
+          ],
+          "state": "Needs work",
+          "note": "Extract Brief builds the case brief from the processed documents; workspace automation can run it after OCR. Observed on case 514882885: 'Brief extraction failed. Click Extract Brief to retry.'"
+        },
+        {
+          "name": "Ready for critical review gate",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Confirms all documents are processed and hands off to Begin Critical Review."
+        },
+        {
+          "name": "Case document search",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Search box over the case documents at the top of every step."
+        }
+      ]
+    },
+    {
+      "name": "Case step 3 · Review (critical review)",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Third step: work the queues left to right before drafting. Deleting a report removes its pages from Unreadable and Duplicates.",
       "children": [
-        { "name": "Reports queue (report units)", "spaces": ["Health"], "note": "Auto-split reports with date of the event or visit date, detected type (Décision CNESST, Note d'évolution, Expertise médicale / BEM, Rapport de consultation, Rapport du médecin traitant, Type non classé), page ranges, 'needs a look' flag, sort by date or name, bulk select, Open." },
-        { "name": "Unreadable queue", "spaces": ["Health"], "note": "Pages with handwritten or unreadable content flagged per page with the report they belong to; Review action per page." },
-        { "name": "Duplicates finder", "spaces": ["Health"], "note": "Find duplicates within one document (the same report repeated in one large file) or across documents (pick the original)." }
-      ] },
-    { "name": "Case step 4 · Draft", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "Reports queue (report units)",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Auto-split reports with date of the event or visit date, detected type (Décision CNESST, Note d'évolution, Expertise médicale / BEM, Rapport de consultation, Rapport du médecin traitant, Type non classé), page ranges, 'needs a look' flag, sort by date or name, bulk select, Open."
+        },
+        {
+          "name": "Unreadable queue",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Pages with handwritten or unreadable content flagged per page with the report they belong to; Review action per page."
+        },
+        {
+          "name": "Duplicates finder",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Find duplicates within one document (the same report repeated in one large file) or across documents (pick the original)."
+        }
+      ]
+    },
+    {
+      "name": "Case step 4 · Draft",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Fourth step: the draft journey and the door into the report editor.",
       "children": [
-        { "name": "Draft journey tracker", "spaces": ["Health"], "note": "Progress through Sources, Overview, Review and Draft; items still needing review; sections drafted with a resume link." },
-        { "name": "Open the report (204 editor entry)", "spaces": ["Health"], "note": "Opens the full-screen CNESST 204 report editor at the section to resume." }
-      ] },
-
-    { "name": "Case side rail", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "Draft journey tracker",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Progress through Sources, Overview, Review and Draft; items still needing review; sections drafted with a resume link."
+        },
+        {
+          "name": "Open the report (204 editor entry)",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Opens the full-screen CNESST 204 report editor at the section to resume."
+        }
+      ]
+    },
+    {
+      "name": "Case side rail",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Left rail on every case step: Files, Report units, Recycle bin, Collaboration, Dictate. Collaboration and Dictate are inventoried on their own.",
       "children": [
-        { "name": "Files panel", "spaces": ["Health"], "note": "The case files with per-file status, VIEW and scope." },
-        { "name": "Report units panel", "spaces": ["Health"], "note": "Every report ALIE found inside the pages (103 on the sample case, 48 needing a look) with kind, date and pages, paginated." },
-        { "name": "Recycle bin", "spaces": ["Health", "Legal"], "note": "Anything removed from Review lands here and can be restored. The uploaded document is never changed. Legal shows starting vs final materials page counts." }
-      ] },
-    { "name": "Collaboration panel", "spaces": ["Health"], "state": "Live",
-      "note": "Case-level collaboration with external parties, opened from the side rail.",
+        {
+          "name": "Files panel",
+          "spaces": [
+            "Health"
+          ],
+          "note": "The case files with per-file status, VIEW and scope."
+        },
+        {
+          "name": "Report units panel",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Every report ALIE found inside the pages (103 on the sample case, 48 needing a look) with kind, date and pages, paginated."
+        },
+        {
+          "name": "Recycle bin",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "Anything removed from Review lands here and can be restored. The uploaded document is never changed. Legal shows starting vs final materials page counts."
+        }
+      ]
+    },
+    {
+      "name": "Collaboration panel",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
+      "note": "Case-level collaboration with external parties, opened from the side rail. Being consolidated with Share into the Portal (David).",
       "children": [
-        { "name": "Requests", "spaces": ["Health"], "note": "New Request; active requests list." },
-        { "name": "Document requests with secure link", "spaces": ["Health"], "note": "Generate a secure link to request documents from a third party." },
-        { "name": "Messages / secure exchange", "spaces": ["Health"], "note": "New secure exchange; replies land directly in the case." },
-        { "name": "Annotations", "spaces": ["Health"], "note": "Shared annotations on the case." },
-        { "name": "Opinion requests", "spaces": ["Health"], "note": "New opinion request to another professional." }
-      ] },
-    { "name": "Dictate", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "Requests",
+          "spaces": [
+            "Health"
+          ],
+          "note": "New Request; active requests list."
+        },
+        {
+          "name": "Document requests with secure link",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Generate a secure link to request documents from a third party."
+        },
+        {
+          "name": "Messages / secure exchange",
+          "spaces": [
+            "Health"
+          ],
+          "note": "New secure exchange; replies land directly in the case."
+        },
+        {
+          "name": "Annotations",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Shared annotations on the case."
+        },
+        {
+          "name": "Opinion requests",
+          "spaces": [
+            "Health"
+          ],
+          "note": "New opinion request to another professional."
+        }
+      ]
+    },
+    {
+      "name": "Dictate",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Dictation dialog from the side rail and from report sections (Ctrl+J in Ask ALIE too).",
       "children": [
-        { "name": "Recording modes: quick note, long session, paste transcript", "spaces": ["Health"], "note": "Three ways in: a quick note, a long session, or pasting an existing transcript." },
-        { "name": "Dictation mode and language settings", "spaces": ["Health"], "note": "Mode (machine mode…), dictation language and output language selectors." },
-        { "name": "Patient consent confirmation before recording", "spaces": ["Health"], "note": "Consent notice must be confirmed (or remind me later) before Start Recording." },
-        { "name": "Dictation history", "spaces": ["Health"], "note": "History tab of past dictations." }
-      ] },
-
-    { "name": "CNESST 204 report editor", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "Recording modes: quick note, long session, paste transcript",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Three ways in: a quick note, a long session, or pasting an existing transcript."
+        },
+        {
+          "name": "Dictation mode and language settings",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Mode (machine mode…), dictation language and output language selectors."
+        },
+        {
+          "name": "Patient consent confirmation before recording",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Consent notice must be confirmed (or remind me later) before Start Recording."
+        },
+        {
+          "name": "Dictation history",
+          "spaces": [
+            "Health"
+          ],
+          "note": "History tab of past dictations."
+        }
+      ]
+    },
+    {
+      "name": "CNESST 204 report editor",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Full-screen editor with a section rail grouped as Identification, Mandate, Interview, History, Examination, Conclusions and Signature. Each section has Mark complete and Previous / Continue navigation.",
       "children": [
-        { "name": "Report overview and export", "spaces": ["Health"], "note": "Generate full report, document preview (15 pages), readiness check listing mandatory sections not yet reviewed, Save draft, Print, Export PDF, Export Word, Refetch data." },
-        { "name": "A · Worker information", "spaces": ["Health"], "note": "Identity, health insurance number, date of birth, contact, worker file number, event and recurrence dates. Suggest from de-identified documents; never sent to a language model. Re-sync Section A." },
-        { "name": "B · Physician information", "spaces": ["Health"], "note": "Pulled from the physician profile (name, credentials, licence, clinic, address, phone, email) with a profile-incomplete warning." },
-        { "name": "1 · Evaluation mandate", "spaces": ["Health"], "note": "Extract from documents to prefill the mandate." },
-        { "name": "2 · CNESST-accepted diagnoses", "spaces": ["Health"], "note": "Prefill from documents; Add field." },
-        { "name": "3 · Interview modality", "spaces": ["Health"], "note": "Interview date, start and end time, clinic location; the modality text fills in automatically (FR)." },
-        { "name": "4 · Identification", "spaces": ["Health"], "note": "Prefill from case documents; Add field." },
-        { "name": "5 · Medical history and therapeutic events", "spaces": ["Health"], "note": "Prefill from case documents; Add field." },
-        { "name": "6 · Current medication and ongoing therapeutic measures", "spaces": ["Health"], "note": "Prefill from case documents; Add field." },
-        { "name": "7 · Factual history and evolution", "spaces": ["Health"], "note": "Drafted from the documents with the Section 7 prompt (version picker, Apply template, Regenerate), Edit, Copy, Export Word, Export with citations." },
-        { "name": "8 · Subjective questionnaire and current state", "spaces": ["Health"], "note": "Appréciation subjective, plaintes et problèmes, impact sur AVQ / AVD; dictation tools with input and output language, Start dictation, Upload transcript." },
-        { "name": "9 · Physical examination", "spaces": ["Health"], "note": "Guided or manual; body regions Rachis (lumbar, cervical, thoracic), membre supérieur, membre inférieur, contrôle; palpation, inspection, articular amplitude table, specific maneuvers (Lasègue, Schober, Gaenslen…) with + ± − NT; Auto-complete with ALIE; Dictate." },
-        { "name": "10 · Paraclinical examinations", "spaces": ["Health"], "note": "Static text referring to section 7." },
-        { "name": "11 · Conclusion", "spaces": ["Health"], "note": "Generate conclusion; summary, subjective and objective findings, diagnosis, date of consolidation, existence of impairment (permanent / temporary / no / undetermined), functional limitations; Suggest from documents per field; physician confirmation." },
-        { "name": "12 · APIPP / DC400 impairment percentage", "spaces": ["Health"], "note": "Permanent physical or psychological impairment percentage section (seen in the section list)." },
-        { "name": "Signature block", "spaces": ["Health"], "note": "Signature section fed by the physician profile with a profile-incomplete warning." }
-      ] },
-    { "name": "Section 7 factual history generator", "spaces": ["Health", "Legal"], "state": "Live",
-      "note": "Writes Section 7 from a dated fact ledger with citation markers, density budget, batch continuation and canonical versions per workspace. Many prompt versions (v0.1 to v0.5.5, FR and EN)." },
-    { "name": "Report-Unit Lab segmentation engine", "spaces": ["Health", "Legal"], "state": "Live",
-      "note": "Masked one-call report segmentation with regime vocabularies for CNESST, SAAQ, IVAC and CIVIL. Drives the report units in Health and Run segmentation in Legal." },
-    { "name": "Case Context panel", "spaces": ["Health"], "state": "Live",
-      "note": "Right panel on every case step: document and page counts, review items waiting, consent status, missing information (injury description, diagnosis, injury date), quick actions Review, Report, Consent. Collapsible." },
-    { "name": "Consent management", "spaces": ["Health", "Legal"], "state": "Live",
-      "note": "Consent recorded per case (Active consent on file) with a Consent action in both workspaces; consent revoked is a critical notification." },
-
-    { "name": "Prompt Library", "spaces": ["Health", "Legal"], "state": "Live",
+        {
+          "name": "Report overview and export",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Generate full report, document preview (15 pages), readiness check listing mandatory sections not yet reviewed, Save draft, Print, Export PDF, Export Word, Refetch data."
+        },
+        {
+          "name": "A · Worker information",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Identity, health insurance number, date of birth, contact, worker file number, event and recurrence dates. Suggest from de-identified documents; never sent to a language model. Re-sync Section A."
+        },
+        {
+          "name": "B · Physician information",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Pulled from the physician profile (name, credentials, licence, clinic, address, phone, email) with a profile-incomplete warning."
+        },
+        {
+          "name": "1 · Evaluation mandate",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Extract from documents to prefill the mandate."
+        },
+        {
+          "name": "2 · CNESST-accepted diagnoses",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Prefill from documents; Add field."
+        },
+        {
+          "name": "3 · Interview modality",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Interview date, start and end time, clinic location; the modality text fills in automatically (FR)."
+        },
+        {
+          "name": "4 · Identification",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Prefill from case documents; Add field."
+        },
+        {
+          "name": "5 · Medical history and therapeutic events",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Prefill from case documents; Add field."
+        },
+        {
+          "name": "6 · Current medication and ongoing therapeutic measures",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Prefill from case documents; Add field."
+        },
+        {
+          "name": "7 · Factual history and evolution",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Drafted from the documents with the Section 7 prompt (version picker, Apply template, Regenerate), Edit, Copy, Export Word, Export with citations."
+        },
+        {
+          "name": "8 · Subjective questionnaire and current state",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Appréciation subjective, plaintes et problèmes, impact sur AVQ / AVD; dictation tools with input and output language, Start dictation, Upload transcript."
+        },
+        {
+          "name": "9 · Physical examination",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Guided or manual; body regions Rachis (lumbar, cervical, thoracic), membre supérieur, membre inférieur, contrôle; palpation, inspection, articular amplitude table, specific maneuvers (Lasègue, Schober, Gaenslen…) with + ± − NT; Auto-complete with ALIE; Dictate."
+        },
+        {
+          "name": "10 · Paraclinical examinations",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Static text referring to section 7."
+        },
+        {
+          "name": "11 · Conclusion",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Generate conclusion; summary, subjective and objective findings, diagnosis, date of consolidation, existence of impairment (permanent / temporary / no / undetermined), functional limitations; Suggest from documents per field; physician confirmation."
+        },
+        {
+          "name": "12 · APIPP / DC400 impairment percentage",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Permanent physical or psychological impairment percentage section (seen in the section list)."
+        },
+        {
+          "name": "Signature block",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Signature section fed by the physician profile with a profile-incomplete warning."
+        }
+      ]
+    },
+    {
+      "name": "Section 7 factual history generator",
+      "spaces": [
+        "Health",
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Writes Section 7 from a dated fact ledger with citation markers, density budget, batch continuation and canonical versions per workspace. Many prompt versions (v0.1 to v0.5.5, FR and EN)."
+    },
+    {
+      "name": "Report-Unit Lab segmentation engine",
+      "spaces": [
+        "Health",
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Masked one-call report segmentation with regime vocabularies for CNESST, SAAQ, IVAC and CIVIL. Drives the report units in Health and Run segmentation in Legal."
+    },
+    {
+      "name": "Case Context panel",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
+      "note": "Right panel on every case step: document and page counts, review items waiting, consent status, missing information (injury description, diagnosis, injury date), quick actions Review, Report, Consent. Collapsible."
+    },
+    {
+      "name": "Consent management",
+      "spaces": [
+        "Health",
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Consent recorded per case (Active consent on file) with a Consent action in both workspaces; consent revoked is a critical notification."
+    },
+    {
+      "name": "Prompt Library",
+      "spaces": [
+        "Health",
+        "Legal"
+      ],
+      "state": "Live",
       "note": "Prompts that power every generation, shared by both apps.",
       "children": [
-        { "name": "System, Workspace / Cabinet, Personal and Community tabs", "spaces": ["Health", "Legal"], "note": "System (151), Cabinet (10 in Le Cabinet M), Mine (24), Community." },
-        { "name": "Versions, FR / EN and type filters", "spaces": ["Health", "Legal"], "note": "Versioned prompts (v1…v6), language filter, All types filter, search." },
-        { "name": "Tags and categories", "spaces": ["Health", "Legal"], "note": "Tags such as chrono, civil, csst, IVAC, SAAQ, TAT, LeCabinetM; categories Reports, Chronology, Briefs, Dictation, Utilities." },
-        { "name": "Import a prompt bundle or extract from a document", "spaces": ["Health"], "note": "Import a .alie-prompt.json bundle or extract text from docx, pdf, txt, md." },
-        { "name": "TAT / TAQ document index prompts", "spaces": ["Legal"], "note": "document_index_tat_taq in EN and FR, in the Cabinet library (Utilities)." }
-      ] },
-    { "name": "Prompt Studio", "spaces": ["Health"], "state": "Live",
+        {
+          "name": "System, Workspace / Cabinet, Personal and Community tabs",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "System (151), Cabinet (10 in Le Cabinet M), Mine (24), Community."
+        },
+        {
+          "name": "Versions, FR / EN and type filters",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "Versioned prompts (v1…v6), language filter, All types filter, search."
+        },
+        {
+          "name": "Tags and categories",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "Tags such as chrono, civil, csst, IVAC, SAAQ, TAT, LeCabinetM; categories Reports, Chronology, Briefs, Dictation, Utilities."
+        },
+        {
+          "name": "Import a prompt bundle or extract from a document",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Import a .alie-prompt.json bundle or extract text from docx, pdf, txt, md."
+        },
+        {
+          "name": "TAT / TAQ document index prompts",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "document_index_tat_taq in EN and FR, in the Cabinet library (Utilities)."
+        }
+      ]
+    },
+    {
+      "name": "Prompt Studio",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
       "note": "Agent that builds or revises a prompt with the user.",
       "children": [
-        { "name": "Build a prompt with the agent", "spaces": ["Health"], "note": "Describe the prompt or start with a question; Just open Studio or Start with Studio." },
-        { "name": "Studio sessions", "spaces": ["Health"], "note": "Continue a saved Create or Revise session." },
-        { "name": "Benchmarks", "spaces": ["Health"], "note": "Benchmarks page linked from Studio." }
-      ] },
-    { "name": "Workflows: document classification rules", "spaces": ["Health"], "state": "Building",
-      "note": "Define document classification rules and category sets. Empty state only at capture." },
-    { "name": "Global search (Cmd+K)", "spaces": ["Health", "Legal"], "state": "Live",
-      "note": "Top-bar search in Health; in Legal, Search opens a dialog over cases, files and conversations (type at least 2 characters)." },
-    { "name": "Messages and direct messages", "spaces": ["Health"], "state": "Live",
-      "note": "Messages panel in the top bar with Messages and Direct messages tabs." },
-    { "name": "Notification center and preferences", "spaces": ["Health", "Legal", "Administrative"], "state": "Live",
-      "note": "Notifications panel (alt+T) plus per-channel preferences (in-app, push, email, SMS in Health; in-app, email in Legal) for ten event types. Critical alerts always sent." },
-    { "name": "Bilingual interface and AI output language", "spaces": ["Administrative"], "state": "Live",
-      "note": "Display language EN/FR, AI output language, Ask ALIE input language (FR-CA, EN-CA, EN-US, ES), date format." },
-    { "name": "Theme: light, dark, system", "spaces": ["Administrative"], "state": "Live",
-      "note": "Dark mode toggle in the top bar and a Theme preference in Defaults." },
-
-    { "name": "Physician profile and signature block", "spaces": ["Health", "Administrative"], "state": "Live",
+        {
+          "name": "Build a prompt with the agent",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Describe the prompt or start with a question; Just open Studio or Start with Studio."
+        },
+        {
+          "name": "Studio sessions",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Continue a saved Create or Revise session."
+        },
+        {
+          "name": "Benchmarks",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Benchmarks page linked from Studio."
+        }
+      ]
+    },
+    {
+      "name": "Workflows: document classification rules",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Building",
+      "note": "Define document classification rules and category sets. Empty state only at capture."
+    },
+    {
+      "name": "Global search (Cmd+K)",
+      "spaces": [
+        "Health",
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Top-bar search in Health; in Legal, Search opens a dialog over cases, files and conversations (type at least 2 characters)."
+    },
+    {
+      "name": "Messages and direct messages",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
+      "note": "Messages panel in the top bar with Messages and Direct messages tabs."
+    },
+    {
+      "name": "Notification center and preferences",
+      "spaces": [
+        "Health",
+        "Legal",
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Notifications panel (alt+T) plus per-channel preferences (in-app, push, email, SMS in Health; in-app, email in Legal) for ten event types. Critical alerts always sent."
+    },
+    {
+      "name": "Bilingual interface and AI output language",
+      "spaces": [
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Display language EN/FR, AI output language, Ask ALIE input language (FR-CA, EN-CA, EN-US, ES), date format."
+    },
+    {
+      "name": "Theme: light, dark, system",
+      "spaces": [
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Dark mode toggle in the top bar and a Theme preference in Defaults."
+    },
+    {
+      "name": "Physician profile and signature block",
+      "spaces": [
+        "Health",
+        "Administrative"
+      ],
+      "state": "Live",
       "note": "Account settings feeding report sections B and Signature.",
       "children": [
-        { "name": "Physician identity and CMMQ permit", "spaces": ["Health", "Administrative"], "note": "Credentials and permit number used in report headers." },
-        { "name": "Practice address for letterheads", "spaces": ["Health", "Administrative"], "note": "Clinic name, civic address, phone, email in each generated report." },
-        { "name": "Signature text and image", "spaces": ["Health", "Administrative"], "note": "Upload or draw a signature, appended to exported reports." },
-        { "name": "Writing style formality", "spaces": ["Health"], "note": "Default tone for AI-drafted narrative sections." },
-        { "name": "Clinic locations", "spaces": ["Health"], "note": "Several practice locations; pick one per case in section 3." }
-      ] },
-    { "name": "Signature and firm letterhead", "spaces": ["Legal", "Administrative"], "state": "Live",
-      "note": "Legal firm settings: signature capture and letterhead (Off, Composed header, Uploaded Word template) with letter language." },
-    { "name": "Security: password, two-factor, sessions, Law 25 export", "spaces": ["Administrative"], "state": "Live",
+        {
+          "name": "Physician identity and CMMQ permit",
+          "spaces": [
+            "Health",
+            "Administrative"
+          ],
+          "note": "Credentials and permit number used in report headers."
+        },
+        {
+          "name": "Practice address for letterheads",
+          "spaces": [
+            "Health",
+            "Administrative"
+          ],
+          "note": "Clinic name, civic address, phone, email in each generated report."
+        },
+        {
+          "name": "Signature text and image",
+          "spaces": [
+            "Health",
+            "Administrative"
+          ],
+          "note": "Upload or draw a signature, appended to exported reports."
+        },
+        {
+          "name": "Writing style formality",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Default tone for AI-drafted narrative sections."
+        },
+        {
+          "name": "Clinic locations",
+          "spaces": [
+            "Health"
+          ],
+          "note": "Several practice locations; pick one per case in section 3."
+        }
+      ]
+    },
+    {
+      "name": "Signature and firm letterhead",
+      "spaces": [
+        "Legal",
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Legal firm settings: signature capture and letterhead (Off, Composed header, Uploaded Word template) with letter language."
+    },
+    {
+      "name": "Security: password, two-factor, sessions, Law 25 export",
+      "spaces": [
+        "Administrative"
+      ],
+      "state": "Live",
       "note": "Personal security settings.",
       "children": [
-        { "name": "Change password", "spaces": ["Administrative"], "note": "Current and new password." },
-        { "name": "Two-factor authentication", "spaces": ["Administrative"], "note": "QR code, manual key, backup codes, 6-digit verification." },
-        { "name": "Login sessions", "spaces": ["Administrative"], "note": "Recent sign-ins with date, IP and device." },
-        { "name": "Export my data (Law 25)", "spaces": ["Administrative"], "note": "Download all personal information once per 24 hours." }
-      ] },
-    { "name": "Review defaults: highlight colors and chronology columns", "spaces": ["Health"], "state": "Live",
-      "note": "Highlight colors (default, supporting, contradicting, annotation), chronology table columns, theme." },
-    { "name": "Workspace members and roles", "spaces": ["Administrative"], "state": "Live",
-      "note": "User directory with Add User, roles (Platform admin, Expertise physician) and status." },
-    { "name": "Workspace configuration and report style automations", "spaces": ["Health", "Administrative"], "state": "Live",
-      "note": "Workspace type; auto-generate case brief after OCR; report style switches for the Section 7 writer (chronological order, month-level reference, elapsed time, grouping); POC links." },
-    { "name": "Billing and plan", "spaces": ["Administrative"], "state": "Live",
-      "note": "Current plan and Contact sales." },
-    { "name": "Product tour", "spaces": ["Administrative"], "state": "Live",
-      "note": "Replayable 5-step orientation." },
-    { "name": "Account deletion", "spaces": ["Administrative"], "state": "Live",
-      "note": "Danger zone: permanently delete the account." },
-    { "name": "Workspace switcher", "spaces": ["Administrative"], "state": "Live",
-      "note": "Workspace selector shared by both apps: Le Cabinet M (law firm), Demo_Health, CentomoMD, ALIE Platform - Medical, Gestion Optimed (medical)." },
-    { "name": "Clinical and Legal workspace cross-link", "spaces": ["Health", "Legal"], "state": "Live",
-      "note": "Legal header carries a Clinical workspace button to health.alie.app; both apps share workspaces, cases and prompts." },
-    { "name": "Mobile layout and bottom tab bar", "spaces": ["Health"], "state": "Live",
-      "note": "Responsive layout with a bottom tab bar (Home, Cases, Docs, Settings) and a slide-in menu on narrow screens." },
-    { "name": "Need help entry point", "spaces": ["Administrative"], "state": "Live",
-      "note": "Need help? link in both sidebars." },
-
-    { "name": "Legal Ask ALIE home", "spaces": ["Legal"], "state": "Live",
+        {
+          "name": "Change password",
+          "spaces": [
+            "Administrative"
+          ],
+          "note": "Current and new password."
+        },
+        {
+          "name": "Two-factor authentication",
+          "spaces": [
+            "Administrative"
+          ],
+          "note": "QR code, manual key, backup codes, 6-digit verification."
+        },
+        {
+          "name": "Login sessions",
+          "spaces": [
+            "Administrative"
+          ],
+          "note": "Recent sign-ins with date, IP and device."
+        },
+        {
+          "name": "Export my data (Law 25)",
+          "spaces": [
+            "Administrative"
+          ],
+          "note": "Download all personal information once per 24 hours."
+        }
+      ]
+    },
+    {
+      "name": "Review defaults: highlight colors and chronology columns",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
+      "note": "Highlight colors (default, supporting, contradicting, annotation), chronology table columns, theme."
+    },
+    {
+      "name": "Workspace members and roles",
+      "spaces": [
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "User directory with Add User, roles (Platform admin, Expertise physician) and status."
+    },
+    {
+      "name": "Workspace configuration and report style automations",
+      "spaces": [
+        "Health",
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Workspace type; auto-generate case brief after OCR; report style switches for the Section 7 writer (chronological order, month-level reference, elapsed time, grouping); POC links."
+    },
+    {
+      "name": "Billing and plan",
+      "spaces": [
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Current plan and Contact sales."
+    },
+    {
+      "name": "Product tour",
+      "spaces": [
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Replayable 5-step orientation."
+    },
+    {
+      "name": "Account deletion",
+      "spaces": [
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Danger zone: permanently delete the account."
+    },
+    {
+      "name": "Workspace switcher",
+      "spaces": [
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Workspace selector shared by both apps: Le Cabinet M (law firm), Demo_Health, CentomoMD, ALIE Platform - Medical, Gestion Optimed (medical)."
+    },
+    {
+      "name": "Clinical and Legal workspace cross-link",
+      "spaces": [
+        "Health",
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Legal header carries a Clinical workspace button to health.alie.app; both apps share workspaces, cases and prompts."
+    },
+    {
+      "name": "Mobile layout and bottom tab bar",
+      "spaces": [
+        "Health"
+      ],
+      "state": "Live",
+      "note": "Responsive layout with a bottom tab bar (Home, Cases, Docs, Settings) and a slide-in menu on narrow screens."
+    },
+    {
+      "name": "Need help entry point",
+      "spaces": [
+        "Administrative"
+      ],
+      "state": "Live",
+      "note": "Need help? link in both sidebars."
+    },
+    {
+      "name": "Legal Ask ALIE home",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
       "note": "Conversational landing page of the legal workspace (153 recent conversations in Le Cabinet M).",
       "children": [
-        { "name": "Recent conversations", "spaces": ["Legal"], "note": "Dropdown of past conversations." },
-        { "name": "@ case and file tagging, attach files", "spaces": ["Legal"], "note": "@ to tag a case or a file in the question; attach files button." },
-        { "name": "Quick actions", "spaces": ["Legal"], "note": "Open a patient case, Search across cases, Create a new case." }
-      ] },
-    { "name": "Slash commands and workflows", "spaces": ["Legal"], "state": "Live",
+        {
+          "name": "Recent conversations",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Dropdown of past conversations."
+        },
+        {
+          "name": "@ case and file tagging, attach files",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "@ to tag a case or a file in the question; attach files button."
+        },
+        {
+          "name": "Quick actions",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Open a patient case, Search across cases, Create a new case."
+        }
+      ]
+    },
+    {
+      "name": "Slash commands and workflows",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
       "note": "Type / in any ALIE chat to run a command or workflow.",
       "children": [
-        { "name": "/chronologie · generate the medical chronology", "spaces": ["Legal"], "note": "Runs the chronology workflow on the case." },
-        { "name": "/preuve · retrieve evidence", "spaces": ["Legal"], "note": "Evidence retrieval over the case files." },
-        { "name": "/résumé · summarize the case", "spaces": ["Legal"], "note": "Case summary." },
-        { "name": "/csst and /saaq · run a regime prompt", "spaces": ["Legal"], "note": "Regime-specific prompts." },
-        { "name": "/draft · mandate letter for review", "spaces": ["Legal"], "note": "Drafts a mandate letter for the user's review." }
-      ] },
-    { "name": "Create menu", "spaces": ["Legal"], "state": "Live",
-      "note": "Create in the sidebar: New patient case, New chronology, New workflow, New prompt, New artifact." },
-    { "name": "Legal case registry", "spaces": ["Legal"], "state": "Live",
-      "note": "Cases list with search, grid and list views, mandate tags (CNESST, SAAQ, IVAC, CIVIL, OTHER), employer, file count and updated date." },
-    { "name": "Legal case workspace", "spaces": ["Legal"], "state": "Live",
-      "note": "Three-pane case page: side rail, working panel, chat and drafts. Header actions Consent, File, Edit case details, Delete case, Share.",
+        {
+          "name": "/chronologie · generate the medical chronology",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Runs the chronology workflow on the case."
+        },
+        {
+          "name": "/preuve · retrieve evidence",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Evidence retrieval over the case files."
+        },
+        {
+          "name": "/résumé · summarize the case",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Case summary."
+        },
+        {
+          "name": "/csst and /saaq · run a regime prompt",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Regime-specific prompts."
+        },
+        {
+          "name": "/draft · mandate letter for review",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Drafts a mandate letter for the user's review."
+        }
+      ]
+    },
+    {
+      "name": "Create menu",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Create in the sidebar: New patient case, New chronology, New workflow, New prompt, New artifact."
+    },
+    {
+      "name": "Legal case registry",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Cases list with search, grid and list views, mandate tags (CNESST, SAAQ, IVAC, CIVIL, OTHER), employer, file count and updated date."
+    },
+    {
+      "name": "Legal case workspace",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Three-pane case page: side rail (Files, Report units, Chat, Source, Recycle bin), working panel, chat and a Drafts pane whose outputs are the medical chronology, expert packages and the mandate letter. Header actions Consent, File, Edit case details, Delete case, Share (Share is being folded into Portal).",
       "children": [
-        { "name": "Files panel with folders and upload", "spaces": ["Legal"], "note": "New folder, drop or click to upload up to 25 files at a time, per-file pages and size, delete document." },
-        { "name": "Report units and Run segmentation", "spaces": ["Legal"], "note": "A unit for every report found inside the uploaded pages; Run segmentation per file." },
-        { "name": "Source viewer", "spaces": ["Legal"], "note": "Source panel in the rail." },
-        { "name": "Expert packages", "spaces": ["Legal"], "note": "Drafts pane: Expert Packages with New package." },
-        { "name": "Mandate letter", "spaces": ["Legal"], "note": "Drafts pane: Mandate letter with Open." },
-        { "name": "Share case", "spaces": ["Legal"], "note": "Share action in the case header." }
-      ] },
-    { "name": "Case chat threads with ALIE commands", "spaces": ["Legal"], "state": "Live",
-      "note": "Per-case chat with General discussion plus conversations (New); @ for a file, / for a command; Message ALIE composer." },
-    { "name": "Duplicate document detection", "spaces": ["Legal", "Health"], "state": "Live",
-      "note": "Check for duplicates in the legal case chat; Duplicates finder in the Health critical review." },
-    { "name": "Drafts library", "spaces": ["Legal"], "state": "Live",
-      "note": "Per-case tree of generated drafts with a document viewer panel." },
-    { "name": "Task Monitor", "spaces": ["Legal"], "state": "Live",
-      "note": "Background jobs running for the workspace." },
-    { "name": "Medical chronology generation", "spaces": ["Legal", "Health"], "state": "Live",
-      "note": "Chronology prompts (csst, saaq, EN and FR) producing dated chronologies with source, page and citation columns; 8 chronology prompts in the Cabinet library." },
-    { "name": "Paralegal initial case summary and case brief", "spaces": ["Legal"], "state": "Live",
-      "note": "PARAJURISTE résumé initial and Case Brief prompts." },
-    { "name": "Section 8 dictation prompt", "spaces": ["Health", "Legal"], "state": "Live",
-      "note": "Dictation category in the Prompt Library and Start dictation in Ask ALIE and section 8." },
-    { "name": "Expert letter export with letterhead", "spaces": ["Legal"], "state": "Live",
-      "note": "Exported expert letters carry the configured signature and letterhead; Export ready notification." }
+        {
+          "name": "Files panel with folders and upload",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "New folder, drop or click to upload up to 25 files at a time, per-file pages and size, delete document."
+        },
+        {
+          "name": "Report units and Run segmentation",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "A unit for every report found inside the uploaded pages; Run segmentation per file."
+        },
+        {
+          "name": "Source viewer",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Source panel in the rail."
+        },
+        {
+          "name": "Medical chronology (draft output)",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Drafts pane output: the medical chronology generated for the case (via /chronologie)."
+        },
+        {
+          "name": "Expert packages",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Drafts pane: Expert Packages with New package."
+        },
+        {
+          "name": "Mandate letter",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Drafts pane: Mandate letter with Open."
+        },
+        {
+          "name": "Share case",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Share action in the case header. Being consolidated with Collaboration into the Portal (David).",
+          "state": "Needs work"
+        }
+      ]
+    },
+    {
+      "name": "Case chat threads with ALIE commands",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Per-case chat with General discussion plus conversations (New); @ for a file, / for a command; Message ALIE composer."
+    },
+    {
+      "name": "Duplicate document detection",
+      "spaces": [
+        "Legal",
+        "Health"
+      ],
+      "state": "Live",
+      "note": "Check for duplicates in the legal case chat; Duplicates finder in the Health critical review."
+    },
+    {
+      "name": "Drafts library",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Per-case tree of generated drafts with a document viewer panel."
+    },
+    {
+      "name": "Task Monitor",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Background jobs running for the workspace."
+    },
+    {
+      "name": "Medical chronology generation",
+      "spaces": [
+        "Legal",
+        "Health"
+      ],
+      "state": "Live",
+      "note": "Chronology prompts (csst, saaq, EN and FR) producing dated chronologies with source, page and citation columns; 8 chronology prompts in the Cabinet library."
+    },
+    {
+      "name": "Paralegal initial case summary and case brief",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "PARAJURISTE résumé initial and Case Brief prompts."
+    },
+    {
+      "name": "Section 8 dictation prompt",
+      "spaces": [
+        "Health",
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Dictation category in the Prompt Library and Start dictation in Ask ALIE and section 8."
+    },
+    {
+      "name": "Expert letter export with letterhead",
+      "spaces": [
+        "Legal"
+      ],
+      "state": "Live",
+      "note": "Exported expert letters carry the configured signature and letterhead; Export ready notification."
+    }
   ],
   "patches": [
-    { "name": "Ask ALIE", "state": "Live", "spaces": ["Legal", "Health"],
-      "note": "Live in both workspaces. Health: case-scoped Q&A with a citation sources panel, This case only scope, input and reply language, dictation (Ctrl+J). Legal: home conversation plus per-case chat with @ file tags and / commands." }
+    {
+      "name": "Ask ALIE",
+      "state": "Live",
+      "spaces": [
+        "Legal",
+        "Health"
+      ],
+      "note": "Live in both workspaces. Health: case-scoped Q&A with a citation sources panel, This case only scope, input and reply language, dictation (Ctrl+J). Legal: home conversation plus per-case chat with @ file tags and / commands."
+    },
+    {
+      "name": "Portal",
+      "state": "Building",
+      "spaces": [
+        "Legal",
+        "Health"
+      ],
+      "owner": "David",
+      "note": "Client-facing portal that consolidates Share (case sharing) and the Collaboration panel (requests, document requests, secure messages, annotations, opinion requests) into one feature. David is building it now."
+    }
   ]
 }
