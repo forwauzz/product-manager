@@ -249,12 +249,12 @@
       ]
     },
     {
-      "name": "Case side rail",
+      "name": "Case left panel (health)",
       "spaces": [
         "Health"
       ],
       "state": "Live",
-      "note": "Left rail on every case step: Files, Report units, Recycle bin, Collaboration, Dictate. Collaboration and Dictate are inventoried on their own.",
+      "note": "Left panel on every case step in Health: Files, Report units, Recycle bin, Collaboration, Dictate.",
       "children": [
         {
           "name": "Files panel",
@@ -277,89 +277,22 @@
             "Legal"
           ],
           "note": "Anything removed from Review lands here and can be restored. The uploaded document is never changed. Legal shows starting vs final materials page counts."
-        }
-      ]
-    },
-    {
-      "name": "Collaboration panel",
-      "spaces": [
-        "Health"
-      ],
-      "state": "Live",
-      "note": "Case-level collaboration with external parties, opened from the side rail. Being consolidated with Share into the Portal (David).",
-      "children": [
-        {
-          "name": "Requests",
-          "spaces": [
-            "Health"
-          ],
-          "note": "New Request; active requests list."
         },
         {
-          "name": "Document requests with secure link",
+          "name": "Collaboration panel",
           "spaces": [
             "Health"
           ],
-          "note": "Generate a secure link to request documents from a third party."
+          "state": "Live",
+          "note": "Case-level collaboration with external parties, opened from the side rail. Being consolidated with Share into the Portal (David). Sub-items: Requests (New Request; active requests list); Document requests with secure link (Generate a secure link to request documents from a third party); Messages / secure exchange (New secure exchange; replies land directly in the case); Annotations (Shared annotations on the case); Opinion requests (New opinion request to another professional)."
         },
         {
-          "name": "Messages / secure exchange",
+          "name": "Dictate",
           "spaces": [
             "Health"
           ],
-          "note": "New secure exchange; replies land directly in the case."
-        },
-        {
-          "name": "Annotations",
-          "spaces": [
-            "Health"
-          ],
-          "note": "Shared annotations on the case."
-        },
-        {
-          "name": "Opinion requests",
-          "spaces": [
-            "Health"
-          ],
-          "note": "New opinion request to another professional."
-        }
-      ]
-    },
-    {
-      "name": "Dictate",
-      "spaces": [
-        "Health"
-      ],
-      "state": "Live",
-      "note": "Dictation dialog from the side rail and from report sections (Ctrl+J in Ask ALIE too).",
-      "children": [
-        {
-          "name": "Recording modes: quick note, long session, paste transcript",
-          "spaces": [
-            "Health"
-          ],
-          "note": "Three ways in: a quick note, a long session, or pasting an existing transcript."
-        },
-        {
-          "name": "Dictation mode and language settings",
-          "spaces": [
-            "Health"
-          ],
-          "note": "Mode (machine mode…), dictation language and output language selectors."
-        },
-        {
-          "name": "Patient consent confirmation before recording",
-          "spaces": [
-            "Health"
-          ],
-          "note": "Consent notice must be confirmed (or remind me later) before Start Recording."
-        },
-        {
-          "name": "Dictation history",
-          "spaces": [
-            "Health"
-          ],
-          "note": "History tab of past dictations."
+          "state": "Live",
+          "note": "Dictation dialog from the side rail and from report sections (Ctrl+J in Ask ALIE too). Sub-items: Recording modes: quick note, long session, paste transcript (Three ways in: a quick note, a long session, or pasting an existing transcript); Dictation mode and language settings (Mode (machine mode…), dictation language and output language selectors); Patient consent confirmation before recording (Consent notice must be confirmed (or remind me later) before Start Recording); Dictation history (History tab of past dictations)."
         }
       ]
     },
@@ -630,7 +563,7 @@
       "spaces": [
         "Health",
         "Legal",
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Notifications panel (alt+T) plus per-channel preferences (in-app, push, email, SMS in Health; in-app, email in Legal) for ten event types. Critical alerts always sent."
@@ -638,7 +571,7 @@
     {
       "name": "Bilingual interface and AI output language",
       "spaces": [
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Display language EN/FR, AI output language, Ask ALIE input language (FR-CA, EN-CA, EN-US, ES), date format."
@@ -646,7 +579,7 @@
     {
       "name": "Theme: light, dark, system",
       "spaces": [
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Dark mode toggle in the top bar and a Theme preference in Defaults."
@@ -655,7 +588,7 @@
       "name": "Physician profile and signature block",
       "spaces": [
         "Health",
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Account settings feeding report sections B and Signature.",
@@ -664,7 +597,7 @@
           "name": "Physician identity and CMMQ permit",
           "spaces": [
             "Health",
-            "Administrative"
+            "ALIE Admin"
           ],
           "note": "Credentials and permit number used in report headers."
         },
@@ -672,7 +605,7 @@
           "name": "Practice address for letterheads",
           "spaces": [
             "Health",
-            "Administrative"
+            "ALIE Admin"
           ],
           "note": "Clinic name, civic address, phone, email in each generated report."
         },
@@ -680,7 +613,7 @@
           "name": "Signature text and image",
           "spaces": [
             "Health",
-            "Administrative"
+            "ALIE Admin"
           ],
           "note": "Upload or draw a signature, appended to exported reports."
         },
@@ -704,7 +637,7 @@
       "name": "Signature and firm letterhead",
       "spaces": [
         "Legal",
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Legal firm settings: signature capture and letterhead (Off, Composed header, Uploaded Word template) with letter language."
@@ -712,7 +645,7 @@
     {
       "name": "Security: password, two-factor, sessions, Law 25 export",
       "spaces": [
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Personal security settings.",
@@ -720,28 +653,28 @@
         {
           "name": "Change password",
           "spaces": [
-            "Administrative"
+            "ALIE Admin"
           ],
           "note": "Current and new password."
         },
         {
           "name": "Two-factor authentication",
           "spaces": [
-            "Administrative"
+            "ALIE Admin"
           ],
           "note": "QR code, manual key, backup codes, 6-digit verification."
         },
         {
           "name": "Login sessions",
           "spaces": [
-            "Administrative"
+            "ALIE Admin"
           ],
           "note": "Recent sign-ins with date, IP and device."
         },
         {
           "name": "Export my data (Law 25)",
           "spaces": [
-            "Administrative"
+            "ALIE Admin"
           ],
           "note": "Download all personal information once per 24 hours."
         }
@@ -758,7 +691,7 @@
     {
       "name": "Workspace members and roles",
       "spaces": [
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "User directory with Add User, roles (Platform admin, Expertise physician) and status."
@@ -767,7 +700,7 @@
       "name": "Workspace configuration and report style automations",
       "spaces": [
         "Health",
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Workspace type; auto-generate case brief after OCR; report style switches for the Section 7 writer (chronological order, month-level reference, elapsed time, grouping); POC links."
@@ -775,7 +708,7 @@
     {
       "name": "Billing and plan",
       "spaces": [
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Current plan and Contact sales."
@@ -783,7 +716,7 @@
     {
       "name": "Product tour",
       "spaces": [
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Replayable 5-step orientation."
@@ -791,7 +724,7 @@
     {
       "name": "Account deletion",
       "spaces": [
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Danger zone: permanently delete the account."
@@ -799,7 +732,7 @@
     {
       "name": "Workspace switcher",
       "spaces": [
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Workspace selector shared by both apps: Le Cabinet M (law firm), Demo_Health, CentomoMD, ALIE Platform - Medical, Gestion Optimed (medical)."
@@ -824,7 +757,7 @@
     {
       "name": "Need help entry point",
       "spaces": [
-        "Administrative"
+        "ALIE Admin"
       ],
       "state": "Live",
       "note": "Need help? link in both sidebars."
@@ -922,7 +855,7 @@
       "note": "Cases list with search, grid and list views, mandate tags (CNESST, SAAQ, IVAC, CIVIL, OTHER), employer, file count and updated date."
     },
     {
-      "name": "Legal case workspace",
+      "name": "Case file (legal)",
       "spaces": [
         "Legal"
       ],
@@ -942,6 +875,20 @@
             "Legal"
           ],
           "note": "A unit for every report found inside the uploaded pages; Run segmentation per file."
+        },
+        {
+          "name": "Chat with ALIE commands",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Per-case chat with General discussion plus conversations (New); @ for a file, / for a command; Message ALIE composer."
+        },
+        {
+          "name": "Recycle bin (legal)",
+          "spaces": [
+            "Legal"
+          ],
+          "note": "Starting vs final materials page counts; pages and reports set aside collect here with the file they came from and can be restored. The uploaded document is never changed."
         },
         {
           "name": "Source viewer",
@@ -980,14 +927,6 @@
           "state": "Needs work"
         }
       ]
-    },
-    {
-      "name": "Case chat threads with ALIE commands",
-      "spaces": [
-        "Legal"
-      ],
-      "state": "Live",
-      "note": "Per-case chat with General discussion plus conversations (New); @ for a file, / for a command; Message ALIE composer."
     },
     {
       "name": "Duplicate document detection",
@@ -1069,5 +1008,27 @@
       "owner": "David",
       "note": "Client-facing portal that consolidates Share (case sharing) and the Collaboration panel (requests, document requests, secure messages, annotations, opinion requests) into one feature. David is building it now."
     }
+  ],
+  "renames": {
+    "Case side rail": "Case left panel (health)",
+    "Legal case workspace": "Case file (legal)",
+    "Case chat threads with ALIE commands": "Chat with ALIE commands"
+  },
+  "deletes": [
+    "Requests",
+    "Document requests with secure link",
+    "Messages / secure exchange",
+    "Annotations",
+    "Opinion requests",
+    "Recording modes: quick note, long session, paste transcript",
+    "Dictation mode and language settings",
+    "Patient consent confirmation before recording",
+    "Dictation history"
+  ],
+  "noteSync": [
+    "Collaboration panel",
+    "Dictate",
+    "Case left panel (health)",
+    "Case file (legal)"
   ]
 }

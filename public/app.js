@@ -45,7 +45,7 @@
   var VERSION = 0;
   var ui = { view: "roadmap", space: null, feature: null, grain: "month", group: "state", rmode: "order", preview: null,
              spaceFilter: null, ownerFilter: "", studentFilter: "", rgroup: "stage", query: "", menu: null,
-             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix", itab: "buyers", icpOpen: null, fview: "grouped" };
+             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix", itab: "buyers", icpOpen: null, fview: "grouped", fmode: "cards", smode: "browse", spaceSel: null };
   var timer = null, dirty = false, saving = false, conflicts = 0, tombstones = {}, SESSION = { authed: true, required: false };
 
   function setSaveState(text, isErr) {
@@ -430,7 +430,7 @@
     var h = "#/" + ui.view;
     if (ui.feature) h = "#/feature/" + ui.feature;
     else if (ui.view === "icp" && ui.icpOpen) h = "#/icp/" + ui.icpOpen;
-    else if (ui.view === "space" && ui.space) h = "#/space/" + encodeURIComponent(ui.space);
+    else if (ui.view === "space" && ui.space) h = "#/space/" + encodeURIComponent(ui.space) + (ui.spaceSel ? "/" + ui.spaceSel : "");
     if (location.hash !== h) history.replaceState(null, "", h);
   }
   function readHash() {
@@ -438,7 +438,7 @@
     if (!m[0]) return;
     if (m[0] === "feature" && m[1] && feature(m[1])) { ui.feature = m[1]; S.current = feature(m[1]).project; return; }
     if (m[0] === "icp" && m[1] && S.icps.some(function (x) { return x.id === m[1]; })) { ui.view = "icp"; ui.icpOpen = m[1]; return; }
-    if (m[0] === "space" && m[1]) { var sp = decodeURIComponent(m[1]); if (S.spaces.indexOf(sp) !== -1) { ui.view = "space"; ui.space = sp; } return; }
+    if (m[0] === "space" && m[1]) { var sp = decodeURIComponent(m[1]); if (S.spaces.indexOf(sp) !== -1) { ui.view = "space"; ui.space = sp; if (m[2] && feature(m[2])) ui.spaceSel = m[2]; } return; }
     if (["roadmap", "features", "parallel", "timeline", "rnd", "icp"].indexOf(m[0]) !== -1) ui.view = m[0];
   }
 
@@ -550,7 +550,7 @@
       b.appendChild(el("span", "ic", it[2]));
       b.appendChild(el("span", "nm", it[1]));
       if (it[3] !== null) b.appendChild(el("span", "ct", String(it[3])));
-      b.onclick = function () { ui.view = it[0]; ui.feature = null; ui.space = null; ui.icpOpen = null; closeNavIfNarrow(); render(); };
+      b.onclick = function () { ui.view = it[0]; ui.feature = null; ui.space = null; ui.icpOpen = null; if (it[0] === "features") ui.fmode = "cards"; closeNavIfNarrow(); render(); };
       if (it[0] === "rnd") {
         b.title = "Drop a feature here to push it to R&D";
         b.addEventListener("dragover", function (e) { e.preventDefault(); b.classList.add("dragover"); });
@@ -1244,11 +1244,164 @@
     return row;
   }
 
-  /* --- features index: space cards --- */
+  /* --- feature thumbnails: small line illustrations chosen from what the feature does --- */
+
+  var THUMBS = [
+    ["auto", "Automatic"], ["document", "Document"], ["editor", "Editor"], ["upload", "Upload"], ["list", "List"], ["board", "Dashboard"],
+    ["chat", "Chat"], ["calendar", "Calendar"], ["search", "Search"], ["settings", "Settings"], ["people", "People"], ["mic", "Dictation"],
+    ["workflow", "Workflow"], ["bin", "Recycle bin"], ["shield", "Security"], ["globe", "Language"], ["exam", "Examination"], ["matrix", "Matrix"], ["spark", "Other"]
+  ];
+  var THUMB_SVG = {
+    document: '<rect x="52" y="18" width="56" height="70" rx="6"/><path d="M64 36h32M64 48h32M64 60h22M64 72h28"/>',
+    editor: '<rect x="40" y="18" width="80" height="66" rx="6"/><path d="M40 34h80M52 48h20M52 58h36M52 68h28"/><rect x="92" y="46" width="18" height="26" rx="3"/>',
+    upload: '<path d="M44 72v10a6 6 0 0 0 6 6h60a6 6 0 0 0 6-6V72"/><path d="M80 66V22M64 38l16-16 16 16"/>',
+    list: '<rect x="40" y="22" width="80" height="14" rx="4"/><rect x="40" y="43" width="80" height="14" rx="4"/><rect x="40" y="64" width="80" height="14" rx="4"/><circle cx="49" cy="29" r="2.5"/><circle cx="49" cy="50" r="2.5"/><circle cx="49" cy="71" r="2.5"/>',
+    board: '<rect x="36" y="20" width="40" height="28" rx="5"/><rect x="84" y="20" width="40" height="28" rx="5"/><rect x="36" y="56" width="88" height="26" rx="5"/><path d="M44 32h24M92 32h24M44 68h50"/>',
+    chat: '<path d="M40 30a8 8 0 0 1 8-8h44a8 8 0 0 1 8 8v22a8 8 0 0 1-8 8H66l-14 12V60h-4a8 8 0 0 1-8-8z"/><path d="M110 46h4a8 8 0 0 1 8 8v18a8 8 0 0 1-8 8h-2v10l-12-10H84"/><path d="M54 36h34M54 46h22"/>',
+    calendar: '<rect x="40" y="24" width="80" height="62" rx="6"/><path d="M40 40h80M56 18v12M104 18v12"/><rect x="52" y="50" width="12" height="10" rx="2"/><rect x="74" y="50" width="12" height="10" rx="2"/><rect x="96" y="50" width="12" height="10" rx="2"/><rect x="52" y="66" width="12" height="10" rx="2"/><rect x="74" y="66" width="12" height="10" rx="2"/>',
+    search: '<circle cx="72" cy="48" r="22"/><path d="M88 64l22 22M62 48h20M72 38v20"/>',
+    settings: '<path d="M44 34h72M44 54h72M44 74h72"/><circle cx="66" cy="34" r="6" fill="var(--bone)"/><circle cx="96" cy="54" r="6" fill="var(--bone)"/><circle cx="72" cy="74" r="6" fill="var(--bone)"/>',
+    people: '<circle cx="64" cy="38" r="11"/><path d="M40 84a24 24 0 0 1 48 0"/><circle cx="100" cy="42" r="9"/><path d="M92 84a20 20 0 0 1 32-16"/>',
+    mic: '<rect x="68" y="16" width="24" height="42" rx="12"/><path d="M52 50a28 28 0 0 0 56 0M80 78v10M66 88h28"/>',
+    workflow: '<rect x="30" y="40" width="26" height="20" rx="5"/><rect x="67" y="18" width="26" height="20" rx="5"/><rect x="67" y="62" width="26" height="20" rx="5"/><rect x="104" y="40" width="26" height="20" rx="5"/><path d="M56 50h6l5-22h0M62 50l5 22M93 28l11 22M93 72l11-22"/>',
+    bin: '<path d="M48 32h64M68 32v-8h24v8M56 32l4 56h40l4-56M72 44v32M88 44v32"/>',
+    shield: '<path d="M80 16l32 12v24c0 20-14 32-32 40-18-8-32-20-32-40V28z"/><path d="M68 52l9 9 16-18"/>',
+    globe: '<circle cx="80" cy="52" r="32"/><path d="M48 52h64M80 20c14 14 14 50 0 64M80 20c-14 14-14 50 0 64"/>',
+    exam: '<circle cx="80" cy="24" r="8"/><path d="M80 32v30M60 44h40M80 62l-14 26M80 62l14 26"/>',
+    matrix: '<rect x="38" y="22" width="84" height="60" rx="5"/><path d="M38 42h84M38 62h84M66 22v60M94 22v60"/><path d="M48 32l4 4 6-8M76 52l4 4 6-8M104 72l4 4 6-8"/>',
+    spark: '<path d="M80 20v20M80 64v20M48 52h20M92 52h20M60 32l8 8M92 64l8 8M60 72l8-8M92 40l8-8"/>'
+  };
+  var THUMB_RULES = [
+    ["mic", /dictat|voice|record/i], ["bin", /recycle|bin\b|delete|trash/i], ["calendar", /schedule|calendar|appointment/i],
+    ["chat", /chat|ask alie|message|conversation|slash|command/i], ["search", /search|find|duplicate|filter/i],
+    ["upload", /upload|source|file|document registry|ocr/i], ["people", /collaborat|share|portal|member|consent|opinion|request/i],
+    ["shield", /security|password|two-factor|law 25|breach/i], ["globe", /language|bilingual|theme|french|english/i],
+    ["settings", /setting|profile|billing|configuration|default|preference|account|workspace|tour|letterhead|signature/i],
+    ["workflow", /workflow|segmentation|automation|prompt|studio|engine|generat|chronolog|extract|brief/i],
+    ["exam", /examination|physical|body/i], ["matrix", /matrix|overlap|queue|review|unreadable/i],
+    ["editor", /editor|section|draft|letter|report|package|conclusion|questionnaire|mandate|diagnos|identif|history|medication|paraclinical/i],
+    ["board", /dashboard|command center|overview|widget|context|home|registry|case file|left panel|tracker/i],
+    ["list", /list|library|registry|tab|drafts|monitor|menu|legend/i]
+  ];
+  function thumbKind(f) {
+    if (f.thumb && f.thumb !== "auto" && THUMB_SVG[f.thumb]) return f.thumb;
+    var hay = f.name + " " + (f.note || "").slice(0, 80);
+    for (var i = 0; i < THUMB_RULES.length; i++) if (THUMB_RULES[i][1].test(hay)) return THUMB_RULES[i][0];
+    return "spark";
+  }
+  function thumbEl(f, cls) {
+    var d = el("div", "thumb " + stateClass(f.state) + (cls ? " " + cls : ""));
+    d.innerHTML = '<svg viewBox="0 0 160 104" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (THUMB_SVG[thumbKind(f)] || THUMB_SVG.spark) + "</svg>";
+    return d;
+  }
+  function thumbPicker(f, onPick) {
+    var row = el("div", "thumbs");
+    THUMBS.forEach(function (t) {
+      var b = el("button", "thbtn");
+      b.type = "button";
+      b.title = t[1];
+      b.setAttribute("aria-label", t[1]);
+      b.setAttribute("aria-pressed", String((f.thumb || "auto") === t[0]));
+      var probe = { name: f.name, note: f.note, state: f.state, thumb: t[0] === "auto" ? "" : t[0] };
+      b.appendChild(thumbEl(probe, "sm"));
+      if (t[0] === "auto") b.appendChild(el("span", null, "Auto"));
+      b.onclick = function () {
+        onPick(t[0] === "auto" ? "" : t[0]);
+        Array.prototype.forEach.call(row.children, function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+      };
+      row.appendChild(b);
+    });
+    return row;
+  }
+
+  /* --- features: three large cards, then a space with a sub-menu of main features --- */
+
+  function spaceIcon(sp) {
+    var n = sp.toLowerCase();
+    if (n.indexOf("health") !== -1 || n.indexOf("clinic") !== -1 || n.indexOf("medic") !== -1) return "clinic";
+    if (n.indexOf("legal") !== -1 || n.indexOf("law") !== -1) return "lawyer";
+    if (n.indexOf("admin") !== -1 || n.indexOf("setting") !== -1) return "institution";
+    return "other";
+  }
+  function spaceBlurb(sp) {
+    var n = sp.toLowerCase();
+    if (n.indexOf("health") !== -1) return "The clinical workspace: cases, review, the report editor.";
+    if (n.indexOf("legal") !== -1) return "The legal workspace: case files, chat, chronologies, letters.";
+    if (n.indexOf("admin") !== -1) return "Accounts, security, workspaces, billing and settings.";
+    return "";
+  }
+  /* Main features of a space: top-level features tagged with it, plus parents of tagged sub-features. */
+  function mainsIn(sp) {
+    var out = [], seen = {};
+    feats().forEach(function (f) {
+      var p = f.parent ? feature(f.parent) : null;
+      var tagged = (f.spaces || []).indexOf(sp) !== -1;
+      if (!f.parent && tagged && !seen[f.id]) { seen[f.id] = true; out.push(f); }
+      else if (p && tagged && !seen[p.id]) { seen[p.id] = true; out.push(p); }
+    });
+    return out;
+  }
+  function subsOf(f) { return childrenOf(f); }
 
   function renderFeatures(host) {
     var p = project();
-    host.appendChild(header("FEATURES", p.name + " feature spaces", [newBtn("NEW FEATURE", function () { create(); })]));
+    if (ui.fmode === "all") return renderAllFeatures(host);
+    host.appendChild(header("FEATURES", p.name + " features", [newBtn("NEW FEATURE", function () { create(); })]));
+    var pad = el("div", "pad");
+    var cards = el("div", "spacecards");
+    S.spaces.forEach(function (sp) {
+      var mains = mainsIn(sp);
+      var subs = 0;
+      mains.forEach(function (m) { subs += subsOf(m).length; });
+      var all = inSpace(sp);
+      var c = el("button", "spacecard");
+      c.appendChild(avatarEl(spaceIcon(sp), "lg"));
+      c.appendChild(el("h2", null, sp));
+      var blurb = spaceBlurb(sp);
+      if (blurb) c.appendChild(el("p", null, blurb));
+      c.appendChild(el("div", "count", mains.length + " main feature" + (mains.length === 1 ? "" : "s") + (subs ? " · " + subs + " sub-functionalit" + (subs === 1 ? "y" : "ies") : "")));
+      var dots = el("div", "dots");
+      STATES.forEach(function (st) {
+        var n = all.filter(function (f) { return f.state === st; }).length;
+        if (!n) return;
+        var d = el("span", "dot " + stateClass(st));
+        d.appendChild(el("i"));
+        d.appendChild(document.createTextNode(n + " " + st.toLowerCase()));
+        dots.appendChild(d);
+      });
+      if (!all.length) dots.appendChild(el("span", "note", "Nothing tagged yet."));
+      c.appendChild(dots);
+      c.onclick = function () { ui.view = "space"; ui.space = sp; ui.spaceSel = null; ui.smode = "browse"; render(); };
+      c.addEventListener("dragover", function (e) { e.preventDefault(); c.classList.add("dragover"); });
+      c.addEventListener("dragleave", function () { c.classList.remove("dragover"); });
+      c.addEventListener("drop", function (e) {
+        e.preventDefault(); c.classList.remove("dragover");
+        var f = feature(e.dataTransfer.getData("text/plain"));
+        if (!f) return;
+        f.spaces = f.spaces || [];
+        if (f.spaces.indexOf(sp) === -1) f.spaces.push(sp);
+        touch(f); render(); save();
+      });
+      cards.appendChild(c);
+    });
+    pad.appendChild(cards);
+    var foot = el("div", "spacefoot");
+    var all = el("button", "chip", "Browse all " + feats().length + " features as a list");
+    all.onclick = function () { ui.fmode = "all"; renderView(); };
+    foot.appendChild(all);
+    var addSp = el("button", "chip", "+ New space");
+    addSp.onclick = newSpace;
+    foot.appendChild(addSp);
+    pad.appendChild(foot);
+    host.appendChild(pad);
+  }
+
+  /* The former flat views (grouped, grid, list), one click away from the cards. */
+  function renderAllFeatures(host) {
+    var p = project();
+    var back = el("button", "btn ghost", "Spaces");
+    back.onclick = function () { ui.fmode = "cards"; renderView(); };
+    host.appendChild(header("FEATURES", p.name + " · all features", [back, newBtn("NEW FEATURE", function () { create(); })]));
 
     var bar = el("div", "bar");
     var vseg = el("div", "seg");
@@ -1274,58 +1427,229 @@
     host.appendChild(bar);
 
     var pad = el("div", "pad");
-    var note = el("div", "note");
-    note.style.marginBottom = "20px";
-    note.textContent = "Open a space to work inside it, or drag a feature onto a space in the left nav to tag it.";
-    pad.appendChild(note);
-
-    var cards = el("div", "cards");
-    S.spaces.forEach(function (sp) {
-      var list = inSpace(sp);
-      var c = el("button", "dcard");
-      c.appendChild(el("h3", null, sp));
-      c.appendChild(el("p", null, list.length + (list.length === 1 ? " feature" : " features") + " tagged " + sp.toLowerCase()));
-      var stats = el("div", "stats");
-      STATES.forEach(function (st) {
-        var n = list.filter(function (f) { return f.state === st; }).length;
-        if (n) stats.appendChild(pill(n + " " + st.toLowerCase()));
-      });
-      if (!list.length) stats.appendChild(pill("empty"));
-      c.appendChild(stats);
-      c.onclick = function () { ui.view = "space"; ui.space = sp; render(); };
-      c.addEventListener("dragover", function (e) { e.preventDefault(); c.classList.add("dragover"); });
-      c.addEventListener("dragleave", function () { c.classList.remove("dragover"); });
-      c.addEventListener("drop", function (e) {
-        e.preventDefault(); c.classList.remove("dragover");
-        var f = feature(e.dataTransfer.getData("text/plain"));
-        if (!f) return;
-        f.spaces = f.spaces || [];
-        if (f.spaces.indexOf(sp) === -1) f.spaces.push(sp);
-        touch(f); render(); save();
-      });
-      cards.appendChild(c);
-    });
-
-    var addc = el("button", "dcard");
-    addc.style.borderStyle = "dashed";
-    addc.appendChild(el("h3", null, "+"));
-    addc.appendChild(el("p", null, "New space"));
-    addc.onclick = newSpace;
-    cards.appendChild(addc);
-    pad.appendChild(cards);
-
-    pad.appendChild(sectionTitle("All features", 36));
     pad.appendChild(stateLegend());
     var list = feats().filter(function (f) { return passes(f) && (!ui.stateFilter || f.state === ui.stateFilter); });
-    if (!list.length) pad.appendChild(el("div", "empty", "No features match. Create one with New feature."));
+    if (!list.length) pad.appendChild(el("div", "empty", "No features match."));
     else if (ui.fview === "grid") pad.appendChild(featureGrid(list));
     else if (ui.fview === "list") {
       var rows = el("div", "rows");
       list.forEach(function (f) { rows.appendChild(featureRow(f, null, f.period ? laneOfPeriod(f, keys()) : "none")); });
       pad.appendChild(rows);
     } else pad.appendChild(featureGroups(list));
-
     host.appendChild(pad);
+  }
+
+  /* --- space view: sub-menu on the left, the selected feature as large cards on the right --- */
+
+  function renderSpace(host, sp) {
+    var acts = [newBtn("NEW FEATURE", function () { create([sp]); })];
+    acts.push(menu("More", [
+      [ui.smode === "board" ? "Browse view" : "Board view", function () { ui.smode = ui.smode === "board" ? "browse" : "board"; renderView(); }],
+      "-",
+      ["Rename space", function () {
+        askText("Rename space", { value: sp, ok: "Rename",
+          validate: function (v) { return v !== sp && S.spaces.indexOf(v) !== -1 ? "That space already exists." : ""; } })
+          .then(function (n) {
+            if (!n || n === sp) return;
+            S.spaces[S.spaces.indexOf(sp)] = n;
+            S.features.forEach(function (f) {
+              var i = (f.spaces || []).indexOf(sp);
+              if (i !== -1) f.spaces[i] = n;
+            });
+            if (ui.spaceFilter === sp) ui.spaceFilter = n;
+            ui.space = n; render(); save();
+          });
+      }],
+      ["Delete space", function () {
+        askConfirm("Delete the " + sp + " space?", "Features stay, they only lose the tag.", { danger: true, ok: "Delete space" }).then(function (yes) {
+          if (!yes) return;
+          S.spaces = S.spaces.filter(function (x) { return x !== sp; });
+          S.features.forEach(function (f) { f.spaces = (f.spaces || []).filter(function (x) { return x !== sp; }); });
+          if (ui.spaceFilter === sp) ui.spaceFilter = null;
+          ui.view = "features"; ui.space = null; render(); save();
+        });
+      }, true]
+    ]));
+    var back = el("button", "btn ghost", "Spaces");
+    back.onclick = function () { ui.view = "features"; ui.space = null; ui.fmode = "cards"; render(); };
+    host.appendChild(header(sp.toUpperCase() + " SPACE", sp + " features", [back].concat(acts)));
+
+    if (ui.smode === "board") {
+      var bar = el("div", "bar");
+      var seg = el("div", "seg");
+      [["By state", "state"], ["By date", "month"], ["By owner", "owner"]].forEach(function (m) {
+        var b = el("button", null, m[0]);
+        b.setAttribute("aria-pressed", String(ui.group === m[1]));
+        b.onclick = function () { ui.group = m[1]; renderView(); };
+        seg.appendChild(b);
+      });
+      bar.appendChild(seg);
+      bar.appendChild(ownerSelect(renderView));
+      host.appendChild(bar);
+      var pad = el("div", "pad");
+      var list = inSpace(sp).filter(function (f) { return !ui.ownerFilter || f.owner === ui.ownerFilter; });
+      if (!list.length) pad.appendChild(el("div", "empty", "Nothing here yet."));
+      else pad.appendChild(lanesFor(list, sp));
+      host.appendChild(pad);
+      return;
+    }
+
+    var mains = mainsIn(sp).sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var pad2 = el("div", "pad");
+    if (!mains.length) {
+      pad2.appendChild(el("div", "empty", "Nothing here yet. Create a feature, or drag one onto " + sp + " in the left nav."));
+      host.appendChild(pad2);
+      return;
+    }
+    var sel = ui.spaceSel ? feature(ui.spaceSel) : null;
+    if (!sel || (sel.spaces.indexOf(sp) === -1 && !(sel.parent && feature(sel.parent) && feature(sel.parent).spaces.indexOf(sp) !== -1) && mains.indexOf(sel) === -1)) sel = mains[0];
+    var selMain = sel.parent ? feature(sel.parent) || sel : sel;
+    ui.spaceSel = sel.id;
+
+    var grid = el("div", "spacegrid");
+
+    /* sub-menu */
+    var nav = el("nav", "subnav");
+    nav.setAttribute("aria-label", sp + " features");
+    var lab = el("div", "sublab", mains.length + " main features");
+    lab.style.margin = "0 0 8px";
+    nav.appendChild(lab);
+    var list2 = el("div", "subnav-list");
+    mains.forEach(function (m) {
+      var kids = subsOf(m);
+      var item = el("button", "sn" + (m.id === selMain.id ? " on" : ""));
+      item.appendChild(el("i", "sd " + stateClass(m.state)));
+      item.appendChild(el("span", "nm", m.name));
+      if (kids.length) item.appendChild(el("span", "ct", String(kids.length)));
+      item.onclick = function () { ui.spaceSel = m.id; renderView(); };
+      list2.appendChild(item);
+      if (m.id === selMain.id && kids.length) {
+        var sub = el("div", "snsub");
+        kids.forEach(function (k) {
+          var b = el("button", "sn kid" + (k.id === sel.id ? " on" : ""));
+          b.appendChild(el("i", "sd " + stateClass(k.state)));
+          b.appendChild(el("span", "nm", k.name));
+          b.onclick = function () { ui.spaceSel = k.id; renderView(); };
+          sub.appendChild(b);
+        });
+        list2.appendChild(sub);
+      }
+    });
+    nav.appendChild(list2);
+    /* narrow screens get a dropdown instead of the list */
+    var dd = el("select", "subnav-select selbox");
+    dd.setAttribute("aria-label", "Pick a feature");
+    mains.forEach(function (m) {
+      var o = el("option", null, m.name); o.value = m.id; if (m.id === sel.id) o.selected = true; dd.appendChild(o);
+      subsOf(m).forEach(function (k) { var ok = el("option", null, " — " + k.name); ok.value = k.id; if (k.id === sel.id) ok.selected = true; dd.appendChild(ok); });
+    });
+    dd.onchange = function () { ui.spaceSel = dd.value; renderView(); };
+    nav.appendChild(dd);
+    grid.appendChild(nav);
+
+    grid.appendChild(featureSheet(sel, sp));
+    pad2.appendChild(grid);
+    host.appendChild(pad2);
+  }
+
+  function domainBadges(f) {
+    var w = el("div", "domains");
+    (f.spaces || []).forEach(function (s) {
+      var b = el("span", "dom");
+      b.appendChild(avatarEl(spaceIcon(s), "xs"));
+      b.appendChild(document.createTextNode(s));
+      w.appendChild(b);
+    });
+    if (!(f.spaces || []).length) w.appendChild(el("span", "note", "No space yet"));
+    return w;
+  }
+
+  /* One feature as a large card, with its sub-functionalities as large cards under it. */
+  function featureSheet(f, sp) {
+    var box = el("div", "sheet");
+    var par = parentOf(f);
+    var top = el("div", "sheetcard");
+    top.appendChild(thumbEl(f, "sheet"));
+    top.appendChild(el("div", "eyebrow", par ? "SUB-FUNCTIONALITY" : "MAIN FEATURE"));
+    if (par) {
+      var pl = el("button", "parentlink", "Part of " + par.name);
+      pl.onclick = function () { ui.spaceSel = par.id; renderView(); };
+      top.appendChild(pl);
+    }
+    top.appendChild(el("h2", null, f.name));
+    var meta = el("div", "pills");
+    meta.appendChild(statePill(f));
+    if (f.owner && f.owner !== "Unassigned") meta.appendChild(pill(f.owner));
+    if (f.period) meta.appendChild(pill(laneLabel(laneOfPeriod(f, keys()))));
+    if (f.rnd) meta.appendChild(pill("R&D · " + f.rndStage, "rnd"));
+    icpsOf(f).forEach(function (i) { meta.appendChild(pill(i.name, "icp")); });
+    top.appendChild(meta);
+    top.appendChild(domainBadges(f));
+    top.appendChild(el("p", "desc" + (f.note ? "" : " muted"), f.note || "No description yet. Open the page to write what this is."));
+    var acts = el("div", "acts");
+    var edit = el("button", "btn", "Open page");
+    edit.onclick = function () { open(f.id); };
+    acts.appendChild(edit);
+    var quick = el("button", "btn ghost", "Quick edit");
+    quick.onclick = function () { preview(f.id); };
+    acts.appendChild(quick);
+    if (f.link) { var lk = el("a", "btn ghost", "Drive"); lk.href = f.link; lk.target = "_blank"; lk.rel = "noopener"; acts.appendChild(lk); }
+    top.appendChild(acts);
+    box.appendChild(top);
+
+    var kids = par ? [] : subsOf(f);
+    if (!par) {
+      var h = el("div", "sheethead");
+      h.appendChild(el("h3", null, "Sub-functionalities"));
+      h.appendChild(el("em", null, kids.length ? String(kids.length) : "none yet"));
+      box.appendChild(h);
+      var cards = el("div", "bigcards");
+      kids.forEach(function (k) {
+        var c = el("div", "bigcard " + stateClass(k.state));
+        c.setAttribute("role", "button");
+        c.tabIndex = 0;
+        c.draggable = true;
+        c.dataset.id = k.id;
+        c.appendChild(thumbEl(k));
+        var ch = el("div", "bch");
+        ch.appendChild(el("h4", null, k.name));
+        ch.appendChild(statePill(k));
+        c.appendChild(ch);
+        c.appendChild(el("p", null, k.note || "No description yet."));
+        var extra = el("div", "bcf");
+        if (k.spaces.some(function (s) { return s !== sp; })) extra.appendChild(domainBadges(k));
+        if (k.owner && k.owner !== "Unassigned") extra.appendChild(pill(k.owner));
+        if (k.period) extra.appendChild(pill(periodShort(k)));
+        c.appendChild(extra);
+        wireDrag(c, k, null);
+        c.onclick = function () { ui.spaceSel = k.id; renderView(); };
+        c.ondblclick = function () { open(k.id); };
+        c.onkeydown = function (e) { if (e.key === "Enter") { ui.spaceSel = k.id; renderView(); } };
+        cards.appendChild(c);
+      });
+      var add = el("button", "bigcard add");
+      add.appendChild(el("h4", null, "+ Add a sub-functionality"));
+      add.appendChild(el("p", null, "It shows up here and in the sub-menu."));
+      add.onclick = function () { create(f.spaces.slice(), { parent: f.id, name: "New sub-feature" }); };
+      cards.appendChild(add);
+      box.appendChild(cards);
+    } else {
+      var sibs = subsOf(par).filter(function (x) { return x.id !== f.id; });
+      if (sibs.length) {
+        var h2 = el("div", "sheethead");
+        h2.appendChild(el("h3", null, "Also under " + par.name));
+        h2.appendChild(el("em", null, String(sibs.length)));
+        box.appendChild(h2);
+        var row = el("div", "chips");
+        sibs.forEach(function (x) {
+          var c = el("button", "chip", x.name);
+          c.onclick = function () { ui.spaceSel = x.id; renderView(); };
+          row.appendChild(c);
+        });
+        box.appendChild(row);
+      }
+    }
+    return box;
   }
 
   /* --- grouped and grid views of features --- */
@@ -1410,6 +1734,7 @@
     t.dataset.id = f.id;
     t.setAttribute("role", "button");
     t.tabIndex = 0;
+    t.appendChild(thumbEl(f, "tile"));
     t.appendChild(el("b", null, f.name));
     if (f.note) t.appendChild(el("p", null, f.note));
     var foot = el("div", "tf");
@@ -1423,62 +1748,6 @@
     t.ondblclick = function () { open(f.id); };
     t.onkeydown = function (e) { if (e.key === "Enter") open(f.id); };
     return t;
-  }
-
-  /* --- space view --- */
-
-  function renderSpace(host, sp) {
-    var list = inSpace(sp).filter(function (f) { return !ui.ownerFilter || f.owner === ui.ownerFilter; });
-
-    var acts = [newBtn("NEW FEATURE", function () { create([sp]); })];
-    acts.push(menu("More", [
-      ["Rename space", function () {
-        askText("Rename space", { value: sp, ok: "Rename",
-          validate: function (v) { return v !== sp && S.spaces.indexOf(v) !== -1 ? "That space already exists." : ""; } })
-          .then(function (n) {
-            if (!n || n === sp) return;
-            S.spaces[S.spaces.indexOf(sp)] = n;
-            S.features.forEach(function (f) {
-              var i = (f.spaces || []).indexOf(sp);
-              if (i !== -1) f.spaces[i] = n;
-            });
-            if (ui.spaceFilter === sp) ui.spaceFilter = n;
-            ui.space = n; render(); save();
-          });
-      }],
-      ["Delete space", function () {
-        askConfirm("Delete the " + sp + " space?", "Features stay, they only lose the tag.", { danger: true, ok: "Delete space" }).then(function (yes) {
-          if (!yes) return;
-          S.spaces = S.spaces.filter(function (x) { return x !== sp; });
-          S.features.forEach(function (f) { f.spaces = (f.spaces || []).filter(function (x) { return x !== sp; }); });
-          if (ui.spaceFilter === sp) ui.spaceFilter = null;
-          ui.view = "features"; ui.space = null; render(); save();
-        });
-      }, true]
-    ]));
-
-    host.appendChild(header(sp.toUpperCase() + " SPACE", "Everything tagged " + sp, acts));
-
-    var bar = el("div", "bar");
-    var seg = el("div", "seg");
-    [["By state", "state"], ["By date", "month"], ["By owner", "owner"]].forEach(function (m) {
-      var b = el("button", null, m[0]);
-      b.setAttribute("aria-pressed", String(ui.group === m[1]));
-      b.onclick = function () { ui.group = m[1]; renderView(); };
-      seg.appendChild(b);
-    });
-    bar.appendChild(seg);
-    bar.appendChild(ownerSelect(renderView));
-    host.appendChild(bar);
-
-    var pad = el("div", "pad");
-    if (!list.length) {
-      pad.appendChild(el("div", "empty", "Nothing here yet. Create a feature, or drag one onto " + sp + " in the left nav."));
-      host.appendChild(pad);
-      return;
-    }
-    pad.appendChild(lanesFor(list, sp));
-    host.appendChild(pad);
   }
 
   function lanesFor(list, spaceCtx) {
@@ -2641,6 +2910,12 @@
     }
     right.appendChild(pr);
 
+    var pt = el("div", "panel");
+    pt.style.marginTop = "18px";
+    pt.appendChild(el("h3", null, "Thumbnail"));
+    pt.appendChild(thumbPicker(f, function (v) { f.thumb = v; touch(f); save(); }));
+    right.appendChild(pt);
+
     var ps = el("div", "panel");
     ps.style.marginTop = "18px";
     ps.appendChild(el("h3", null, "Structure"));
@@ -2800,7 +3075,7 @@
   function create(spaces, extra, silent) {
     var f = { id: uid(), project: S.current, name: "New feature", state: "Planned", owner: "Unassigned",
               spaces: spaces || [], period: null, note: "", link: "", rnd: false, rndStage: "Backlog",
-              student: "", rndQuestion: "", rndFindings: "", parent: null, created: Date.now(), updated: Date.now() };
+              student: "", rndQuestion: "", rndFindings: "", parent: null, thumb: "", created: Date.now(), updated: Date.now() };
     if (extra) Object.keys(extra).forEach(function (k) { f[k] = extra[k]; });
     S.features.push(f);
     if (!silent) { open(f.id); save(); }
