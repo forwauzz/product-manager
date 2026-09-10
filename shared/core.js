@@ -16,7 +16,7 @@ export function seed() {
     F.push(Object.assign({
       id: uid(), project: pr, name, state: st, owner, spaces,
       period: off === null ? null : mAdd(mKey(new Date()), off),
-      note: note || "", link: "", rnd: false, rndStage: "Backlog", student: "", rndQuestion: "", rndFindings: "",
+      note: note || "", link: "", rnd: false, rndStage: "Backlog", student: "", rndQuestion: "", rndFindings: "", parent: null,
       created: now, updated: now
     }, extra || {}));
   }
@@ -140,9 +140,18 @@ export function normalize(state) {
     if (typeof f.rndFindings !== "string") f.rndFindings = "";
     if (!Array.isArray(f.icps)) f.icps = [];
     f.icps = f.icps.filter(x => typeof x === "string" && icpIds.has(x));
+    if (typeof f.parent !== "string" || !f.parent) f.parent = null;
     if (!f.created) f.created = f.updated || Date.now();
     if (!f.updated) f.updated = Date.now();
   });
+  const byId = new Map(s.features.map(f => [f.id, f]));
+  s.features.forEach(f => {
+    const p = f.parent ? byId.get(f.parent) : null;
+    if (!p || p.id === f.id || p.project !== f.project) f.parent = null;
+  });
+  // one level only: you cannot nest under something that is itself nested
+  const parentOf = new Map(s.features.map(f => [f.id, f.parent]));
+  s.features.forEach(f => { if (f.parent && parentOf.get(f.parent)) f.parent = null; });
   return s;
 }
 
@@ -177,7 +186,7 @@ async function mutate(store, fn) {
 }
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
-const EDITABLE = ["name", "state", "owner", "spaces", "period", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps"];
+const EDITABLE = ["name", "state", "owner", "spaces", "period", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent"];
 
 /* Handle one API request. `req` = { method, path, query, body } where `path` is relative to /api
    (for example "/features/abc") and `query` is a plain object. Returns { status, body, headers }. */
@@ -276,6 +285,7 @@ export async function handleApi(req, store) {
         rndStage: RND_STAGES.indexOf(body.rndStage) !== -1 ? body.rndStage : "Backlog",
         student: String(body.student || ""), rndQuestion: String(body.rndQuestion || ""), rndFindings: String(body.rndFindings || ""),
         icps: Array.isArray(body.icps) ? body.icps.filter(x => typeof x === "string") : [],
+        parent: typeof body.parent === "string" && body.parent ? body.parent : null,
         created: now, updated: now
       };
       const r = await mutate(store, s => {
@@ -283,9 +293,9 @@ export async function handleApi(req, store) {
         if (!s.projects.some(p => p.id === f.project)) return { error: json(400, { error: "unknown project" }) };
         f.icps = f.icps.filter(x => s.icps.some(i => i.id === x));
         s.features.push(f);
-        return { result: f };
+        return { result: f.id };
       });
-      return r.error || json(201, r.result);
+      return r.error || json(201, r.snapshot.state.features.find(x => x.id === r.result));
     }
     if (seg.length === 2 && method === "GET") {
       const f = (await store.load()).state.features.find(x => x.id === seg[1]);
@@ -300,14 +310,15 @@ export async function handleApi(req, store) {
         if (body.project !== undefined && !s.projects.some(p => p.id === body.project)) return { error: json(400, { error: "unknown project" }) };
         EDITABLE.forEach(k => { if (body[k] !== undefined) f[k] = body[k]; });
         f.updated = Date.now();
-        return { result: { feature: f, icps: s.icps } };
+        return { result: f.id };
       });
-      return r.error || json(200, normalize({ projects: [{ id: r.result.feature.project }], icps: r.result.icps, features: [r.result.feature] }).features[0]);
+      return r.error || json(200, r.snapshot.state.features.find(x => x.id === r.result));
     }
     if (seg.length === 2 && method === "DELETE") {
       const r = await mutate(store, s => {
         if (!s.features.some(x => x.id === seg[1])) return { error: json(404, { error: "not found" }) };
         s.features = s.features.filter(x => x.id !== seg[1]);
+        s.features.forEach(x => { if (x.parent === seg[1]) x.parent = null; });
         return { result: null };
       });
       return r.error || json(204, null);

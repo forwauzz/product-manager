@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /* Load data/alie-feature-inventory.json into a running Product Manager (local or Cloudflare).
-   Usage: node scripts/import-inventory.mjs <baseUrl> [passcode] [--project ALIE]
-   Idempotent: features are matched by name inside the target project. */
+   Usage: node scripts/import-inventory.mjs <baseUrl> [passcode] [--project=ALIE]
+   Idempotent: features are matched by name inside the target project. Existing features keep
+   their notes, states and tags; only missing features are created, and parent links are (re)applied. */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,30 +25,46 @@ async function api(method, url, body) {
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch (_) { /* not json */ }
   if (!r.ok) throw new Error(method + " " + url + " -> " + r.status + " " + (json && json.error ? json.error : text.slice(0, 120)));
-  return { status: r.status, body: json, headers: r.headers };
+  return json;
 }
 
 const session = await api("GET", "/api/session");
-if (session.body.required && !session.body.authed) {
+if (session.required && !session.authed) {
   if (!passcode) { console.error("This server needs a passcode."); process.exit(1); }
   const r = await fetch(base + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode }) });
   if (!r.ok) { console.error("login failed"); process.exit(1); }
   cookie = (r.headers.get("set-cookie") || "").split(";")[0];
 }
 
-const projects = (await api("GET", "/api/projects")).body;
+const projects = await api("GET", "/api/projects");
 const project = projects.find(p => p.name === projectName);
 if (!project) { console.error("project not found: " + projectName); process.exit(1); }
 
-const existing = (await api("GET", "/api/features?project=" + project.id)).body;
+const existing = await api("GET", "/api/features?project=" + project.id);
 const byName = new Map(existing.map(f => [f.name.toLowerCase(), f]));
 
-let created = 0, skipped = 0, patched = 0;
-for (const f of inv.features) {
-  if (byName.has(f.name.toLowerCase())) { skipped++; continue; }
-  await api("POST", "/api/features", { project: project.id, name: f.name, state: f.state || "Live", spaces: f.spaces || [], note: f.note || "", owner: "Unassigned", period: null });
-  created++;
+let created = 0, skipped = 0, linked = 0, patched = 0;
+async function ensure(f, parentId) {
+  let rec = byName.get(f.name.toLowerCase());
+  if (!rec) {
+    rec = await api("POST", "/api/features", {
+      project: project.id, name: f.name, state: f.state || "Live", spaces: f.spaces || [], note: f.note || "",
+      owner: "Unassigned", period: null, parent: parentId || null
+    });
+    byName.set(f.name.toLowerCase(), rec);
+    created++;
+  } else {
+    skipped++;
+    if ((rec.parent || null) !== (parentId || null)) {
+      await api("PATCH", "/api/features/" + rec.id, { parent: parentId || null });
+      rec.parent = parentId || null;
+      linked++;
+    }
+  }
+  for (const c of f.children || []) await ensure(c, rec.id);
 }
+for (const f of inv.features) await ensure(f, null);
+
 for (const p of inv.patches || []) {
   const f = byName.get(p.name.toLowerCase());
   if (!f) continue;
@@ -56,5 +73,6 @@ for (const p of inv.patches || []) {
   await api("PATCH", "/api/features/" + f.id, body);
   patched++;
 }
-const after = (await api("GET", "/api/features?project=" + project.id)).body;
-console.log(base + ": created " + created + ", skipped " + skipped + " (already there), patched " + patched + ". " + project.name + " now has " + after.length + " features, " + after.filter(f => f.state === "Live").length + " live.");
+const after = await api("GET", "/api/features?project=" + project.id);
+console.log(base + ": created " + created + ", already there " + skipped + ", parent links applied " + linked + ", patched " + patched +
+  ". " + project.name + " now has " + after.length + " features (" + after.filter(f => f.parent).length + " sub-features), " + after.filter(f => f.state === "Live").length + " live.");

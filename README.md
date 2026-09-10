@@ -29,7 +29,7 @@ runs the core and API test suites.
 ## The app
 
 - **Product Roadmap**: features in the order they ship, with Order, Timeline and Gantt modes at weekly, monthly or quarterly grain. Drag rows or cards to reorder or reschedule; change owner and month inline.
-- **Features**: one card per space, plus the full list. Drag a feature onto a space in the left nav to tag it.
+- **Features**: one card per space, then every feature in one of three views: **Grouped** (each feature with its sub-features under it, one level deep), **Grid** (colour-coded tiles by state, grouped the same way) or **List**. States are colour-coded everywhere (Research, Planned, Building, Live, Needs work, Feature flag) and the legend doubles as a filter. A feature's page has a Structure panel to set what it is part of and to add sub-features. Drag a feature onto a space in the left nav to tag it.
 - **Parallel view**: one column per space, side by side.
 - **Timeline**: columns by period.
 - **Research & Development**: everything tagged R&D. Group by stage (Backlog, Assigned, In progress, Findings, Concluded), by student, or by space. Each item carries a research question and findings, and can be assigned to a student. A feature gets there by:

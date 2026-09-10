@@ -127,3 +127,25 @@ test("profiles carry avatar, regimes and facts; buyers only tag existing regimes
   const after = (await store.load()).state.icps.find(i => i.id === buyer.id);
   assert.ok(!after.regimes.includes(regimes[0].id), "deleting a regime removes it from buyers");
 });
+
+test("features can nest one level under a parent in the same project", async () => {
+  const store = new MemoryStore();
+  const doc = await store.load();
+  const proj = doc.state.projects[0].id;
+  const other = doc.state.projects[1].id;
+  const parent = await handleApi({ method: "POST", path: "/features", body: { project: proj, name: "Report editor" } }, store);
+  const child = await handleApi({ method: "POST", path: "/features", body: { project: proj, name: "Section 7", parent: parent.body.id } }, store);
+  assert.equal(child.body.parent, parent.body.id);
+  const grandchild = await handleApi({ method: "POST", path: "/features", body: { project: proj, name: "Too deep", parent: child.body.id } }, store);
+  assert.equal(grandchild.body.parent, null, "a child cannot be a parent");
+  const cross = await handleApi({ method: "POST", path: "/features", body: { project: other, name: "Elsewhere", parent: parent.body.id } }, store);
+  assert.equal(cross.body.parent, null, "parents must be in the same project");
+  const self = await handleApi({ method: "PATCH", path: "/features/" + parent.body.id, body: { parent: parent.body.id } }, store);
+  assert.equal(self.body.parent, null, "no self-parenting");
+  const bogus = await handleApi({ method: "PATCH", path: "/features/" + child.body.id, body: { parent: "nope" } }, store);
+  assert.equal(bogus.body.parent, null);
+  await handleApi({ method: "PATCH", path: "/features/" + child.body.id, body: { parent: parent.body.id } }, store);
+  await handleApi({ method: "DELETE", path: "/features/" + parent.body.id }, store);
+  const orphan = await handleApi({ method: "GET", path: "/features/" + child.body.id }, store);
+  assert.equal(orphan.body.parent, null, "deleting a parent releases its children");
+});

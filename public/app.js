@@ -45,7 +45,7 @@
   var VERSION = 0;
   var ui = { view: "roadmap", space: null, feature: null, grain: "month", group: "state", rmode: "order", preview: null,
              spaceFilter: null, ownerFilter: "", studentFilter: "", rgroup: "stage", query: "", menu: null,
-             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix", itab: "buyers", icpOpen: null };
+             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix", itab: "buyers", icpOpen: null, fview: "grouped" };
   var timer = null, dirty = false, saving = false, conflicts = 0, tombstones = {}, SESSION = { authed: true, required: false };
 
   function setSaveState(text, isErr) {
@@ -264,7 +264,11 @@
     return e;
   }
   function pill(text, mod) { return el("span", "pill" + (mod ? " " + mod : ""), text); }
-  function statePill(f) { return pill(f.state, f.state === "Live" ? "on" : f.state === "Feature flag" ? "gold" : ""); }
+  function stateClass(st) { return "st-" + String(st || "").toLowerCase().replace(/[^a-z]+/g, "-"); }
+  function statePill(f) { return pill(f.state, "st " + stateClass(f.state)); }
+  function childrenOf(f) { return feats().filter(function (x) { return x.parent === f.id; }); }
+  function parentOf(f) { return f.parent ? feature(f.parent) : null; }
+  function dimIf(sel, when) { sel.classList.toggle("dim", !!when); return sel; }
   function closeMenus() {
     Array.prototype.forEach.call(document.querySelectorAll(".menu, .wsmenu"), function (m) { m.style.display = "none"; });
   }
@@ -1109,6 +1113,10 @@
     if (f.period) pills.appendChild(pill(laneLabel(laneOfPeriod(f, keys()))));
     if (f.rnd) pills.appendChild(pill("R&D · " + f.rndStage, "rnd"));
     icpsOf(f).forEach(function (icp) { pills.appendChild(pill(icp.name, "icp")); });
+    var dpar = parentOf(f);
+    if (dpar) pills.appendChild(pill("Part of " + dpar.name, "sub"));
+    var dkids = childrenOf(f).length;
+    if (dkids) pills.appendChild(pill(dkids + " sub-feature" + (dkids === 1 ? "" : "s"), "sub"));
     d.appendChild(pills);
 
     d.appendChild(el("p", "desc" + (f.note ? "" : " muted"), f.note || "No description yet. Add one so the team knows what this is."));
@@ -1182,6 +1190,7 @@
       .then(function (yes) {
         if (!yes) return false;
         S.features = S.features.filter(function (x) { return x.id !== f.id; });
+        S.features.forEach(function (x) { if (x.parent === f.id) { x.parent = null; touch(x); } });
         tombstones[f.id] = true;
         if (ui.feature === f.id) ui.feature = null;
         render(); save(); toast(f.name + " deleted.");
@@ -1200,21 +1209,25 @@
     var body = el("div", "body");
     body.appendChild(el("b", null, f.name));
     body.appendChild(el("span", null, f.note || "No description yet."));
+    var par = parentOf(f);
+    if (par && !row.classList.contains("sub")) body.appendChild(el("span", "meta", "Part of " + par.name));
     row.appendChild(body);
 
     var tags = el("div", "tags");
     tags.appendChild(statePill(f));
     (f.spaces || []).forEach(function (sp) { tags.appendChild(pill(sp)); });
     if (f.rnd) tags.appendChild(pill("R&D", "rnd"));
+    var kids = childrenOf(f).length;
+    if (kids) tags.appendChild(pill(kids + " sub", "sub"));
     row.appendChild(tags);
 
-    row.appendChild(selectOf(S.people, f.owner, function (v) { f.owner = v; touch(f); render(); save(); }, "Owner of " + f.name));
+    row.appendChild(dimIf(selectOf(S.people, f.owner, function (v) { f.owner = v; touch(f); render(); save(); }, "Owner of " + f.name), f.owner === "Unassigned"));
 
     var ks = keys();
     var opts = [["none", "No date"]].concat(ks.map(function (k) { return [k, ui.grain === "quarter" ? qLabel(k) : mShort(k)]; })).concat([["later", "Later"]]);
-    row.appendChild(selectOf(opts, laneKey === "none" ? "none" : laneOfPeriod(f, ks), function (v) {
+    row.appendChild(dimIf(selectOf(opts, laneKey === "none" ? "none" : laneOfPeriod(f, ks), function (v) {
       f.period = periodFor(v); touch(f); render(); save();
-    }, "Period of " + f.name));
+    }, "Period of " + f.name), !f.period));
 
     var go = el("button", "go", "→");
     go.setAttribute("aria-label", "Open " + f.name);
@@ -1238,7 +1251,24 @@
     host.appendChild(header("FEATURES", p.name + " feature spaces", [newBtn("NEW FEATURE", function () { create(); })]));
 
     var bar = el("div", "bar");
+    var vseg = el("div", "seg");
+    [["Grouped", "grouped"], ["Grid", "grid"], ["List", "list"]].forEach(function (m) {
+      var b = el("button", null, m[0]);
+      b.setAttribute("aria-pressed", String(ui.fview === m[1]));
+      b.onclick = function () { ui.fview = m[1]; renderView(); };
+      vseg.appendChild(b);
+    });
+    bar.appendChild(vseg);
     spaceChips(bar);
+    var stf = el("select", "selbox");
+    stf.setAttribute("aria-label", "State filter");
+    [["", "Any state"]].concat(STATES.map(function (x) { return [x, x]; })).forEach(function (o) {
+      var e = el("option", null, o[1]); e.value = o[0];
+      if (o[0] === ui.stateFilter) e.selected = true;
+      stf.appendChild(e);
+    });
+    stf.onchange = function () { ui.stateFilter = stf.value; renderView(); };
+    bar.appendChild(stf);
     bar.appendChild(ownerSelect(renderView));
     if (S.icps.length) bar.appendChild(icpSelect(renderView));
     host.appendChild(bar);
@@ -1285,13 +1315,114 @@
     pad.appendChild(cards);
 
     pad.appendChild(sectionTitle("All features", 36));
-    var list = feats().filter(passes);
-    if (!list.length) pad.appendChild(el("div", "empty", "No features yet. Create one with New feature."));
-    var rows = el("div", "rows");
-    list.forEach(function (f) { rows.appendChild(featureRow(f, null, f.period ? laneOfPeriod(f, keys()) : "none")); });
-    pad.appendChild(rows);
+    pad.appendChild(stateLegend());
+    var list = feats().filter(function (f) { return passes(f) && (!ui.stateFilter || f.state === ui.stateFilter); });
+    if (!list.length) pad.appendChild(el("div", "empty", "No features match. Create one with New feature."));
+    else if (ui.fview === "grid") pad.appendChild(featureGrid(list));
+    else if (ui.fview === "list") {
+      var rows = el("div", "rows");
+      list.forEach(function (f) { rows.appendChild(featureRow(f, null, f.period ? laneOfPeriod(f, keys()) : "none")); });
+      pad.appendChild(rows);
+    } else pad.appendChild(featureGroups(list));
 
     host.appendChild(pad);
+  }
+
+  /* --- grouped and grid views of features --- */
+
+  function stateLegend() {
+    var lg = el("div", "legend");
+    STATES.forEach(function (st) {
+      var b = el("button", "lg " + stateClass(st));
+      b.setAttribute("aria-pressed", String(ui.stateFilter === st));
+      b.appendChild(el("i"));
+      b.appendChild(document.createTextNode(st));
+      b.onclick = function () { ui.stateFilter = ui.stateFilter === st ? "" : st; renderView(); };
+      lg.appendChild(b);
+    });
+    return lg;
+  }
+
+  /* Groups: every top-level feature with its sub-features under it. A sub-feature whose parent
+     is filtered out still shows, under its parent, so nothing disappears. */
+  function groupsFor(list) {
+    var inList = {};
+    list.forEach(function (f) { inList[f.id] = true; });
+    var groups = [], seen = {};
+    function add(parent) {
+      if (seen[parent.id]) return;
+      seen[parent.id] = true;
+      groups.push({ parent: parent, kids: childrenOf(parent).filter(function (k) { return inList[k.id]; }), own: !!inList[parent.id] });
+    }
+    feats().forEach(function (f) {
+      if (f.parent) { var p = feature(f.parent); if (p && inList[f.id]) add(p); }
+      else if (inList[f.id]) add(f);
+    });
+    return groups;
+  }
+
+  function featureGroups(list) {
+    var wrap = el("div");
+    groupsFor(list).forEach(function (g) {
+      var box = el("div", "group" + (g.own ? "" : " ghost"));
+      var head = featureRow(g.parent, null, g.parent.period ? laneOfPeriod(g.parent, keys()) : "none");
+      head.classList.add("head");
+      box.appendChild(head);
+      if (g.kids.length) {
+        var sub = el("div", "subrows");
+        g.kids.forEach(function (k) {
+          var r = featureRow(k, null, k.period ? laneOfPeriod(k, keys()) : "none");
+          r.classList.add("sub");
+          sub.appendChild(r);
+        });
+        box.appendChild(sub);
+      }
+      var addSub = el("button", "addsub", "+ Sub-feature");
+      addSub.onclick = function (e) { e.stopPropagation(); create(g.parent.spaces.slice(), { parent: g.parent.id, name: "New sub-feature" }); };
+      box.appendChild(addSub);
+      wrap.appendChild(box);
+    });
+    return wrap;
+  }
+
+  function featureGrid(list) {
+    var wrap = el("div");
+    groupsFor(list).forEach(function (g) {
+      var sec = el("div", "gridsec");
+      var h = el("div", "gridhead");
+      var t = el("button", null, g.parent.name);
+      t.onclick = function () { preview(g.parent.id); };
+      h.appendChild(t);
+      h.appendChild(statePill(g.parent));
+      h.appendChild(el("em", null, g.kids.length ? g.kids.length + " sub-feature" + (g.kids.length === 1 ? "" : "s") : ""));
+      sec.appendChild(h);
+      var tiles = el("div", "tiles");
+      (g.kids.length ? g.kids : [g.parent]).forEach(function (f) { tiles.appendChild(tile(f)); });
+      sec.appendChild(tiles);
+      wrap.appendChild(sec);
+    });
+    return wrap;
+  }
+
+  function tile(f) {
+    var t = el("div", "tile " + stateClass(f.state));
+    t.draggable = true;
+    t.dataset.id = f.id;
+    t.setAttribute("role", "button");
+    t.tabIndex = 0;
+    t.appendChild(el("b", null, f.name));
+    if (f.note) t.appendChild(el("p", null, f.note));
+    var foot = el("div", "tf");
+    foot.appendChild(el("span", "st", f.state));
+    if (f.owner && f.owner !== "Unassigned") foot.appendChild(el("span", null, f.owner));
+    if (f.period) foot.appendChild(el("span", null, periodShort(f)));
+    if (f.rnd) foot.appendChild(el("span", null, "R&D"));
+    t.appendChild(foot);
+    wireDrag(t, f, null);
+    t.onclick = function () { preview(f.id); };
+    t.ondblclick = function () { open(f.id); };
+    t.onkeydown = function (e) { if (e.key === "Enter") open(f.id); };
+    return t;
   }
 
   /* --- space view --- */
@@ -2510,6 +2641,36 @@
     }
     right.appendChild(pr);
 
+    var ps = el("div", "panel");
+    ps.style.marginTop = "18px";
+    ps.appendChild(el("h3", null, "Structure"));
+    var kids = childrenOf(f);
+    var prow = el("div", "field");
+    prow.appendChild(el("label", null, "Part of"));
+    var parents = feats().filter(function (x) { return x.id !== f.id && !x.parent; });
+    var psel = selectOf([["", kids.length ? "Top level (has sub-features)" : "Top level"]].concat(parents.map(function (x) { return [x.id, x.name]; })), f.parent || "",
+      function (v) { if (v && kids.length) { toast("Move its sub-features out first.", true); render(); return; } f.parent = v || null; touch(f); render(); save(); }, "Part of");
+    prow.appendChild(psel);
+    ps.appendChild(prow);
+    if (kids.length) {
+      var kl = el("div", "featlist");
+      kids.forEach(function (k) {
+        var row = el("div", "fl");
+        var b = el("button", null, k.name);
+        b.onclick = function () { open(k.id); };
+        row.appendChild(b);
+        row.appendChild(statePill(k));
+        kl.appendChild(row);
+      });
+      ps.appendChild(kl);
+    }
+    if (!f.parent) {
+      var addK = el("button", "btn ghost rowbtn", "+ Add a sub-feature");
+      addK.onclick = function () { create(f.spaces.slice(), { parent: f.id, name: "New sub-feature" }); };
+      ps.appendChild(addK);
+    }
+    right.appendChild(ps);
+
     var pi = el("div", "panel");
     pi.style.marginTop = "18px";
     pi.appendChild(el("h3", null, "Market / ICP"));
@@ -2639,7 +2800,7 @@
   function create(spaces, extra, silent) {
     var f = { id: uid(), project: S.current, name: "New feature", state: "Planned", owner: "Unassigned",
               spaces: spaces || [], period: null, note: "", link: "", rnd: false, rndStage: "Backlog",
-              student: "", rndQuestion: "", rndFindings: "", created: Date.now(), updated: Date.now() };
+              student: "", rndQuestion: "", rndFindings: "", parent: null, created: Date.now(), updated: Date.now() };
     if (extra) Object.keys(extra).forEach(function (k) { f[k] = extra[k]; });
     S.features.push(f);
     if (!silent) { open(f.id); save(); }
@@ -2653,7 +2814,7 @@
     document.getElementById("find").value = "";
     render();
     var n = document.querySelector('input[aria-label="Feature name"]');
-    if (n && f && (f.name === "New feature" || f.name === "New research item")) { n.focus(); n.select(); }
+    if (n && f && (f.name === "New feature" || f.name === "New research item" || f.name === "New sub-feature")) { n.focus(); n.select(); }
   }
 
   /* ---------- global wiring ---------- */
