@@ -105,3 +105,25 @@ test("ideal client profiles: seeded for old documents, CRUD, and tags cleaned on
   assert.deepEqual(got.body.icps, []);
   assert.equal((await handleApi({ method: "DELETE", path: "/icps/nope" }, store)).status, 404);
 });
+
+test("profiles carry avatar, regimes and facts; buyers only tag existing regimes", async () => {
+  const store = new MemoryStore();
+  const doc = await store.load();
+  const regimes = doc.state.icps.filter(i => i.kind === "Regime");
+  const buyer = doc.state.icps.find(i => i.kind === "Buyer");
+  assert.equal(regimes[0].avatar, "regime");
+  assert.ok(buyer.regimes.length > 0 && buyer.regimes.every(r => regimes.some(x => x.id === r)));
+  const c = await handleApi({ method: "POST", path: "/icps", body: { name: "Clinique", kind: "Buyer", avatar: "clinic", regimes: [regimes[0].id, "nope"], facts: [{ label: "Sites", value: "3" }, { label: "", value: "" }] } }, store);
+  assert.equal(c.status, 201);
+  assert.equal(c.body.avatar, "clinic");
+  assert.deepEqual(c.body.regimes, [regimes[0].id]);
+  assert.deepEqual(c.body.facts, [{ label: "Sites", value: "3" }]);
+  const p = await handleApi({ method: "PATCH", path: "/icps/" + c.body.id, body: { avatar: "bogus", kind: "Regime" } }, store);
+  assert.equal(p.body.kind, "Regime");
+  assert.equal(p.body.avatar, "regime", "unknown avatar falls back by kind");
+  assert.deepEqual(p.body.regimes, [], "regimes carry no regime tags");
+  const d = await handleApi({ method: "DELETE", path: "/icps/" + regimes[0].id }, store);
+  assert.equal(d.status, 204);
+  const after = (await store.load()).state.icps.find(i => i.id === buyer.id);
+  assert.ok(!after.regimes.includes(regimes[0].id), "deleting a regime removes it from buyers");
+});

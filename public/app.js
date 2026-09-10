@@ -45,7 +45,7 @@
   var VERSION = 0;
   var ui = { view: "roadmap", space: null, feature: null, grain: "month", group: "state", rmode: "order", preview: null,
              spaceFilter: null, ownerFilter: "", studentFilter: "", rgroup: "stage", query: "", menu: null,
-             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix" };
+             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix", itab: "buyers", icpOpen: null };
   var timer = null, dirty = false, saving = false, conflicts = 0, tombstones = {}, SESSION = { authed: true, required: false };
 
   function setSaveState(text, isErr) {
@@ -425,6 +425,7 @@
   function writeHash() {
     var h = "#/" + ui.view;
     if (ui.feature) h = "#/feature/" + ui.feature;
+    else if (ui.view === "icp" && ui.icpOpen) h = "#/icp/" + ui.icpOpen;
     else if (ui.view === "space" && ui.space) h = "#/space/" + encodeURIComponent(ui.space);
     if (location.hash !== h) history.replaceState(null, "", h);
   }
@@ -432,6 +433,7 @@
     var m = (location.hash || "").replace(/^#\/?/, "").split("/");
     if (!m[0]) return;
     if (m[0] === "feature" && m[1] && feature(m[1])) { ui.feature = m[1]; S.current = feature(m[1]).project; return; }
+    if (m[0] === "icp" && m[1] && S.icps.some(function (x) { return x.id === m[1]; })) { ui.view = "icp"; ui.icpOpen = m[1]; return; }
     if (m[0] === "space" && m[1]) { var sp = decodeURIComponent(m[1]); if (S.spaces.indexOf(sp) !== -1) { ui.view = "space"; ui.space = sp; } return; }
     if (["roadmap", "features", "parallel", "timeline", "rnd", "icp"].indexOf(m[0]) !== -1) ui.view = m[0];
   }
@@ -544,7 +546,7 @@
       b.appendChild(el("span", "ic", it[2]));
       b.appendChild(el("span", "nm", it[1]));
       if (it[3] !== null) b.appendChild(el("span", "ct", String(it[3])));
-      b.onclick = function () { ui.view = it[0]; ui.feature = null; ui.space = null; closeNavIfNarrow(); render(); };
+      b.onclick = function () { ui.view = it[0]; ui.feature = null; ui.space = null; ui.icpOpen = null; closeNavIfNarrow(); render(); };
       if (it[0] === "rnd") {
         b.title = "Drop a feature here to push it to R&D";
         b.addEventListener("dragover", function (e) { e.preventDefault(); b.classList.add("dragover"); });
@@ -776,7 +778,10 @@
     if (ui.view === "parallel") return renderParallel(host);
     if (ui.view === "timeline") return renderTimeline(host);
     if (ui.view === "rnd") return renderRnd(host);
-    if (ui.view === "icp") return renderIcp(host);
+    if (ui.view === "icp") {
+      if (ui.icpOpen) { var ic = icpById(ui.icpOpen); if (ic) return renderIcpPage(host, ic); ui.icpOpen = null; }
+      return renderIcp(host);
+    }
     if (ui.view === "space") {
       if (S.spaces.indexOf(ui.space) !== -1) return renderSpace(host, ui.space);
       ui.view = "features";
@@ -1728,81 +1733,168 @@
 
   /* --- market / ICP: ideal client profiles --- */
 
-  var ICP_KINDS = ["Regime", "Buyer", "Payer", "Partner", "Other"];
+  var ICP_AVATARS = [["regime", "Regime"], ["institution", "Institution"], ["physician", "Physician"], ["lawyer", "Lawyer"], ["paralegal", "Paralegal"],
+                     ["person", "Person"], ["law-firm", "Law firm"], ["clinic", "Clinic"], ["insurer", "Insurer"], ["employer", "Employer"], ["other", "Other"]];
+  var AVATAR_SVG = {
+    "regime": '<path d="M3 9.5 12 4l9 5.5H3z"/><path d="M5 9.5v8M10 9.5v8M14 9.5v8M19 9.5v8M3 17.5h18M3 20.5h18"/>',
+    "institution": '<path d="M4 20h16M5 20V9h14v11M9 20v-5h6v5M3 9h18M12 3v3M9.5 6h5"/>',
+    "physician": '<circle cx="11" cy="7" r="3.5"/><path d="M4 20a7 7 0 0 1 12.5-4.3"/><path d="M17.5 13.5v6M14.5 16.5h6"/>',
+    "lawyer": '<path d="M12 4v16M7 20h10M12 6 5 8.5M12 6l7 2.5"/><path d="M2.5 13.5a2.5 2.5 0 0 0 5 0L5 8.5zM16.5 13.5a2.5 2.5 0 0 0 5 0L19 8.5z"/>',
+    "paralegal": '<circle cx="10" cy="7" r="3.5"/><path d="M3 20a7 7 0 0 1 11-5.7"/><path d="M15 12h6v8h-6zM17 15h2M17 17.5h2"/>',
+    "person": '<circle cx="12" cy="7.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+    "law-firm": '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18M10 12.5v2h4v-2"/>',
+    "clinic": '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8.5v7M8.5 12h7"/>',
+    "insurer": '<path d="M3 12a9 9 0 0 1 18 0zM12 12v6a2 2 0 0 0 4 0M12 3v1.5"/>',
+    "employer": '<path d="M3 20V9l5 3V9l5 3V9l5 3v8zM3 20h18M7 16.5h2M11 16.5h2M15 16.5h2"/>',
+    "other": '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.5"/>'
+  };
+  function avatarLabel(key) { var m = ICP_AVATARS.filter(function (a) { return a[0] === key; })[0]; return m ? m[1] : "Profile"; }
+  function avatarEl(key, cls) {
+    var d = el("div", "avatar" + (cls ? " " + cls : ""));
+    d.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (AVATAR_SVG[key] || AVATAR_SVG.other) + "</svg>";
+    d.title = avatarLabel(key);
+    return d;
+  }
 
   function icpById(id) { return S.icps.filter(function (x) { return x.id === id; })[0]; }
   function icpsOf(f) { return (f.icps || []).map(icpById).filter(Boolean); }
+  function regimes() { return S.icps.filter(function (x) { return x.kind === "Regime"; }); }
+  function buyers() { return S.icps.filter(function (x) { return x.kind !== "Regime"; }); }
+  function featuresFor(icp) { return feats().filter(function (f) { return (f.icps || []).indexOf(icp.id) !== -1; }); }
+  function buyersIn(regime) { return buyers().filter(function (b) { return (b.regimes || []).indexOf(regime.id) !== -1; }); }
   function coverageLabel(n, total) {
     if (!n) return "untagged";
     if (total > 1 && n === total) return "core";
     if (n === 1) return "independent";
     return "shared";
   }
+  function blankIcp(kind) {
+    return { id: uid(), name: "", kind: kind === "Regime" ? "Regime" : "Buyer", avatar: kind === "Regime" ? "regime" : "person",
+             description: "", tam: "", sam: "", som: "", notes: "", regimes: [], facts: [] };
+  }
 
+  /* Avatar picker: a row of icon buttons. */
+  function avatarPicker(current, onPick) {
+    var row = el("div", "avatars");
+    ICP_AVATARS.forEach(function (a) {
+      var b = el("button", "avbtn");
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(current === a[0]));
+      b.setAttribute("aria-label", a[1]);
+      b.title = a[1];
+      b.appendChild(avatarEl(a[0], "sm"));
+      b.onclick = function () {
+        onPick(a[0]);
+        Array.prototype.forEach.call(row.children, function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+      };
+      row.appendChild(b);
+    });
+    return row;
+  }
+  function regimeChips(selected, onToggle) {
+    var wrap = el("div", "chips");
+    var rs = regimes();
+    if (!rs.length) { wrap.appendChild(el("span", "note", "No regimes yet. Add them under the Regimes tab.")); return wrap; }
+    rs.forEach(function (r) {
+      var c = el("button", "chip", r.name);
+      c.type = "button";
+      c.setAttribute("aria-pressed", String(selected.indexOf(r.id) !== -1));
+      c.onclick = function () {
+        var i = selected.indexOf(r.id);
+        if (i === -1) selected.push(r.id); else selected.splice(i, 1);
+        c.setAttribute("aria-pressed", String(i === -1));
+        onToggle(selected);
+      };
+      wrap.appendChild(c);
+    });
+    return wrap;
+  }
+
+  /* Quick create / edit dialog. The profile page carries the rest (notes, facts). */
   function askIcp(title, current) {
-    current = current || {};
+    var draft = JSON.parse(JSON.stringify(current || blankIcp("Buyer")));
     return dialog(function (box, close) {
       box.appendChild(el("h2", null, title));
-      box.appendChild(el("p", null, "A profile is a customer segment you serve: a regime, a buyer type, a payer. Tag features to it to see what each segment asks for."));
-      var name = el("input"); name.placeholder = "Name, for example CNESST or Worker-side law firms"; name.value = current.name || "";
+      var name = el("input"); name.placeholder = draft.kind === "Regime" ? "Regime name, for example CNESST" : "Segment name, for example Worker-side law firms"; name.value = draft.name;
       name.setAttribute("aria-label", "Profile name");
       box.appendChild(name);
-      var kind = el("select"); kind.setAttribute("aria-label", "Profile kind");
-      ICP_KINDS.forEach(function (k) { var o = el("option", null, k); o.value = k; if ((current.kind || "Regime") === k) o.selected = true; kind.appendChild(o); });
-      if (current.kind && ICP_KINDS.indexOf(current.kind) === -1) { var oo = el("option", null, current.kind); oo.value = current.kind; oo.selected = true; kind.appendChild(oo); }
-      box.appendChild(kind);
-      var desc = el("textarea"); desc.placeholder = "Who they are, what they buy, what the statute makes them produce."; desc.value = current.description || "";
+      var kindRow = el("div", "seg");
+      kindRow.style.marginBottom = "12px";
+      var regimeBox;
+      [["Regime", "Regime"], ["Buyer", "Buyer"]].forEach(function (k) {
+        var b = el("button", null, k[1]);
+        b.type = "button";
+        b.setAttribute("aria-pressed", String(draft.kind === k[0]));
+        b.onclick = function () {
+          draft.kind = k[0];
+          Array.prototype.forEach.call(kindRow.children, function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+          regimeBox.style.display = draft.kind === "Regime" ? "none" : "block";
+        };
+        kindRow.appendChild(b);
+      });
+      box.appendChild(kindRow);
+      box.appendChild(el("label", "sm", "Icon"));
+      box.appendChild(avatarPicker(draft.avatar, function (v) { draft.avatar = v; }));
+      var desc = el("textarea"); desc.placeholder = "One or two lines: who they are and what the statute makes them produce."; desc.value = draft.description;
       desc.setAttribute("aria-label", "Description");
       box.appendChild(desc);
       box.appendChild(el("label", "sm", "Market size"));
       var cols = el("div", "cols");
-      var tam = el("input"); tam.placeholder = "TAM"; tam.value = current.tam || ""; tam.setAttribute("aria-label", "TAM");
-      var sam = el("input"); sam.placeholder = "SAM"; sam.value = current.sam || ""; sam.setAttribute("aria-label", "SAM");
-      var som = el("input"); som.placeholder = "SOM"; som.value = current.som || ""; som.setAttribute("aria-label", "SOM");
+      var tam = el("input"); tam.placeholder = "TAM"; tam.value = draft.tam; tam.setAttribute("aria-label", "TAM");
+      var sam = el("input"); sam.placeholder = "SAM"; sam.value = draft.sam; sam.setAttribute("aria-label", "SAM");
+      var som = el("input"); som.placeholder = "SOM"; som.value = draft.som; som.setAttribute("aria-label", "SOM");
       cols.appendChild(tam); cols.appendChild(sam); cols.appendChild(som);
       box.appendChild(cols);
-      var notes = el("textarea"); notes.placeholder = "Notes: sources, scores, leads, pricing, anything to remember."; notes.value = current.notes || "";
-      notes.setAttribute("aria-label", "Notes");
-      box.appendChild(notes);
+      regimeBox = el("div");
+      regimeBox.appendChild(el("label", "sm", "Regimes they work in"));
+      regimeBox.appendChild(regimeChips(draft.regimes, function () {}));
+      regimeBox.style.display = draft.kind === "Regime" ? "none" : "block";
+      box.appendChild(regimeBox);
       var err = el("div", "err", ""); err.style.display = "none"; box.appendChild(err);
       var acts = el("div", "acts");
       var cancel = el("button", "btn ghost", "Cancel"); cancel.onclick = function () { close(null); };
-      var ok = el("button", "btn", current.id ? "Save" : "Create profile");
+      var ok = el("button", "btn", current ? "Save" : "Create");
       function submit() {
-        if (!name.value.trim()) { err.textContent = "Give the profile a name."; err.style.display = "block"; name.focus(); return; }
-        close({ name: name.value.trim(), kind: kind.value, description: desc.value.trim(), tam: tam.value.trim(), sam: sam.value.trim(), som: som.value.trim(), notes: notes.value.trim() });
+        if (!name.value.trim()) { err.textContent = "Give it a name."; err.style.display = "block"; name.focus(); return; }
+        draft.name = name.value.trim(); draft.description = desc.value.trim();
+        draft.tam = tam.value.trim(); draft.sam = sam.value.trim(); draft.som = som.value.trim();
+        if (draft.kind === "Regime") { draft.regimes = []; if (draft.avatar === "person") draft.avatar = "regime"; }
+        close(draft);
       }
       ok.onclick = submit;
       name.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); submit(); } };
       acts.appendChild(cancel); acts.appendChild(ok);
       box.appendChild(acts);
+      setTimeout(function () { name.focus(); }, 0);
     });
   }
 
-  function newIcp() {
-    askIcp("New ideal client profile").then(function (v) {
+  function newIcp(kind) {
+    askIcp(kind === "Regime" ? "New regime" : "New buyer profile", blankIcp(kind)).then(function (v) {
       if (!v) return;
-      var icp = { id: uid(), name: v.name, kind: v.kind, description: v.description, tam: v.tam, sam: v.sam, som: v.som, notes: v.notes };
-      S.icps.push(icp); render(); save(); toast("Profile " + icp.name + " created.");
+      S.icps.push(v); render(); save(); toast((v.kind === "Regime" ? "Regime " : "Profile ") + v.name + " created.");
     });
   }
   function editIcp(icp) {
-    askIcp("Edit profile", icp).then(function (v) {
+    askIcp("Edit " + icp.name, icp).then(function (v) {
       if (!v) return;
       Object.keys(v).forEach(function (k) { icp[k] = v[k]; });
+      if (icp.kind === "Regime") S.icps.forEach(function (b) { b.regimes = (b.regimes || []).filter(function (r) { return r !== icp.id || b.kind !== "Regime"; }); });
       render(); save();
     });
   }
   function deleteIcp(icp) {
-    var n = feats().filter(function (f) { return (f.icps || []).indexOf(icp.id) !== -1; }).length;
-    askConfirm("Delete " + icp.name + "?", n ? n + " feature" + (n === 1 ? "" : "s") + " will lose the tag. Features themselves stay." : "Features stay untouched.", { danger: true, ok: "Delete profile" })
+    var n = featuresFor(icp).length;
+    askConfirm("Delete " + icp.name + "?", n ? n + " feature" + (n === 1 ? "" : "s") + " will lose the tag. Features themselves stay." : "Features stay untouched.", { danger: true, ok: "Delete" })
       .then(function (yes) {
         if (!yes) return;
         S.icps = S.icps.filter(function (x) { return x.id !== icp.id; });
         S.features.forEach(function (f) { f.icps = (f.icps || []).filter(function (x) { return x !== icp.id; }); });
+        S.icps.forEach(function (b) { b.regimes = (b.regimes || []).filter(function (r) { return r !== icp.id; }); });
         tombstones[icp.id] = true;
         if (ui.icpFilter === icp.id) ui.icpFilter = "";
-        render(); save(); toast("Profile deleted.");
+        if (ui.icpOpen === icp.id) ui.icpOpen = null;
+        render(); save(); toast(icp.name + " deleted.");
       });
   }
   function toggleIcp(f, id) {
@@ -1811,94 +1903,171 @@
     if (i === -1) f.icps.push(id); else f.icps.splice(i, 1);
     touch(f);
   }
+  function openIcp(id) { ui.icpOpen = id; ui.view = "icp"; ui.feature = null; render(); }
 
   function icpSelect(onChange) {
     var s = el("select", "selbox");
     s.setAttribute("aria-label", "Profile filter");
-    [["", "Any profile"]].concat(S.icps.map(function (i) { return [i.id, i.name]; })).forEach(function (o) {
-      var e = el("option", null, o[1]); e.value = o[0];
-      if (o[0] === ui.icpFilter) e.selected = true;
-      s.appendChild(e);
+    var o0 = el("option", null, "Any profile"); o0.value = ""; s.appendChild(o0);
+    [["Regimes", regimes()], ["Buyers", buyers()]].forEach(function (g) {
+      if (!g[1].length) return;
+      var og = document.createElement("optgroup"); og.label = g[0];
+      g[1].forEach(function (i) { var e = el("option", null, i.name); e.value = i.id; if (i.id === ui.icpFilter) e.selected = true; og.appendChild(e); });
+      s.appendChild(og);
     });
     s.onchange = function () { ui.icpFilter = s.value; onChange(); };
     return s;
   }
 
+  /* ---- the Market / ICP page: Regimes | Buyers | Overlap ---- */
+
   function renderIcp(host) {
     var p = project();
-    var acts = [newBtn("NEW PROFILE", newIcp)];
+    var tab = ui.itab || "buyers";
+    var acts = [];
+    if (tab === "regimes") acts.push(newBtn("NEW REGIME", function () { newIcp("Regime"); }));
+    else acts.push(newBtn("NEW BUYER", function () { newIcp("Buyer"); }));
     acts.push(menu("More", [
+      ["New regime", function () { newIcp("Regime"); }],
+      ["New buyer profile", function () { newIcp("Buyer"); }],
+      "-",
       ["Print", function () { window.print(); }]
     ]));
-    host.appendChild(header("MARKET / ICP", p.name + " ideal client profiles", acts));
+    host.appendChild(header("MARKET / ICP", p.name + " · who we serve", acts));
 
     var bar = el("div", "bar");
     var seg = el("div", "seg");
-    [["Overlap matrix", "matrix"], ["By profile", "lanes"]].forEach(function (m) {
-      var b = el("button", null, m[0]);
-      b.setAttribute("aria-pressed", String(ui.imode === m[1]));
-      b.onclick = function () { ui.imode = m[1]; renderView(); };
+    [["Regimes", "regimes", regimes().length], ["Buyers", "buyers", buyers().length], ["Overlap", "overlap", null]].forEach(function (m) {
+      var b = el("button", null, m[0] + (m[2] !== null ? "  " + m[2] : ""));
+      b.setAttribute("aria-pressed", String(tab === m[1]));
+      b.onclick = function () { ui.itab = m[1]; renderView(); };
       seg.appendChild(b);
     });
     bar.appendChild(seg);
-    spaceChips(bar);
-    var st = el("select", "selbox");
-    st.setAttribute("aria-label", "State filter");
-    [["", "Any state"]].concat(STATES.map(function (x) { return [x, x]; })).forEach(function (o) {
-      var e = el("option", null, o[1]); e.value = o[0];
-      if (o[0] === ui.stateFilter) e.selected = true;
-      st.appendChild(e);
-    });
-    st.onchange = function () { ui.stateFilter = st.value; renderView(); };
-    bar.appendChild(st);
-    var req = el("button", "chip", "Requested only");
-    req.setAttribute("aria-pressed", String(!!ui.requestedOnly));
-    req.title = "Hide features no profile has asked for";
-    req.onclick = function () { ui.requestedOnly = !ui.requestedOnly; renderView(); };
-    bar.appendChild(req);
+    if (tab === "overlap") {
+      var seg2 = el("div", "seg");
+      [["Matrix", "matrix"], ["Lanes", "lanes"]].forEach(function (m) {
+        var b = el("button", null, m[0]);
+        b.setAttribute("aria-pressed", String((ui.imode || "matrix") === m[1]));
+        b.onclick = function () { ui.imode = m[1]; renderView(); };
+        seg2.appendChild(b);
+      });
+      bar.appendChild(seg2);
+      spaceChips(bar);
+      var st = el("select", "selbox");
+      st.setAttribute("aria-label", "State filter");
+      [["", "Any state"]].concat(STATES.map(function (x) { return [x, x]; })).forEach(function (o) {
+        var e = el("option", null, o[1]); e.value = o[0];
+        if (o[0] === ui.stateFilter) e.selected = true;
+        st.appendChild(e);
+      });
+      st.onchange = function () { ui.stateFilter = st.value; renderView(); };
+      bar.appendChild(st);
+      var req = el("button", "chip", "Requested only");
+      req.setAttribute("aria-pressed", String(!!ui.requestedOnly));
+      req.onclick = function () { ui.requestedOnly = !ui.requestedOnly; renderView(); };
+      bar.appendChild(req);
+    }
     host.appendChild(bar);
 
     var pad = el("div", "pad");
+    if (tab === "regimes") renderRegimesTab(pad);
+    else if (tab === "buyers") renderBuyersTab(pad);
+    else renderOverlapTab(pad);
+    host.appendChild(pad);
+  }
+
+  function renderRegimesTab(pad) {
+    var note = el("p", "icpdesc");
+    note.textContent = "The statute that commissions the work. Each regime sets the volume, the buyer and the price. Open one to keep its numbers and notes.";
+    pad.appendChild(note);
+    var rs = regimes();
+    var grid = el("div", "icpcards");
+    rs.forEach(function (r) { grid.appendChild(icpCard(r)); });
+    var add = el("button", "icpcard add");
+    add.appendChild(el("h3", null, "+"));
+    add.appendChild(el("p", null, "New regime"));
+    add.onclick = function () { newIcp("Regime"); };
+    grid.appendChild(add);
+    pad.appendChild(grid);
+  }
+
+  function renderBuyersTab(pad) {
+    var note = el("p", "icpdesc");
+    note.textContent = "Who we serve. Open a profile for its notebook: what matters to them, their numbers, and the features they ask for.";
+    pad.appendChild(note);
+    var grid = el("div", "icpcards");
+    buyers().forEach(function (b) { grid.appendChild(icpCard(b)); });
+    var add = el("button", "icpcard add");
+    add.appendChild(el("h3", null, "+"));
+    add.appendChild(el("p", null, "New buyer profile"));
+    add.onclick = function () { newIcp("Buyer"); };
+    grid.appendChild(add);
+    pad.appendChild(grid);
+  }
+
+  function icpCard(icp) {
+    var c = el("div", "icpcard");
+    c.setAttribute("role", "button");
+    c.tabIndex = 0;
+    var top = el("div", "top");
+    top.appendChild(avatarEl(icp.avatar));
+    var t = el("div", "t");
+    t.appendChild(el("div", "kind", icp.kind === "Regime" ? "Regime" : avatarLabel(icp.avatar)));
+    t.appendChild(el("h3", null, icp.name));
+    top.appendChild(t);
+    var more = menu("⋯", [
+      ["Open", function () { openIcp(icp.id); }],
+      ["Edit", function () { editIcp(icp); }],
+      "-",
+      ["Delete", function () { deleteIcp(icp); }, true]
+    ], "go");
+    more.querySelector("button").setAttribute("aria-label", "Options for " + icp.name);
+    more.querySelector(".menu").style.cssText += ";top:34px;";
+    top.appendChild(more);
+    c.appendChild(top);
+    if (icp.description) c.appendChild(el("p", null, icp.description));
+    var tam = el("div", "tam");
+    var d = el("div");
+    d.appendChild(el("b", null, icp.tam || "—"));
+    d.appendChild(el("span", null, icp.tam ? "TAM" : "TAM not set"));
+    if (icp.tam) d.title = "TAM: " + icp.tam;
+    tam.appendChild(d);
+    c.appendChild(tam);
+    var foot = el("div", "foot");
+    if (icp.kind === "Regime") {
+      var bs = buyersIn(icp);
+      bs.forEach(function (b) { foot.appendChild(pill(b.name, "icp")); });
+      if (!bs.length) foot.appendChild(pill("no buyers tagged"));
+    } else {
+      (icp.regimes || []).map(icpById).filter(Boolean).forEach(function (r) { foot.appendChild(pill(r.name, "rnd")); });
+      if (!(icp.regimes || []).length) foot.appendChild(pill("no regime"));
+    }
+    var n = featuresFor(icp).length;
+    foot.appendChild(pill(n + (n === 1 ? " feature" : " features")));
+    c.appendChild(foot);
+    c.onclick = function (e) { if (e.target.closest(".menu-wrap")) return; openIcp(icp.id); };
+    c.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openIcp(icp.id); } };
+    return c;
+  }
+
+  function renderOverlapTab(pad) {
     var all = feats();
     var total = S.icps.length;
     var counts = { core: 0, shared: 0, independent: 0, untagged: 0 };
     all.forEach(function (f) { counts[coverageLabel(icpsOf(f).length, total)]++; });
-
     var stats = el("div", "rndhead");
-    [["Profiles", total], ["Core features", counts.core], ["Shared", counts.shared], ["Independent", counts.independent], ["Not yet tagged", counts.untagged]].forEach(function (s) {
+    [["Profiles", total], ["Core", counts.core], ["Shared", counts.shared], ["Independent", counts.independent], ["Not yet tagged", counts.untagged]].forEach(function (s) {
       var box = el("div", "stat");
       box.appendChild(el("b", null, String(s[1])));
       box.appendChild(el("span", null, s[0]));
       stats.appendChild(box);
     });
     pad.appendChild(stats);
-
     var note = el("p", "icpdesc");
-    note.textContent = "Core features are asked for by every profile; independent ones by a single profile. Tag a feature by ticking the profile column, or drag cards between profiles in the By profile view. Click a profile card to focus on what it asks for.";
+    note.textContent = "Core features are asked for by every profile; independent ones by a single profile. Tick a column to tag, or drag cards between lanes.";
     pad.appendChild(note);
-
-    if (!total) {
-      pad.appendChild(el("div", "empty", "No profiles yet. Create one for each customer segment you serve, then tag the features they ask for."));
-      host.appendChild(pad);
-      return;
-    }
-
-    /* profile cards, grouped by kind */
-    var kinds = [];
-    S.icps.forEach(function (i) { if (kinds.indexOf(i.kind || "Other") === -1) kinds.push(i.kind || "Other"); });
-    kinds.forEach(function (k) {
-      pad.appendChild(sectionTitle(k === "Regime" ? "Regimes" : k === "Buyer" ? "Buyers" : k + "s", 8));
-      var grid = el("div", "icpcards");
-      S.icps.filter(function (i) { return (i.kind || "Other") === k; }).forEach(function (icp) { grid.appendChild(icpCard(icp, all)); });
-      if (k === kinds[kinds.length - 1]) {
-        var add = el("button", "icpcard add");
-        add.appendChild(el("h3", null, "+"));
-        add.appendChild(el("p", null, "New profile"));
-        add.onclick = newIcp;
-        grid.appendChild(add);
-      }
-      pad.appendChild(grid);
-    });
+    if (!total) { pad.appendChild(el("div", "empty", "No profiles yet. Add regimes and buyers first.")); return; }
 
     var list = all.filter(function (f) {
       if (ui.spaceFilter && (f.spaces || []).indexOf(ui.spaceFilter) === -1) return false;
@@ -1907,77 +2076,22 @@
       if (ui.requestedOnly && !icpsOf(f).length) return false;
       return true;
     });
-
     if (ui.icpFilter && icpById(ui.icpFilter)) {
       var focus = el("div", "note");
-      focus.style.cssText = "margin:26px 0 -10px;display:flex;align-items:center;gap:10px;";
+      focus.style.cssText = "margin:0 0 14px;display:flex;align-items:center;gap:10px;";
       focus.appendChild(document.createTextNode("Showing what " + icpById(ui.icpFilter).name + " asks for."));
       var clear = el("button", "chip", "Show all");
       clear.onclick = function () { ui.icpFilter = ""; renderView(); };
       focus.appendChild(clear);
       pad.appendChild(focus);
     }
-
-    if (ui.imode === "lanes") pad.appendChild(icpLanes(list));
+    if ((ui.imode || "matrix") === "lanes") pad.appendChild(icpLanes(list));
     else pad.appendChild(icpMatrix(list));
-    host.appendChild(pad);
-  }
-
-  function icpCard(icp, all) {
-    var c = el("div", "icpcard");
-    c.setAttribute("role", "button");
-    c.tabIndex = 0;
-    c.setAttribute("aria-pressed", String(ui.icpFilter === icp.id));
-    c.appendChild(el("div", "kind", icp.kind || "Profile"));
-    var top = el("div");
-    top.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
-    var h = el("h3", null, icp.name);
-    h.style.flex = "1";
-    top.appendChild(h);
-    var more = menu("⋯", [
-      ["Edit profile", function () { editIcp(icp); }],
-      "-",
-      ["Delete profile", function () { deleteIcp(icp); }, true]
-    ], "go");
-    more.querySelector("button").setAttribute("aria-label", "Options for " + icp.name);
-    more.querySelector(".menu").style.cssText += ";top:34px;";
-    top.appendChild(more);
-    c.appendChild(top);
-    if (icp.description) c.appendChild(el("p", null, icp.description));
-    var tam = el("div", "tam");
-    [["TAM", icp.tam], ["SAM", icp.sam], ["SOM", icp.som]].forEach(function (x) {
-      if (!x[1]) return;
-      var d = el("div");
-      d.appendChild(el("b", null, x[1]));
-      d.appendChild(el("span", null, x[0]));
-      d.title = x[0] + ": " + x[1];
-      tam.appendChild(d);
-    });
-    if (!tam.children.length) {
-      var d0 = el("div");
-      d0.appendChild(el("b", null, "—"));
-      d0.appendChild(el("span", null, "TAM not set"));
-      tam.appendChild(d0);
-    }
-    c.appendChild(tam);
-    var mine = all.filter(function (f) { return (f.icps || []).indexOf(icp.id) !== -1; });
-    var only = mine.filter(function (f) { return icpsOf(f).length === 1; }).length;
-    var foot = el("div", "foot");
-    foot.appendChild(pill(mine.length + (mine.length === 1 ? " feature" : " features")));
-    if (only) foot.appendChild(pill(only + " only here", "rnd"));
-    if (icp.notes) foot.appendChild(pill("notes"));
-    c.appendChild(foot);
-    c.onclick = function (e) {
-      if (e.target.closest(".menu-wrap")) return;
-      ui.icpFilter = ui.icpFilter === icp.id ? "" : icp.id; renderView();
-    };
-    c.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); c.onclick(e); } };
-    c.ondblclick = function (e) { if (!e.target.closest(".menu-wrap")) editIcp(icp); };
-    return c;
   }
 
   function icpMatrix(list) {
-    var total = S.icps.length;
+    var cols = regimes().concat(buyers());
+    var total = cols.length;
     var groups = [
       ["core", "Core · every profile asks for it"],
       ["shared", "Shared · several profiles"],
@@ -1990,9 +2104,11 @@
     var hr = el("tr");
     hr.appendChild(el("th", null, "Feature"));
     hr.appendChild(el("th", null, "State"));
-    S.icps.forEach(function (icp) {
-      var th = el("th", "icp", icp.name);
-      th.title = "Focus on " + icp.name;
+    cols.forEach(function (icp) {
+      var th = el("th", "icp" + (icp.kind === "Regime" ? " reg" : ""));
+      th.appendChild(avatarEl(icp.avatar, "xs"));
+      th.appendChild(el("span", null, icp.name));
+      th.title = (ui.icpFilter === icp.id ? "Show all" : "Focus on " + icp.name);
       th.onclick = function () { ui.icpFilter = ui.icpFilter === icp.id ? "" : icp.id; renderView(); };
       hr.appendChild(th);
     });
@@ -2024,8 +2140,8 @@
         var tds = el("td");
         tds.appendChild(statePill(f));
         tr.appendChild(tds);
-        S.icps.forEach(function (icp) {
-          var td = el("td");
+        cols.forEach(function (icp) {
+          var td = el("td", icp.kind === "Regime" ? "reg" : "");
           var on = (f.icps || []).indexOf(icp.id) !== -1;
           var t = el("button", "tick", "✓");
           t.setAttribute("aria-pressed", String(on));
@@ -2049,13 +2165,14 @@
 
   function icpLanes(list) {
     var wrap = el("div", "lanes");
-    var lanes = S.icps.map(function (i) { return { key: i.id, label: i.name, icp: i }; }).concat([{ key: "__none", label: "Not yet tagged" }]);
+    var lanes = regimes().concat(buyers()).map(function (i) { return { key: i.id, label: i.name, icp: i }; }).concat([{ key: "__none", label: "Not yet tagged" }]);
     lanes.forEach(function (lane) {
       var items = lane.key === "__none"
         ? list.filter(function (f) { return !icpsOf(f).length; })
         : list.filter(function (f) { return (f.icps || []).indexOf(lane.key) !== -1; });
       var col = el("div", "lane");
       var h = el("h2");
+      if (lane.icp) h.appendChild(avatarEl(lane.icp.avatar, "xs"));
       h.appendChild(el("span", null, lane.label));
       h.appendChild(el("em", null, String(items.length)));
       col.appendChild(h);
@@ -2079,7 +2196,6 @@
         c.appendChild(el("p", null, (f.note || "").slice(0, 88)));
         var tags = el("div", "tags");
         tags.appendChild(statePill(f));
-        (f.spaces || []).forEach(function (sp) { tags.appendChild(pill(sp)); });
         icpsOf(f).filter(function (x) { return x.id !== lane.key; }).forEach(function (x) { tags.appendChild(pill("also " + x.name, "icp")); });
         c.appendChild(tags);
         if (lane.key !== "__none") {
@@ -2096,6 +2212,164 @@
       wrap.appendChild(col);
     });
     return wrap;
+  }
+
+  /* ---- profile page: the notebook for one segment ---- */
+
+  function renderIcpPage(host, icp) {
+    var isRegime = icp.kind === "Regime";
+    var back = el("button", "btn ghost", "Back");
+    back.onclick = function () { ui.icpOpen = null; ui.itab = isRegime ? "regimes" : "buyers"; render(); };
+    var more = menu("More", [
+      ["Quick edit", function () { editIcp(icp); }],
+      ["See its features in the overlap", function () { ui.icpOpen = null; ui.itab = "overlap"; ui.icpFilter = icp.id; render(); }],
+      "-",
+      ["Delete", function () { deleteIcp(icp); }, true]
+    ]);
+    host.appendChild(header((isRegime ? "REGIME" : "BUYER · " + avatarLabel(icp.avatar).toUpperCase()), icp.name, [back, more]));
+
+    var pad = el("div", "pad");
+    var g = el("div", "grid2");
+
+    /* left: identity, description, notebook */
+    var left = el("div");
+    var idRow = el("div", "idrow");
+    idRow.appendChild(avatarEl(icp.avatar, "lg"));
+    var nameIn = el("input");
+    nameIn.value = icp.name;
+    nameIn.setAttribute("aria-label", "Profile name");
+    nameIn.className = "namein";
+    nameIn.oninput = function () { icp.name = nameIn.value; renderNav(); var h = host.querySelector(".head h1"); if (h) h.textContent = icp.name || "Untitled"; save(); };
+    nameIn.onblur = function () { if (!icp.name.trim()) { icp.name = "Untitled profile"; nameIn.value = icp.name; } render(); };
+    idRow.appendChild(nameIn);
+    left.appendChild(idRow);
+
+    left.appendChild(el("div", "sublab", "Who they are"));
+    var desc = el("textarea", "writer small");
+    desc.style.marginTop = "0";
+    desc.value = icp.description;
+    desc.placeholder = isRegime ? "What this regime is, who it commissions, what it pays for." : "Who they are, what they buy, what matters to them.";
+    desc.setAttribute("aria-label", "Description");
+    desc.oninput = function () { icp.description = desc.value; save(); };
+    left.appendChild(desc);
+
+    left.appendChild(el("div", "sublab", "Notebook"));
+    var notes = el("textarea", "writer");
+    notes.value = icp.notes;
+    notes.placeholder = "Anything you learn about this segment: pricing, volumes, pains, quotes, sources. Add to it whenever you find something new.";
+    notes.setAttribute("aria-label", "Notes");
+    notes.oninput = function () { icp.notes = notes.value; save(); };
+    left.appendChild(notes);
+    g.appendChild(left);
+
+    /* right: numbers and links */
+    var right = el("div");
+
+    var pm = el("div", "panel");
+    pm.appendChild(el("h3", null, "Market size"));
+    [["TAM", "tam", "Total addressable market"], ["SAM", "sam", "Serviceable addressable"], ["SOM", "som", "Serviceable obtainable"]].forEach(function (x) {
+      var row = el("div", "field");
+      var lab = el("label", null, x[0]); lab.title = x[2];
+      row.appendChild(lab);
+      var inp = el("input");
+      inp.value = icp[x[1]] || "";
+      inp.placeholder = x[2];
+      inp.setAttribute("aria-label", x[0]);
+      inp.oninput = function () { icp[x[1]] = inp.value.trim(); save(); };
+      row.appendChild(inp);
+      pm.appendChild(row);
+    });
+    right.appendChild(pm);
+
+    var pf = el("div", "panel");
+    pf.style.marginTop = "18px";
+    pf.appendChild(el("h3", null, "Facts & numbers"));
+    var facts = el("div", "facts");
+    function drawFacts() {
+      facts.innerHTML = "";
+      icp.facts.forEach(function (fact, idx) {
+        var row = el("div", "fact");
+        var l = el("input"); l.value = fact.label; l.placeholder = "Label, e.g. Paralegal hourly rate"; l.setAttribute("aria-label", "Fact label");
+        l.oninput = function () { fact.label = l.value; save(); };
+        var v = el("input"); v.value = fact.value; v.placeholder = "Value, e.g. $45 / h"; v.setAttribute("aria-label", "Fact value");
+        v.oninput = function () { fact.value = v.value; save(); };
+        var x = el("button", "x", "×"); x.setAttribute("aria-label", "Remove fact");
+        x.onclick = function () { icp.facts.splice(idx, 1); drawFacts(); save(); };
+        row.appendChild(l); row.appendChild(v); row.appendChild(x);
+        facts.appendChild(row);
+      });
+      if (!icp.facts.length) facts.appendChild(el("div", "note", "Numbers you want at hand: rates, hours per file, cases per month, prices."));
+    }
+    drawFacts();
+    pf.appendChild(facts);
+    var addF = el("button", "btn ghost rowbtn", "+ Add a fact");
+    addF.onclick = function () { icp.facts.push({ label: "", value: "" }); drawFacts(); var last = facts.querySelector(".fact:last-child input"); if (last) last.focus(); };
+    pf.appendChild(addF);
+    right.appendChild(pf);
+
+    var pr = el("div", "panel");
+    pr.style.marginTop = "18px";
+    if (isRegime) {
+      pr.appendChild(el("h3", null, "Buyers in this regime"));
+      var bs = buyersIn(icp);
+      if (!bs.length) pr.appendChild(el("div", "note", "No buyer tagged with this regime yet. Tag regimes from a buyer's page."));
+      var bl = el("div", "chips");
+      bs.forEach(function (b) {
+        var c = el("button", "chip", b.name);
+        c.onclick = function () { openIcp(b.id); };
+        bl.appendChild(c);
+      });
+      pr.appendChild(bl);
+    } else {
+      pr.appendChild(el("h3", null, "Regimes they work in"));
+      pr.appendChild(regimeChips(icp.regimes, function () { save(); renderNav(); }));
+    }
+    right.appendChild(pr);
+
+    var pa = el("div", "panel");
+    pa.style.marginTop = "18px";
+    pa.appendChild(el("h3", null, "Icon"));
+    pa.appendChild(avatarPicker(icp.avatar, function (v) {
+      icp.avatar = v; save();
+      var big = host.querySelector(".idrow .avatar");
+      if (big) big.replaceWith(avatarEl(v, "lg"));
+      var eb = host.querySelector(".head .eyebrow");
+      if (eb && !isRegime) eb.textContent = "BUYER · " + avatarLabel(v).toUpperCase();
+    }));
+    right.appendChild(pa);
+
+    var pfeat = el("div", "panel");
+    pfeat.style.marginTop = "18px";
+    var mine = featuresFor(icp);
+    pfeat.appendChild(el("h3", null, "Features they ask for · " + mine.length));
+    if (!mine.length) pfeat.appendChild(el("div", "note", "Nothing tagged yet."));
+    var fl = el("div", "featlist");
+    mine.forEach(function (f) {
+      var row = el("div", "fl");
+      var b = el("button", null, f.name);
+      b.onclick = function () { preview(f.id); };
+      row.appendChild(b);
+      row.appendChild(statePill(f));
+      var x = el("button", "x", "×"); x.setAttribute("aria-label", "Untag " + f.name);
+      x.onclick = function () { toggleIcp(f, icp.id); render(); save(); };
+      row.appendChild(x);
+      fl.appendChild(row);
+    });
+    pfeat.appendChild(fl);
+    var addFeat = el("select", "selbox");
+    addFeat.style.cssText = "width:100%;margin-top:10px;";
+    addFeat.setAttribute("aria-label", "Tag a feature");
+    var o0 = el("option", null, "+ Tag a feature…"); o0.value = ""; addFeat.appendChild(o0);
+    feats().filter(function (f) { return (f.icps || []).indexOf(icp.id) === -1; }).sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (f) {
+      var o = el("option", null, f.name); o.value = f.id; addFeat.appendChild(o);
+    });
+    addFeat.onchange = function () { var f = feature(addFeat.value); if (!f) return; toggleIcp(f, icp.id); render(); save(); };
+    pfeat.appendChild(addFeat);
+    right.appendChild(pfeat);
+
+    g.appendChild(right);
+    pad.appendChild(g);
+    host.appendChild(pad);
   }
 
   /* --- feature detail --- */
@@ -2241,19 +2515,18 @@
     pi.appendChild(el("h3", null, "Market / ICP"));
     var ichips = el("div");
     ichips.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
-    S.icps.forEach(function (icp) {
-      var c = el("button", "chip", icp.name);
+    regimes().concat(buyers()).forEach(function (icp) {
+      var c = el("button", "chip" + (icp.kind === "Regime" ? " reg" : ""), icp.name);
       c.setAttribute("aria-pressed", String((f.icps || []).indexOf(icp.id) !== -1));
-      c.title = icp.kind ? icp.kind + (icp.description ? " · " + icp.description : "") : icp.description;
+      c.title = (icp.kind === "Regime" ? "Regime" : avatarLabel(icp.avatar)) + (icp.description ? " · " + icp.description : "");
       c.onclick = function () { toggleIcp(f, icp.id); render(); save(); };
       ichips.appendChild(c);
     });
     var addIcp = el("button", "chip", "+ New profile");
     addIcp.onclick = function () {
-      askIcp("New ideal client profile").then(function (v) {
+      askIcp("New buyer profile", blankIcp("Buyer")).then(function (v) {
         if (!v) return;
-        var icp = { id: uid(), name: v.name, kind: v.kind, description: v.description, tam: v.tam, sam: v.sam, som: v.som, notes: v.notes };
-        S.icps.push(icp); f.icps = f.icps || []; f.icps.push(icp.id); touch(f); render(); save();
+        S.icps.push(v); f.icps = f.icps || []; f.icps.push(v.id); touch(f); render(); save();
       });
     };
     ichips.appendChild(addIcp);

@@ -51,36 +51,43 @@ export function seed() {
   };
 }
 
+export const ICP_AVATARS = ["regime", "institution", "physician", "lawyer", "paralegal", "person", "law-firm", "clinic", "insurer", "employer", "other"];
+
 export function seedIcps() {
   /* Seeded from the 9 Sept 2026 segmentation research ("The regime is the segment"): the statute that
      commissions the work is the primary axis; buyers are the parties it forces to produce a defensible package. */
-  const mk = (name, kind, description, tam, notes) => ({ id: uid(), name, kind, description, tam, sam: "", som: "", notes });
-  return [
-    mk("CNESST", "Regime", "Workers' compensation under the LATMP: art. 204 (CNESST-designated) and art. 209 (employer-commissioned) expertises converging on the BEM. One closed list of five contested subjects.",
-      "~24,457 medico-legal evaluations / yr (8,507 BEM + 5,983 art. 204 + ~9,967 employer)",
-      "107,124 accepted injuries and 31,364 refused claims (2024); 78,475 demandes de révision (2025, 68.9% by employers); 43,256 TAT files opened. Tariff: $730 public lane vs ~$2,300 private lane (art. 196 carve-out). Sources: CNESST Statistiques annuelles, TAT, UTTAM (attribute by name)."),
-    mk("SAAQ", "Regime", "Road-accident victims under the no-fault SAAQ regime: expert reports and chronologies for counsel and physicians. Voluminous file defined as more than 500 pages (directive in force 2025-01-01).",
-      "91,418 claims processed (2025), $1,535M in indemnities",
-      "Tariffs: $791 other specialties, $1,180 psychiatry (entente SAAQ–FMSQ). No bodily-injury action exists (art. 83.57), so settlement-demand tools do not transfer."),
-    mk("IVAC", "Regime", "Crime-victim compensation files, including the CNESST forms filed inside them. Fastest-growing regime by volume.",
-      "27,904 requests (2024), up 3.25x in five years",
-      "383,720 documents processed in one year (+35.7%). Source: MJQ LAPVIC 2024–25."),
-    mk("Civil", "Regime", "Civil liability and insurance litigation built on hospital and clinic records. One expertise per discipline; the report stands as testimony (art. 232, 293 CPC) and can be rejected for irregularity (art. 241).",
-      "Not sized",
-      "Includes private disability insurers (LTD/STD, 2.9M Quebecers covered) as a reviewer segment: signal only."),
-    mk("Médecin expert — private lane", "Buyer", "Expertise physicians working art. 209, insurer and lawyer-commissioned IMEs. Files of 50–200 pages, private-market billing, solo buyer with no procurement.",
-      "83 named in the directory (55 published emails); ~300 experts at $5k/yr is a $1.5M ARR ceiling",
-      "Research score 30/35, rank 1. Live lead. Competitive headroom is the weak point (ExpertMedical.ai targets this ICP)."),
-    mk("Cabinet d'avocats — côté travailleur", "Buyer", "Worker-side law firms contesting CNESST, SAAQ and IVAC decisions. Files of 200–3,000 pages; legal aid pays a fixed $385 per review and $1,115 per tribunal recourse.",
-      "~170–250 firms",
-      "Research score 27/35, rank 2. Active pilot (Le Cabinet M). A hand-built chronology consumes 56.6% of a legal-aid révision mandate."),
-    mk("Mutuelle managers & IME coordinators", "Buyer", "The intermediary layer that reviews and coordinates independent medical examinations for employer groups.",
-      "~35 firms · 27,724 employers",
-      "Research score 23/35, rank 3. No lead yet."),
-    mk("Cabinet d'avocats — côté employeur", "Buyer", "Employer-side firms handling CNESST contestation; both contester and reviewer of the medical record.",
-      "Subset of the same bar",
-      "Research score 23/35, rank 3. Mailed.")
-  ];
+  const mk = (name, kind, avatar, description, tam, notes) => ({ id: uid(), name, kind, avatar, description, tam, sam: "", som: "", notes, regimes: [], facts: [] });
+  const cnesst = mk("CNESST", "Regime", "regime", "Workers' compensation under the LATMP: art. 204 (CNESST-designated) and art. 209 (employer-commissioned) expertises converging on the BEM. One closed list of five contested subjects.",
+    "~24,457 medico-legal evaluations / yr",
+    "8,507 BEM + 5,983 art. 204 + ~9,967 employer evaluations. 107,124 accepted injuries and 31,364 refused claims (2024); 78,475 demandes de r\u00e9vision (2025, 68.9% by employers); 43,256 TAT files opened. Tariff: $730 public lane vs ~$2,300 private lane (art. 196 carve-out). Sources: CNESST Statistiques annuelles, TAT, UTTAM (attribute by name).");
+  const saaq = mk("SAAQ", "Regime", "regime", "Road-accident victims under the no-fault SAAQ regime: expert reports and chronologies for counsel and physicians. Voluminous file defined as more than 500 pages (directive in force 2025-01-01).",
+    "91,418 claims / yr",
+    "2025: 91,418 claims processed, $1,535M in indemnities. Tariffs: $791 other specialties, $1,180 psychiatry (entente SAAQ\u2013FMSQ). No bodily-injury action exists (art. 83.57), so settlement-demand tools do not transfer.");
+  const ivac = mk("IVAC", "Regime", "regime", "Crime-victim compensation files, including the CNESST forms filed inside them. Fastest-growing regime by volume.",
+    "27,904 requests / yr",
+    "2024: 27,904 requests, up 3.25x in five years; 383,720 documents processed in one year (+35.7%). Source: MJQ LAPVIC 2024\u201325.");
+  const civil = mk("Civil", "Regime", "regime", "Civil liability and insurance litigation built on hospital and clinic records. One expertise per discipline; the report stands as testimony (art. 232, 293 CPC) and can be rejected for irregularity (art. 241).",
+    "Not sized",
+    "Includes private disability insurers (LTD/STD, 2.9M Quebecers covered) as a reviewer segment: signal only.");
+  const expert = mk("M\u00e9decin expert \u2014 private lane", "Buyer", "physician", "Expertise physicians working art. 209, insurer and lawyer-commissioned IMEs. Files of 50\u2013200 pages, private-market billing, solo buyer with no procurement.",
+    "83 in the directory \u00b7 ~$1.5M ARR ceiling",
+    "Research score 30/35, rank 1. Live lead. 55 published emails. ~300 experts at $5k/yr is a $1.5M ARR ceiling. Competitive headroom is the weak point (ExpertMedical.ai targets this ICP).");
+  const worker = mk("Cabinet d'avocats \u2014 c\u00f4t\u00e9 travailleur", "Buyer", "law-firm", "Worker-side law firms contesting CNESST, SAAQ and IVAC decisions. Files of 200\u20133,000 pages; legal aid pays a fixed $385 per review and $1,115 per tribunal recourse.",
+    "~170\u2013250 firms",
+    "Research score 27/35, rank 2. Active pilot (Le Cabinet M). A hand-built chronology (5.5 paralegal hours, $196\u2013$218 loaded) consumes 56.6% of a legal-aid r\u00e9vision mandate.");
+  const mutuelle = mk("Mutuelle managers & IME coordinators", "Buyer", "insurer", "The intermediary layer that reviews and coordinates independent medical examinations for employer groups.",
+    "~35 firms \u00b7 27,724 employers",
+    "Research score 23/35, rank 3. No lead yet.");
+  const employer = mk("Cabinet d'avocats \u2014 c\u00f4t\u00e9 employeur", "Buyer", "law-firm", "Employer-side firms handling CNESST contestation; both contester and reviewer of the medical record.",
+    "Subset of the same bar",
+    "Research score 23/35, rank 3. Mailed.");
+  expert.regimes = [cnesst.id, saaq.id, civil.id];
+  worker.regimes = [cnesst.id, saaq.id, ivac.id];
+  mutuelle.regimes = [cnesst.id];
+  employer.regimes = [cnesst.id];
+  expert.facts = [{ label: "Public-lane tariff (art. 204 / BEM)", value: "$730 per file" }, { label: "Private-lane price (art. 209)", value: "~$2,300 per file" }, { label: "Time per BEM opinion", value: "2\u20136 h, up to 10 h" }];
+  worker.facts = [{ label: "Legal aid, r\u00e9vision mandate", value: "$385 fixed" }, { label: "Legal aid, tribunal recourse", value: "$1,115 fixed" }, { label: "Hand-built chronology", value: "5.5 paralegal hours" }];
+  return [cnesst, saaq, ivac, civil, expert, worker, mutuelle, employer];
 }
 
 /* Make sure every record has every field the UI relies on. Mutates and returns the state. */
@@ -97,11 +104,20 @@ export function normalize(state) {
   s.students = s.students.filter(x => typeof x === "string" && x.trim()).map(x => x.trim());
   if (s.icps === undefined) s.icps = seedIcps(); // documents created before profiles existed get the four regimes
   if (!Array.isArray(s.icps)) s.icps = [];
-  s.icps = s.icps.filter(x => x && typeof x === "object").map(x => ({
-    id: String(x.id || uid()), name: String(x.name || "Untitled profile"), kind: String(x.kind || ""),
-    description: String(x.description || ""), tam: String(x.tam || ""), sam: String(x.sam || ""), som: String(x.som || ""), notes: String(x.notes || "")
-  }));
+  s.icps = s.icps.filter(x => x && typeof x === "object").map(x => {
+    const kind = x.kind === "Regime" ? "Regime" : "Buyer";
+    let avatar = String(x.avatar || "");
+    if (ICP_AVATARS.indexOf(avatar) === -1) avatar = kind === "Regime" ? "regime" : "person";
+    return {
+      id: String(x.id || uid()), name: String(x.name || "Untitled profile"), kind, avatar,
+      description: String(x.description || ""), tam: String(x.tam || ""), sam: String(x.sam || ""), som: String(x.som || ""), notes: String(x.notes || ""),
+      regimes: Array.isArray(x.regimes) ? x.regimes.filter(r => typeof r === "string") : [],
+      facts: Array.isArray(x.facts) ? x.facts.filter(f => f && typeof f === "object").map(f => ({ label: String(f.label || ""), value: String(f.value || "") })).filter(f => f.label || f.value) : []
+    };
+  });
   const icpIds = new Set(s.icps.map(x => x.id));
+  const regimeIds = new Set(s.icps.filter(x => x.kind === "Regime").map(x => x.id));
+  s.icps.forEach(x => { x.regimes = x.kind === "Regime" ? [] : x.regimes.filter(r => regimeIds.has(r)); });
   if (!Array.isArray(s.features)) s.features = [];
   const ids = new Set(s.projects.map(p => p.id));
   if (!ids.has(s.current)) s.current = s.projects[0].id;
@@ -300,24 +316,27 @@ export async function handleApi(req, store) {
 
   /* Ideal client profiles (market segments) */
   if (seg[0] === "icps") {
-    const ICP_FIELDS = ["name", "kind", "description", "tam", "sam", "som", "notes"];
+    const ICP_FIELDS = ["name", "kind", "avatar", "description", "tam", "sam", "som", "notes"];
+    const ICP_LISTS = ["regimes", "facts"];
     if (seg.length === 1 && method === "GET") return json(200, (await store.load()).state.icps);
     if (seg.length === 1 && method === "POST") {
       const name = String(body.name || "").trim();
       if (!name) return json(400, { error: "name is required" });
-      const icp = { id: uid(), name, kind: "", description: "", tam: "", sam: "", som: "", notes: "" };
+      const icp = { id: uid(), name, kind: "Buyer", avatar: "", description: "", tam: "", sam: "", som: "", notes: "", regimes: [], facts: [] };
       ICP_FIELDS.slice(1).forEach(k => { if (typeof body[k] === "string") icp[k] = body[k].trim(); });
-      await mutate(store, s => { s.icps.push(icp); });
-      return json(201, icp);
+      ICP_LISTS.forEach(k => { if (Array.isArray(body[k])) icp[k] = body[k]; });
+      const made = await mutate(store, s => { s.icps.push(icp); return { result: icp.id }; });
+      return json(201, made.snapshot.state.icps.find(x => x.id === icp.id));
     }
     if (seg.length === 2 && method === "PATCH") {
       const r = await mutate(store, s => {
         const icp = s.icps.find(x => x.id === seg[1]);
         if (!icp) return { error: json(404, { error: "not found" }) };
         ICP_FIELDS.forEach(k => { if (typeof body[k] === "string" && (k !== "name" || body[k].trim())) icp[k] = body[k].trim(); });
-        return { result: icp };
+        ICP_LISTS.forEach(k => { if (Array.isArray(body[k])) icp[k] = body[k]; });
+        return { result: icp.id };
       });
-      return r.error || json(200, r.result);
+      return r.error || json(200, r.snapshot.state.icps.find(x => x.id === r.result));
     }
     if (seg.length === 2 && method === "DELETE") {
       const r = await mutate(store, s => {
