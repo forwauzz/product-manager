@@ -1403,19 +1403,117 @@
       "sections": {
         "Legal": "Drafts"
       }
-    }
-  ],
-  "patches": [
+    },
     {
       "name": "Portal",
-      "state": "Building",
       "spaces": [
         "Legal",
         "Health"
       ],
+      "state": "Building",
       "owner": "David",
-      "note": "Client-facing portal that consolidates Share (case sharing) and the Collaboration panel (requests, document requests, secure messages, annotations, opinion requests) into one feature. David is building it now."
-    },
+      "note": "Client-facing secure exchange that consolidates Share and the Collaboration panel: a portal inbox in the main navigation, a portal panel on each case, and an external page (exchange.alie.app) where third parties verify a code, upload requested files or download the documents sent to them. Prototype by David (ALIE Portal Flow).",
+      "children": [
+        {
+          "name": "Portal inbox and sent",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "Portal entry in the main navigation with an unread badge. Inbox and Sent tabs, filter by owner (All, A. Auger, Me Mercure), search across recipients, cases and files. Each row shows the sender, subject, files received, who it is for, its status (received, no case, internal, downloaded) and time; rows can be selected.",
+          "sections": {
+            "Health": "Cases",
+            "Legal": "Cases"
+          }
+        },
+        {
+          "name": "New request: request files or send securely",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "New opens two flows: Request files (ask a third party for documents through a secure link) or Send securely (share documents with an external recipient).",
+          "sections": {
+            "Health": "Cases",
+            "Legal": "Cases"
+          }
+        },
+        {
+          "name": "Case portal panel",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "Portal item in the case left rail with a badge. Inbox, Sent and Archive for that case; Add to sources moves received files into the case; Reply answers in the thread; Back to case.",
+          "sections": {
+            "Health": "Cases",
+            "Legal": "Cases"
+          }
+        },
+        {
+          "name": "Secure link management",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "Each exchange carries an expiry date and a view limit (for example 2 of 5 views used). Resend, Extend, Revoke, and View activity show every access, download and code attempt.",
+          "sections": {
+            "Health": "Cases",
+            "Legal": "Cases"
+          }
+        },
+        {
+          "name": "External exchange: verify access",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "exchange.alie.app page for the outside party: the request is described, a six-digit code given separately unlocks it, no account needed, French available, expiry shown. Every access recorded.",
+          "sections": {
+            "Health": "Cases",
+            "Legal": "Cases"
+          }
+        },
+        {
+          "name": "External exchange: upload and receipt",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "After verification the recipient reviews what is requested, uploads the files (Send N files) and gets a receipt (Files transmitted).",
+          "sections": {
+            "Health": "Cases",
+            "Legal": "Cases"
+          }
+        },
+        {
+          "name": "External exchange: download page",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "Documents for your expertise mandate listed with type and size; Download, Again, Download all as one PDF; expiry and views left; every download visible to the sender.",
+          "sections": {
+            "Health": "Cases",
+            "Legal": "Cases"
+          }
+        },
+        {
+          "name": "Link states: expired, revoked, locked",
+          "spaces": [
+            "Health",
+            "Legal"
+          ],
+          "note": "Link expired (410, recorded), Access revoked (410, recorded), Locked after 3 wrong codes (423, sender alerted and can issue a replacement).",
+          "sections": {
+            "Health": "Cases",
+            "Legal": "Cases"
+          }
+        }
+      ]
+    }
+  ],
+  "patches": [
     {
       "name": "Ask ALIE",
       "state": "Live",
@@ -1428,13 +1526,6 @@
         "Legal": "Ask ALIE"
       },
       "note": "Live in both workspaces. Health: case-scoped Q&A with a citation sources panel, This case only scope, input and reply language, dictation (Ctrl+J). Legal: home conversation plus per-case chat with @ file tags and / commands."
-    },
-    {
-      "name": "Portal",
-      "sections": {
-        "Health": "Cases",
-        "Legal": "Cases"
-      }
     },
     {
       "name": "Dictation",
@@ -1496,6 +1587,20 @@
       "name": "Critical review queues",
       "sections": {
         "Health": "Cases"
+      }
+    },
+    {
+      "name": "Portal",
+      "state": "Building",
+      "owner": "David",
+      "spaces": [
+        "Legal",
+        "Health"
+      ],
+      "note": "Client-facing secure exchange that consolidates Share and the Collaboration panel: a portal inbox in the main navigation, a portal panel on each case, and an external page (exchange.alie.app) where third parties verify a code, upload requested files or download the documents sent to them. Prototype by David (ALIE Portal Flow).",
+      "sections": {
+        "Health": "Cases",
+        "Legal": "Cases"
       }
     }
   ],

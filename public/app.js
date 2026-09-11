@@ -1490,6 +1490,9 @@
 
   /* --- space view: divisions like the real app, sub-menu on the left, hero page on the right --- */
 
+  var divToggles = {};
+  try { divToggles = JSON.parse(localStorage.getItem("alie.divs") || "{}") || {}; } catch (e) { divToggles = {}; }
+  function saveDivToggles() { try { localStorage.setItem("alie.divs", JSON.stringify(divToggles)); } catch (e) {} }
   function sectionsFor(sp) { return (S.sections && S.sections[sp]) || []; }
   function sectionOf(f, sp) {
     var sec = f.sections && f.sections[sp];
@@ -1613,11 +1616,31 @@
     var keys2 = order.filter(function (k) { return groups[k]; });
     if (groups[""]) keys2.push("");
 
+    /* divisions collapse: only the division holding the selected feature is open unless the user toggled it */
+    var selSec = sectionOf(selMain, sp);
+    if (order.indexOf(selSec) === -1) selSec = "";
+    var divKey = function (sec) { return sp + "|" + (sec || "Other"); };
+    if (ui.lastSpaceSel !== sel.id) { ui.lastSpaceSel = sel.id; if (divToggles[divKey(selSec)] === false) { delete divToggles[divKey(selSec)]; saveDivToggles(); } }
+    function isOpen(sec) {
+      if (q) return true;
+      var t = divToggles[divKey(sec)];
+      return t === undefined ? sec === selSec : !!t;
+    }
     var list2 = el("div", "subnav-list");
     if (q && !shown.length) list2.appendChild(el("div", "note", "No match in " + sp + "."));
     keys2.forEach(function (sec) {
-      var lab = el("div", "division", sec || "Other");
+      var open = isOpen(sec);
+      var lab = el("button", "division" + (open ? " open" : ""));
+      lab.type = "button";
+      lab.setAttribute("aria-expanded", String(open));
+      lab.appendChild(el("span", "chev", "›"));
+      lab.appendChild(el("span", "dn", sec || "Other"));
+      var n = groups[sec].reduce(function (a, m) { return a + 1 + subsOf(m).length; }, 0);
+      lab.appendChild(el("span", "dc", String(n)));
+      if (!open && groups[sec].some(function (m) { return m.id === selMain.id; })) lab.classList.add("has-on");
+      lab.onclick = function () { divToggles[divKey(sec)] = !open; saveDivToggles(); renderView(); };
       list2.appendChild(lab);
+      if (!open) return;
       groups[sec].forEach(function (m) {
         var kids = q ? subsOf(m).filter(function (k) { return hit(k) || hit(m); }) : subsOf(m);
         var item = el("button", "sn top" + (m.id === selMain.id ? " on" : ""));

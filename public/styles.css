@@ -742,3 +742,107 @@
   .sheet { min-width:0; }
   .jump { min-width:0; max-width:100%; }
   @media (max-width:860px) { .spacegrid { grid-template-columns:minmax(0,1fr); } }
+
+  /* ---------- collapsible divisions in the space sub-menu ---------- */
+  .subnav .division { display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:9px 10px; margin:10px 0 2px; border-radius:var(--r-xs); color:var(--gold); }
+  .subnav .division:hover { background:var(--tint); }
+  .subnav .division .chev { display:inline-block; width:14px; font-size:16px; line-height:1; color:var(--slate); transition:transform .15s; transform:translateY(-1px); }
+  .subnav .division.open .chev { transform:rotate(90deg) translateX(-1px); }
+  .subnav .division .dn { flex:1; }
+  .subnav .division .dc { font-family:var(--mono); font-size:12px; color:var(--slate); letter-spacing:0; }
+  .subnav .division.has-on { box-shadow:inset 2px 0 0 var(--gold); }
+  .subnav .division:first-of-type { margin-top:0; }
+
+  /* ---------- larger type scale (readability first: 16px body, no label under 12px) ---------- */
+  html, body { font-size:16.5px; line-height:1.55; }
+  .note { font-size:15px; }
+  .btn { font-size:15px; padding:14px 24px; }
+  .seg button { font-size:15px; padding:9px 18px; }
+  .field { font-size:15.5px; padding:11px 0; }
+  .panel h3 { font-size:13px; }
+  .head .eyebrow, .sheetcard .eyebrow, .drawer .eyebrow, .sheethd .eyebrow { font-size:13px; }
+  .head h1 { font-size:32px; }
+  .dcard h3 { font-size:22px; }
+  .dcard p { font-size:15.5px; }
+  .card h3 { font-size:17px; }
+  .card .q { font-size:16px; }
+  .card .stu { font-size:14px; }
+  .stat b { font-size:30px; }
+  .stat span { font-size:12.5px; }
+  .lane > h2 { font-size:13.5px; }
+  .frow select { font-size:14px; }
+  .frow .seq, .gt .nc .seqn { font-size:13px; }
+  .group .addsub { font-size:14px; }
+  .group .frow.head .body b { font-size:17px; }
+  .gridhead > button { font-size:16px; }
+  .tile p { font-size:14.5px; }
+  .navitem { font-size:16px; }
+  .navitem .ic { font-size:16px; width:20px; }
+  .navlabel { font-size:12.5px; }
+  .ws .txt b { font-size:15px; }
+  .ws .txt span { font-size:13px; }
+  .navfoot b { font-size:14.5px; }
+  .navfoot span { font-size:12.5px; }
+  .toast { font-size:15px; }
+  .modal h2 { font-size:23px; }
+  .modal input, .modal select { font-size:16px; }
+  .drawer h2 { font-size:27px; }
+  .drawer .desc, .drawer .rich.desc { font-size:19px; }
+  .empty { font-size:19px; }
+  .spacecard h2 { font-size:34px; }
+  .spacecard p { font-size:16.5px; }
+  .spacecard .count { font-size:13.5px; }
+  .fsearch input { font-size:17px; padding:15px 22px; }
+  .subfind { font-size:15px; padding:11px 16px; }
+  .subnav .sn { font-size:16px; padding:11px 12px; }
+  .subnav .sn.top .nm { font-size:14px; }
+  .subnav .sn.kid { font-size:15px; padding:9px 12px; }
+  .subnav .sn.kid .nm { font-size:15px; }
+  .subnav .sn .ct { font-size:12.5px; }
+  .subnav .division { font-size:12.5px; }
+  .titlerow h1 { font-size:42px; }
+  .sheet .desc, .rich.desc { font-size:21px; line-height:1.6; }
+  .sheetcard h2 { font-size:32px; }
+  .sheetcard .desc { font-size:20px; }
+  .sheethead h2 { font-size:24px; }
+  .sheethead h3 { font-size:13px; }
+  .sheethead em { font-size:14px; }
+  .jumpb { font-size:15px; padding:9px 16px 9px 9px; }
+  .jumpb .n { width:24px; height:24px; font-size:12.5px; }
+  .bigcard h4, .cardtitle h3 { font-size:20px; }
+  .cardtitle .num { width:26px; height:26px; font-size:12.5px; }
+  .bigcard p { font-size:15.5px; }
+  .bigcards { grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); }
+  .icpcard h3 { font-size:21px; }
+  .icpcard .tam b { font-size:21px; }
+  .icpcard .tam span { font-size:12px; }
+  .icpdesc { font-size:18.5px; }
+  .namein { font-size:27px; }
+  .matrix tr.group td { font-size:12.5px; }
+  .matrix tr.group td em { font-size:13.5px; }
+  .fl > button:first-child { font-size:15px; }
+  .rtebody { font-size:19px; }
+  .rte.writer .rtebody { font-size:20px; }
+  .rte.small .rtebody { font-size:18px; }
+  .writer { font-size:20px; }
+  .writer.small { font-size:18px; }
+  .lbtitle h3 { font-size:25px; }
+  .lbcap .rich { font-size:18px; }
+  .heroZoom, .thumb.clickable .zoomhint { font-size:13px; }
+  .thbtn { font-size:12px; }
+  .wsmenu button .k { font-size:12.5px; }
+  @media (max-width:860px) {
+    html, body { font-size:16px; }
+    .head h1 { font-size:26px; }
+    .titlerow h1 { font-size:30px; }
+    .sheet .desc, .rich.desc { font-size:18.5px; }
+    .sheetcard h2 { font-size:25px; }
+    .sheetcard .desc { font-size:18px; }
+    .spacecard h2 { font-size:28px; }
+    .bigcard h4, .cardtitle h3 { font-size:18.5px; }
+    .rtebody { font-size:17.5px; }
+    .rte.writer .rtebody { font-size:18px; }
+    .writer { font-size:18px; }
+    .namein { font-size:22px; }
+    .lbtitle h3 { font-size:20px; }
+  }
