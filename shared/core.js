@@ -132,6 +132,15 @@ export function normalize(state) {
   const icpIds = new Set(s.icps.map(x => x.id));
   const regimeIds = new Set(s.icps.filter(x => x.kind === "Regime").map(x => x.id));
   s.icps.forEach(x => { x.regimes = x.kind === "Regime" ? [] : x.regimes.filter(r => regimeIds.has(r)); });
+  if (typeof s.driveFolder !== "string") s.driveFolder = "";
+  if (!Array.isArray(s.log)) s.log = [];
+  s.log = s.log.filter(e => e && typeof e === "object" && e.id).map(e => ({
+    id: String(e.id), t: Number(e.t) || 0, who: String(e.who || ""), fid: String(e.fid || ""), fname: String(e.fname || ""),
+    field: String(e.field || ""), from: e.from === null || e.from === undefined ? "" : String(e.from), to: e.to === null || e.to === undefined ? "" : String(e.to),
+    why: String(e.why || "")
+  }));
+  s.log.sort((a, b) => a.t - b.t);
+  if (s.log.length > LOG_CAP) s.log = s.log.slice(s.log.length - LOG_CAP);
   if (!Array.isArray(s.features)) s.features = [];
   const ids = new Set(s.projects.map(p => p.id));
   if (!ids.has(s.current)) s.current = s.projects[0].id;
@@ -145,6 +154,8 @@ export function normalize(state) {
     if (!Array.isArray(f.spaces)) f.spaces = [];
     f.spaces = f.spaces.filter(x => typeof x === "string");
     if (f.period === undefined || f.period === "" || (f.period !== null && typeof f.period !== "string")) f.period = null;
+    f.effort = Math.max(0, Math.round(Number(f.effort) || 0));
+    if (EFFORT_UNITS.indexOf(f.effortUnit) === -1) f.effortUnit = "weeks";
     if (typeof f.note !== "string") f.note = "";
     if (typeof f.link !== "string") f.link = "";
     f.rnd = !!f.rnd;
@@ -187,12 +198,64 @@ export class ConflictError extends Error {
      reset()                     -> { version, state } with fresh seed data
    `expectedVersion` may be null/undefined to force the write. */
 
-async function mutate(store, fn) {
+/* ---- change log: compare the document before and after a save and record what moved ---- */
+const LOG_CAP = 4000;
+const LOG_COLLAPSE_MS = 2 * 60 * 1000;
+function effortText(f) { return f && f.effort ? f.effort + " " + (f.effort === 1 ? String(f.effortUnit || "weeks").slice(0, -1) : (f.effortUnit || "weeks")) : ""; }
+function trackedValues(f, byId) {
+  const parent = f.parent && byId[f.parent] ? byId[f.parent].name : "";
+  return {
+    name: f.name, state: f.state, owner: f.owner, period: f.period || "", effort: effortText(f),
+    spaces: (f.spaces || []).slice().sort().join(", "), parent, rnd: f.rnd ? "yes" : "no",
+    rndStage: f.rnd ? f.rndStage : "", student: f.student || "", link: f.link || "",
+    note: f.note || "", image: f.image ? "set" : ""
+  };
+}
+/* Keep every entry ever written (a client can never drop them), let a client fill in a reason, then add what changed now. */
+export function applyLog(prevState, nextState, who) {
+  const prevLog = Array.isArray(prevState && prevState.log) ? prevState.log : [];
+  const byIdLog = new Map();
+  prevLog.forEach(e => byIdLog.set(e.id, Object.assign({}, e)));
+  (Array.isArray(nextState.log) ? nextState.log : []).forEach(e => {
+    const have = byIdLog.get(e.id);
+    if (have) { if (e.why && e.why !== have.why) have.why = String(e.why); }
+    else byIdLog.set(e.id, Object.assign({}, e));
+  });
+  const log = Array.from(byIdLog.values()).sort((a, b) => a.t - b.t);
+  const now = Date.now();
+  const w = String(who || "").trim() || "script";
+  const prevBy = {}; (prevState && prevState.features || []).forEach(f => { prevBy[f.id] = f; });
+  const nextBy = {}; (nextState.features || []).forEach(f => { nextBy[f.id] = f; });
+  function add(f, field, from, to) {
+    const last = log.length ? log[log.length - 1] : null;
+    if (last && last.fid === f.id && last.field === field && last.who === w && now - last.t < LOG_COLLAPSE_MS && field !== "created" && field !== "deleted") {
+      if (String(last.from) === String(to)) { log.pop(); return; }
+      last.to = String(to); last.t = now; return;
+    }
+    log.push({ id: uid(), t: now, who: w, fid: f.id, fname: f.name, field, from: String(from), to: String(to), why: "" });
+  }
+  (nextState.features || []).forEach(f => {
+    const p = prevBy[f.id];
+    if (!p) { add(f, "created", "", f.name); return; }
+    const a = trackedValues(p, prevBy), b = trackedValues(f, nextBy);
+    Object.keys(b).forEach(k => {
+      if (a[k] === b[k]) return;
+      if (k === "note") add(f, k, "", "edited");
+      else if (k === "image") add(f, k, "", b[k] ? "updated" : "removed");
+      else add(f, k, a[k], b[k]);
+    });
+  });
+  Object.keys(prevBy).forEach(id => { if (!nextBy[id]) add(prevBy[id], "deleted", prevBy[id].name, ""); });
+  return log.length > LOG_CAP ? log.slice(log.length - LOG_CAP) : log;
+}
+
+async function mutate(store, fn, who) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const doc = await store.load();
     const state = normalize(JSON.parse(JSON.stringify(doc.state)));
     const out = fn(state);
     if (out && out.error) return out;
+    state.log = applyLog(doc.state, state, who);
     try {
       const saved = await store.save(state, doc.version);
       return { result: out ? out.result : null, snapshot: saved };
@@ -204,7 +267,8 @@ async function mutate(store, fn) {
 }
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
-const EDITABLE = ["name", "state", "owner", "spaces", "period", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections"];
+const EFFORT_UNITS = ["days", "weeks", "months"];
+const EDITABLE = ["name", "state", "owner", "spaces", "period", "effort", "effortUnit", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections"];
 
 /* Handle one API request. `req` = { method, path, query, body } where `path` is relative to /api
    (for example "/features/abc") and `query` is a plain object. Returns { status, body, headers }. */
@@ -228,7 +292,10 @@ export async function handleApi(req, store) {
       if (!isStateShaped(incoming)) return json(400, { error: "state must include projects and features arrays" });
       const expected = body.version === undefined || body.version === null ? null : Number(body.version);
       try {
-        return json(200, await store.save(normalize(JSON.parse(JSON.stringify(incoming))), expected));
+        const current = await store.load();
+        const next = normalize(JSON.parse(JSON.stringify(incoming)));
+        next.log = applyLog(current.state, next, body.who);
+        return json(200, await store.save(next, expected));
       } catch (e) {
         if (e instanceof ConflictError) return json(409, Object.assign({ error: e.message }, e.snapshot));
         throw e;
@@ -244,7 +311,10 @@ export async function handleApi(req, store) {
   if (path === "/import" && method === "POST") {
     const st = isStateShaped(body.state) ? body.state : body;
     if (!isStateShaped(st)) return json(400, { error: "file does not look like an export" });
-    return json(200, await store.save(normalize(JSON.parse(JSON.stringify(st))), null));
+    const current = await store.load();
+    const next = normalize(JSON.parse(JSON.stringify(st)));
+    next.log = applyLog(current.state, next, body.who || "import");
+    return json(200, await store.save(next, null));
   }
   if (path === "/reset" && method === "POST") return json(200, await store.reset());
 
@@ -299,6 +369,8 @@ export async function handleApi(req, store) {
         owner: typeof body.owner === "string" && body.owner ? body.owner : "Unassigned",
         spaces: Array.isArray(body.spaces) ? body.spaces.filter(x => typeof x === "string") : [],
         period: typeof body.period === "string" && body.period ? body.period : null,
+        effort: Math.max(0, Math.round(Number(body.effort) || 0)),
+        effortUnit: EFFORT_UNITS.indexOf(body.effortUnit) !== -1 ? body.effortUnit : "weeks",
         note: String(body.note || ""), link: String(body.link || ""), rnd: !!body.rnd,
         rndStage: RND_STAGES.indexOf(body.rndStage) !== -1 ? body.rndStage : "Backlog",
         student: String(body.student || ""), rndQuestion: String(body.rndQuestion || ""), rndFindings: String(body.rndFindings || ""),

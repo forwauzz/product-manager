@@ -3,7 +3,7 @@
 
   var STATES = ["Research", "Planned", "Building", "Live", "Needs work", "Feature flag"];
   var RND_STAGES = ["Backlog", "Assigned", "In progress", "Findings", "Concluded"];
-  var ICONS = { roadmap: "▤", features: "◫", parallel: "⋔", timeline: "▦", rnd: "⚗", icp: "◎", space: "◆" };
+  var ICONS = { roadmap: "▤", features: "◫", parallel: "⋔", timeline: "▦", rnd: "⚗", icp: "◎", space: "◆", changes: "◷" };
 
   /* ---------- helpers ---------- */
 
@@ -45,7 +45,7 @@
   var VERSION = 0;
   var ui = { view: "roadmap", space: null, feature: null, grain: "month", group: "state", rmode: "quarters", preview: null,
              spaceFilter: null, ownerFilter: "", studentFilter: "", rgroup: "stage", query: "", menu: null,
-             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix", itab: "buyers", icpOpen: null, fview: "grouped", fmode: "cards", smode: "browse", spaceSel: null };
+             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix", itab: "buyers", icpOpen: null, fview: "grouped", fmode: "cards", smode: "dir", spaceSel: null };
   var timer = null, dirty = false, saving = false, conflicts = 0, tombstones = {}, SESSION = { authed: true, required: false };
 
   function setSaveState(text, isErr) {
@@ -54,6 +54,7 @@
     e.className = "savestate" + (isErr ? " err" : "");
   }
 
+  var ME = "Uzziel";
   function save() {
     dirty = true;
     setSaveState("Unsaved");
@@ -66,7 +67,7 @@
     setSaveState("Saving…");
     return fetch("/api/state", {
       method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ version: VERSION, state: S })
+      body: JSON.stringify({ version: VERSION, state: S, who: ME })
     }).then(function (r) {
       if (r.status === 401) { location.href = "/login.html"; return; }
       return r.json().then(function (body) {
@@ -81,6 +82,7 @@
         }
         if (!r.ok) throw new Error(body.error || "Save failed");
         VERSION = body.version; conflicts = 0;
+        if (body.state && Array.isArray(body.state.log)) { S.log = body.state.log; if (document.querySelector(".loglist")) render(); }
         setSaveState(dirty ? "Unsaved" : "Saved");
       });
     }).catch(function (e) {
@@ -126,6 +128,15 @@
     });
     out.features = out.features.filter(function (f) { return out.projects.some(function (p) { return p.id === f.project; }); });
     out.current = out.projects.some(function (p) { return p.id === mine.current; }) ? mine.current : out.projects[0].id;
+    var byLog = {};
+    out.log = (out.log || []).filter(Boolean);
+    out.log.forEach(function (e) { byLog[e.id] = e; });
+    (mine.log || []).forEach(function (e) {
+      if (!e) return;
+      var t2 = byLog[e.id];
+      if (!t2) { out.log.push(e); byLog[e.id] = e; }
+      else if (e.why && e.why !== t2.why) t2.why = e.why; // a reason typed here beats an older copy from the server
+    });
     return out;
   }
 
@@ -239,6 +250,35 @@
     if (ui.grain === "week") return wShort(k);
     if (ui.grain === "quarter") return qLabel(k);
     return mShort(k);
+  }
+  var EFFORT_UNITS = ["days", "weeks", "months"];
+  function effortDays(f) {
+    var n = Number(f.effort) || 0;
+    if (!n) return 0;
+    return n * (f.effortUnit === "days" ? 1 : f.effortUnit === "months" ? 30 : 7);
+  }
+  function effortLabel(f, long) {
+    var n = Number(f.effort) || 0;
+    if (!n) return "";
+    var u = f.effortUnit || "weeks";
+    if (long) return n + " " + (n === 1 ? u.slice(0, -1) : u);
+    return n + " " + (u === "days" ? "d" : u === "months" ? "mo" : "wk");
+  }
+  /* number + unit, saved as you go */
+  function effortControl(f, after) {
+    var w = el("div", "effortctl");
+    var n = el("input");
+    n.type = "number"; n.min = "0"; n.step = "1"; n.placeholder = "0";
+    n.value = f.effort ? String(f.effort) : "";
+    n.setAttribute("aria-label", "How long " + f.name + " takes");
+    n.onchange = function () { f.effort = Math.max(0, Math.round(Number(n.value) || 0)); touch(f); save(); if (after) after(); };
+    var u = selectOf(EFFORT_UNITS.map(function (x) { return [x, x]; }), f.effortUnit || "weeks", function (v) { f.effortUnit = v; touch(f); save(); if (after) after(); }, "Unit");
+    w.appendChild(n); w.appendChild(u);
+    return w;
+  }
+  function unschedule(f) {
+    f.period = null; touch(f); render(); save();
+    toast(f.name + " removed from the roadmap. The feature itself stays.");
   }
   function periodShort(f) {
     if (!f.period) return "";
@@ -439,7 +479,7 @@
     if (m[0] === "feature" && m[1] && feature(m[1])) { ui.feature = m[1]; S.current = feature(m[1]).project; return; }
     if (m[0] === "icp" && m[1] && S.icps.some(function (x) { return x.id === m[1]; })) { ui.view = "icp"; ui.icpOpen = m[1]; return; }
     if (m[0] === "space" && m[1]) { var sp = decodeURIComponent(m[1]); if (S.spaces.indexOf(sp) !== -1) { ui.view = "space"; ui.space = sp; if (m[2] && feature(m[2])) ui.spaceSel = m[2]; } return; }
-    if (["roadmap", "features", "parallel", "timeline", "rnd", "icp"].indexOf(m[0]) !== -1) ui.view = m[0];
+    if (["roadmap", "features", "parallel", "timeline", "rnd", "icp", "changes"].indexOf(m[0]) !== -1) ui.view = m[0];
   }
 
   /* ---------- nav ---------- */
@@ -543,7 +583,8 @@
      ["parallel", "Parallel view", ICONS.parallel, null],
      ["timeline", "Timeline", ICONS.timeline, null],
      ["rnd", "Research & Development", ICONS.rnd, rndFeats().length],
-     ["icp", "Market / ICP", ICONS.icp, S.icps.length]].forEach(function (it) {
+     ["icp", "Market / ICP", ICONS.icp, S.icps.length],
+     ["changes", "What changed", ICONS.changes, (S.log || []).filter(function (e) { return e.t > Date.now() - 7 * 86400000; }).length || null]].forEach(function (it) {
       var b = el("button", "navitem" + (it[0] === "rnd" ? " rnd" : ""));
       b.setAttribute("aria-current", String(ui.view === it[0] && !ui.feature));
       b.dataset.view = it[0];
@@ -778,6 +819,7 @@
     if (ui.query.trim()) return renderSearch(host);
     if (ui.feature) { var f = feature(ui.feature); if (f) return renderFeature(host, f); ui.feature = null; }
     if (ui.view === "roadmap") return renderRoadmap(host);
+    if (ui.view === "changes") return renderChanges(host);
     if (ui.view === "features") return renderFeatures(host);
     if (ui.view === "parallel") return renderParallel(host);
     if (ui.view === "timeline") return renderTimeline(host);
@@ -1028,11 +1070,20 @@
       months.forEach(function (k) { var o = el("option", null, mLong(k)); o.value = k; sel.appendChild(o); });
       sel.onchange = function () { when = sel.value; };
       row.appendChild(inp); row.appendChild(sel);
+      var est = { n: 0, u: "weeks" };
+      var ec = el("div", "effortctl");
+      var en = el("input"); en.type = "number"; en.min = "0"; en.step = "1"; en.placeholder = "Takes";
+      en.setAttribute("aria-label", "Estimated duration");
+      en.onchange = function () { est.n = Math.max(0, Math.round(Number(en.value) || 0)); };
+      var eu = selectOf(EFFORT_UNITS.map(function (x) { return [x, x]; }), "weeks", function (v) { est.u = v; }, "Unit");
+      ec.appendChild(en); ec.appendChild(eu);
+      row.appendChild(ec);
       box.appendChild(row);
       var list = el("div", "picklist");
       box.appendChild(list);
       function pick(f) {
         f.period = when; touch(f);
+        if (est.n) { f.effort = est.n; f.effortUnit = est.u; }
         if (ui.spaceFilter && (f.spaces || []).indexOf(ui.spaceFilter) === -1) f.spaces = (f.spaces || []).concat([ui.spaceFilter]);
         close(f); render(); save();
         toast(f.name + " scheduled for " + mLong(when) + ".");
@@ -1198,9 +1249,14 @@
       }
       items.forEach(function (f, idx) {
         var pos = M.posOf(f), span = M.span;
+        var days = effortDays(f);
+        var slotDays = mode === "months" ? 7 : 30;
+        var est = days > 0;
+        span = est ? Math.max(1, Math.round(days / slotDays)) : 2;
         if (pos === -1) { pos = total; span = 1; }
         if (pos + span > total && pos < total) span = total - pos;
-        var pill = el("button", "qpill " + stateClass(f.state));
+        var shortPill = span <= 2;
+        var pill = el("button", "qpill " + stateClass(f.state) + (est ? "" : " noest") + (shortPill ? " short" : ""));
         pill.style.gridColumn = (pos + 1) + " / span " + span;
         pill.style.gridRow = String(idx + 1);
         pill.draggable = true;
@@ -1211,8 +1267,15 @@
         if (par) nmEl.appendChild(el("span", "pp", par.name + " › "));
         nmEl.appendChild(document.createTextNode(f.name));
         pill.appendChild(nmEl);
-        var tag = M.pillTag(f);
+        var tag = [M.pillTag(f), effortLabel(f)].filter(Boolean).join(" · ");
         if (tag) pill.appendChild(el("span", "mo", tag));
+        if (!est) pill.title += " · no estimate yet";
+        var x = el("span", "x", "×");
+        x.setAttribute("role", "button");
+        x.setAttribute("aria-label", "Remove " + f.name + " from the roadmap");
+        x.title = "Remove from roadmap";
+        x.onclick = function (e) { e.stopPropagation(); unschedule(f); };
+        pill.appendChild(x);
         wireDrag(pill, f, null);
         pill.onclick = function () { preview(f.id); };
         lanes.appendChild(pill);
@@ -1226,7 +1289,7 @@
     var lg = el("div", "legend");
     STATES.forEach(function (st) { var s = el("span", "lg " + stateClass(st)); s.appendChild(el("i")); s.appendChild(document.createTextNode(st)); lg.appendChild(s); });
     foot.appendChild(lg);
-    foot.appendChild(el("span", "note", (mode === "months" ? "Each month is split into weeks. " : "") + "Drag a pill to move it. Click it for details." + (shipped ? " " + shipped + " live features without a date are not shown." : "")));
+    foot.appendChild(el("span", "note", (mode === "months" ? "Each month is split into weeks. " : "") + "Pill length is the estimate; dashed pills have none yet. Drag to move, × to take off the roadmap, click for details." + (shipped ? " " + shipped + " live features without a date are not shown." : "")));
     pad.appendChild(foot);
 
     if (pending.length) {
@@ -1398,6 +1461,7 @@
       ["When", selectOf([["none", "No date yet"]].concat(keys().map(function (k) { return [k, laneLabel(k)]; })).concat([["later", "Later"]]),
         f.period ? laneOfPeriod(f, keys()) : "none",
         function (v) { f.period = periodFor(v); touch(f); render(); save(); preview(f.id); }, "When")],
+      ["Takes", effortControl(f, function () { render(); preview(f.id); })],
       ["R&D", selectOf([["no", "Not in R&D"], ["yes", "In R&D"]], f.rnd ? "yes" : "no",
         function (v) { setRnd(f, v === "yes"); render(); save(); preview(f.id); toast(f.rnd ? f.name + " pushed to R&D." : f.name + " removed from R&D."); }, "R&D")]
     ];
@@ -1418,6 +1482,11 @@
     var full = el("button", "btn", "Open full page");
     full.onclick = function () { closePreview(); open(f.id); };
     acts.appendChild(full);
+    if (f.period) {
+      var unsch = el("button", "btn ghost", "Remove from roadmap");
+      unsch.onclick = function () { closePreview(); unschedule(f); };
+      acts.appendChild(unsch);
+    }
     var del = el("button", "btn ghost", "Delete");
     del.onclick = function () { closePreview(); deleteFeature(f); };
     acts.appendChild(del);
@@ -1637,6 +1706,7 @@
     var p = project();
     if (ui.fmode === "all") return renderAllFeatures(host);
     if (ui.fmode === "upcoming") return renderUpcoming(host);
+    return renderFeaturesHome(host);
     host.appendChild(header("FEATURES", p.name + " features", [newBtn("NEW FEATURE", function () { create(); })]));
     var pad = el("div", "pad");
     var sbox = el("div", "fsearch");
@@ -1713,6 +1783,304 @@
     addSp.onclick = newSpace;
     foot.appendChild(addSp);
     pad.appendChild(foot);
+    host.appendChild(pad);
+  }
+
+  /* --- change log: every edit is recorded by the server; here we show it --- */
+  var LOG_FIELDS = { created: "Created", deleted: "Deleted", name: "Name", state: "State", owner: "Owner", period: "Date", effort: "Estimate",
+    spaces: "Spaces", parent: "Parent", rnd: "R&D", rndStage: "R&D stage", student: "Student", link: "Drive link", note: "Description", image: "Screenshot" };
+  function logEntries() { return (S.log || []).slice().sort(function (a, b) { return (b.t || 0) - (a.t || 0); }); }
+  function logVal(field, v) {
+    if (v === null || v === undefined || v === "") return "none";
+    if (field === "period") { var d = toDate(String(v)); return String(v).length > 7 ? d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : mLong(String(v)); }
+    return String(v);
+  }
+  function logLine(e) {
+    var lab = LOG_FIELDS[e.field] || e.field;
+    if (e.field === "created") return "Created";
+    if (e.field === "deleted") return "Deleted";
+    if (e.field === "note" || e.field === "image") return lab + " " + (e.to || "edited");
+    return lab + ": " + logVal(e.field, e.from) + " → " + logVal(e.field, e.to);
+  }
+  function logWhen(t) {
+    var d = new Date(t || 0);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }
+  function logDay(t) { var d = new Date(t || 0); return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" }); }
+  function setWhy(e) {
+    askText("Why did this change?", { value: e.why || "", placeholder: "For example: David needs two more weeks, the external page took longer.", ok: "Save reason" })
+      .then(function (v) { if (v === null) return; e.why = v; save(); render(); });
+  }
+  function logRow(e, showFeature) {
+    var r = el("div", "logrow");
+    var top = el("div", "logtop");
+    top.appendChild(el("span", "when", logWhen(e.t)));
+    if (e.who) top.appendChild(el("span", "who", e.who));
+    r.appendChild(top);
+    var body = el("div", "logbody");
+    if (showFeature) {
+      var f = feature(e.fid);
+      var nm = el("button", "fname", e.fname || "Feature");
+      if (f) nm.onclick = function () { open(f.id); }; else nm.disabled = true;
+      body.appendChild(nm);
+    }
+    body.appendChild(el("span", "chg", logLine(e)));
+    r.appendChild(body);
+    var why = el("button", "why" + (e.why ? "" : " empty"), e.why ? "Why: " + e.why : "+ Add a reason");
+    why.onclick = function () { setWhy(e); };
+    r.appendChild(why);
+    return r;
+  }
+  function historyPanel(f) {
+    var p = el("div", "panel");
+    p.style.marginTop = "18px";
+    p.appendChild(el("h3", null, "History"));
+    var list = logEntries().filter(function (e) { return e.fid === f.id; });
+    if (!list.length) { p.appendChild(el("div", "note", "No changes recorded yet. From now on every edit lands here.")); return p; }
+    var wrap = el("div", "loglist");
+    list.slice(0, 12).forEach(function (e) { wrap.appendChild(logRow(e, false)); });
+    p.appendChild(wrap);
+    if (list.length > 12) {
+      var moreB = el("button", "btn ghost rowbtn", "All " + list.length + " changes");
+      moreB.onclick = function () { ui.view = "changes"; ui.feature = null; ui.logFeature = f.id; render(); };
+      p.appendChild(moreB);
+    }
+    return p;
+  }
+
+  function renderChanges(host) {
+    var p = project();
+    host.appendChild(header("WHAT CHANGED", p.name + " · change log", []));
+    var bar = el("div", "bar");
+    var all = logEntries().filter(function (e) { var f = feature(e.fid); return !f || f.project === S.current; });
+    var people = [];
+    all.forEach(function (e) { if (e.who && people.indexOf(e.who) === -1) people.push(e.who); });
+    var whoSel = selectOf([["", "Anyone"]].concat(people.map(function (x) { return [x, x]; })), ui.logWho || "", function (v) { ui.logWho = v; renderView(); }, "Who");
+    whoSel.classList.add("selbox"); bar.appendChild(whoSel);
+    var fieldSel = selectOf([["", "Any field"]].concat(Object.keys(LOG_FIELDS).map(function (k) { return [k, LOG_FIELDS[k]]; })), ui.logField || "", function (v) { ui.logField = v; renderView(); }, "Field");
+    fieldSel.classList.add("selbox"); bar.appendChild(fieldSel);
+    if (ui.logFeature) {
+      var ff = feature(ui.logFeature);
+      var chip = el("button", "chip", (ff ? ff.name : "Feature") + "  ×");
+      chip.setAttribute("aria-pressed", "true");
+      chip.onclick = function () { ui.logFeature = null; renderView(); };
+      bar.appendChild(chip);
+    }
+    host.appendChild(bar);
+    var pad = el("div", "pad");
+    var list = all.filter(function (e) {
+      if (ui.logWho && e.who !== ui.logWho) return false;
+      if (ui.logField && e.field !== ui.logField) return false;
+      if (ui.logFeature && e.fid !== ui.logFeature) return false;
+      return true;
+    });
+    if (!list.length) { pad.appendChild(el("div", "empty", "Nothing recorded yet. Every change to a feature will show up here, with who made it and when.")); host.appendChild(pad); return; }
+    var days = {}, order = [];
+    list.forEach(function (e) { var k = logDay(e.t); if (!days[k]) { days[k] = []; order.push(k); } days[k].push(e); });
+    order.forEach(function (k) {
+      pad.appendChild(sectionTitle(k + " · " + days[k].length));
+      var wrap = el("div", "loglist wide");
+      days[k].forEach(function (e) { wrap.appendChild(logRow(e, true)); });
+      pad.appendChild(wrap);
+    });
+    host.appendChild(pad);
+  }
+
+  /* --- directory style: square icon, name, one-line description, like a plugin marketplace --- */
+  var SEARCH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+  function dirIcon(f, cls) {
+    var d = el("div", "diricon" + (cls ? " " + cls : ""));
+    if (f.image) {
+      var img = document.createElement("img");
+      img.src = f.image; img.alt = ""; img.loading = "lazy";
+      img.onerror = function () { img.remove(); d.innerHTML = dirSvg(f); };
+      d.appendChild(img);
+      return d;
+    }
+    d.innerHTML = dirSvg(f);
+    return d;
+  }
+  function dirSvg(f) {
+    return '<svg viewBox="0 0 160 104" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (THUMB_SVG[thumbKind(f)] || THUMB_SVG.spark) + "</svg>";
+  }
+  function dirSearch(value, placeholder, onInput) {
+    var w = el("div", "dirsearch");
+    w.innerHTML = SEARCH_SVG;
+    var inp = el("input");
+    inp.type = "search";
+    inp.placeholder = placeholder;
+    inp.value = value || "";
+    inp.setAttribute("aria-label", placeholder);
+    inp.oninput = function () { onInput(inp.value); };
+    w.appendChild(inp);
+    return w;
+  }
+  function refocusDirSearch() {
+    var again = document.querySelector(".dirsearch input");
+    if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+  }
+  /* one row: icon, name with state dot, description, chevron; sub-features as a "See …" line */
+  function dirRow(f, onOpen, showSubs) {
+    var r = el("button", "dirrow");
+    r.appendChild(dirIcon(f));
+    var t = el("div", "t");
+    var b = el("b");
+    b.appendChild(document.createTextNode(f.name));
+    var sd = el("i", "sd " + stateClass(f.state));
+    sd.title = f.state;
+    b.appendChild(sd);
+    t.appendChild(b);
+    t.appendChild(el("span", "d", plain(f.note) || "No description yet."));
+    if (showSubs) {
+      var kids = subsOf(f);
+      if (kids.length) {
+        var more = el("div", "dirmore");
+        var stack = el("div", "stack");
+        kids.slice(0, 3).forEach(function (k) { var m = el("div", "diricon mini"); m.innerHTML = dirSvg(k); stack.appendChild(m); });
+        more.appendChild(stack);
+        var names = kids.slice(0, 3).map(function (k) { return k.name; });
+        var rest = kids.length - names.length;
+        more.appendChild(el("span", null, "See " + names.join(", ") + (rest > 0 ? " and " + rest + " more" : "")));
+        t.appendChild(more);
+      }
+    }
+    r.appendChild(t);
+    r.appendChild(el("span", "act", "›"));
+    r.title = f.name + " · " + f.state + (f.owner && f.owner !== "Unassigned" ? " · " + f.owner : "");
+    r.onclick = function () { onOpen(f); };
+    return r;
+  }
+  function dirSection(title, count, rows) {
+    var sec = el("div", "dirsec");
+    var h = el("h2", null, title);
+    if (count !== undefined) h.appendChild(el("em", null, String(count)));
+    sec.appendChild(h);
+    var grid = el("div", "dirgrid");
+    rows.forEach(function (r) { grid.appendChild(r); });
+    sec.appendChild(grid);
+    return sec;
+  }
+
+  /* space page as a directory: search, then one section per division */
+  function renderSpaceDirectory(host, sp) {
+    var pad = el("div", "pad");
+    var dir = el("div", "dir");
+    var q = (ui.subq || "").trim().toLowerCase();
+    function hit(f) { return !q || (f.name + " " + plain(f.note)).toLowerCase().indexOf(q) !== -1; }
+    dir.appendChild(dirSearch(ui.subq, "Search " + sp + " features", function (v) { ui.subq = v; renderView(); refocusDirSearch(); }));
+    var mains = mainsIn(sp).sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var shown = mains.filter(function (m) { return hit(m) || subsOf(m).some(hit); });
+    var order = sectionsFor(sp).slice();
+    var groups = {};
+    shown.forEach(function (m) {
+      var sec = sectionOf(m, sp);
+      if (order.indexOf(sec) === -1) sec = "";
+      (groups[sec] = groups[sec] || []).push(m);
+    });
+    var keys2 = order.filter(function (k) { return groups[k]; });
+    if (groups[""]) keys2.push("");
+    if (!mains.length) dir.appendChild(el("div", "empty", "Nothing here yet. Create a feature, or drag one onto " + sp + " in the left nav."));
+    else if (!shown.length) dir.appendChild(el("div", "empty", "No match in " + sp + "."));
+    keys2.forEach(function (sec) {
+      var items = groups[sec];
+      var n = items.reduce(function (a, m) { return a + 1 + subsOf(m).length; }, 0);
+      dir.appendChild(dirSection(sec || "Other", n, items.map(function (m) {
+        return dirRow(m, function (f) { ui.spaceSel = f.id; ui.smode = "browse"; ui.subq = ""; renderView(); }, true);
+      })));
+    });
+    pad.appendChild(dir);
+    host.appendChild(pad);
+  }
+
+  /* features home: search, category tiles, recently updated */
+  function renderFeaturesHome(host) {
+    var p = project();
+    host.appendChild(header("FEATURES", p.name + " features", [newBtn("NEW FEATURE", function () { create(); })]));
+    var pad = el("div", "pad");
+    var dir = el("div", "dir");
+    dir.appendChild(dirSearch("", "Search a feature by name or description…", function (v) {
+      ui.query = v; document.getElementById("find").value = v; renderView();
+    }));
+
+    var sec = el("div", "dirsec");
+    sec.appendChild(el("h2", null, "Browse by space"));
+    var tiles = el("div", "cattiles");
+    S.spaces.forEach(function (sp) {
+      var mains = mainsIn(sp);
+      var subs = 0;
+      mains.forEach(function (m) { subs += subsOf(m).length; });
+      var live = inSpace(sp).filter(function (f) { return f.state === "Live"; }).length;
+      var t = el("button", "cattile");
+      t.appendChild(avatarEl(spaceIcon(sp), "lg"));
+      var tx = el("div", "tx");
+      tx.appendChild(el("b", null, sp));
+      tx.appendChild(el("span", null, spaceBlurb(sp) || (mains.length + " main features")));
+      t.appendChild(tx);
+      var n = el("div", "n");
+      n.appendChild(el("b", null, String(mains.length)));
+      n.appendChild(el("span", null, subs ? subs + " sub · " + live + " live" : live + " live"));
+      t.appendChild(n);
+      t.onclick = function () { ui.view = "space"; ui.space = sp; ui.spaceSel = null; ui.smode = "dir"; ui.subq = ""; render(); };
+      t.addEventListener("dragover", function (e) { e.preventDefault(); t.classList.add("dragover"); });
+      t.addEventListener("dragleave", function () { t.classList.remove("dragover"); });
+      t.addEventListener("drop", function (e) {
+        e.preventDefault(); t.classList.remove("dragover");
+        var f = feature(e.dataTransfer.getData("text/plain"));
+        if (!f) return;
+        f.spaces = f.spaces || [];
+        if (f.spaces.indexOf(sp) === -1) f.spaces.push(sp);
+        touch(f); render(); save();
+      });
+      tiles.appendChild(t);
+    });
+    (function () {
+      var up = upcoming();
+      var t = el("button", "cattile upcoming");
+      t.appendChild(avatarEl("upcoming", "lg"));
+      var tx = el("div", "tx");
+      tx.appendChild(el("b", null, "Upcoming"));
+      tx.appendChild(el("span", null, "Building, planned or researched, across all spaces."));
+      t.appendChild(tx);
+      var n = el("div", "n");
+      n.appendChild(el("b", null, String(up.length)));
+      var dated = up.filter(function (f) { return f.period; }).length;
+      n.appendChild(el("span", null, dated ? dated + " on the roadmap" : "features"));
+      t.appendChild(n);
+      t.onclick = function () { ui.fmode = "upcoming"; renderView(); };
+      tiles.appendChild(t);
+    })();
+    sec.appendChild(tiles);
+    dir.appendChild(sec);
+
+    var recent = feats().slice().sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); }).slice(0, 8);
+    if (recent.length) {
+      dir.appendChild(dirSection("Recently updated", undefined, recent.map(function (f) {
+        return dirRow(f, function (x) { open(x.id); }, false);
+      })));
+    }
+    var building = feats().filter(function (f) { return f.state === "Building"; }).sort(function (a, b) { return a.name.localeCompare(b.name); }).slice(0, 8);
+    if (building.length) {
+      dir.appendChild(dirSection("Being built now", undefined, building.map(function (f) {
+        return dirRow(f, function (x) { open(x.id); }, false);
+      })));
+    }
+
+    var foot = el("div", "spacefoot");
+    var all = el("button", "chip", "Browse all " + feats().length + " features as a list");
+    all.onclick = function () { ui.fmode = "all"; renderView(); };
+    foot.appendChild(all);
+    var addSp = el("button", "chip", "+ New space");
+    addSp.onclick = newSpace;
+    foot.appendChild(addSp);
+    var dr = el("button", "chip", S.driveFolder ? "Product folder in Drive ↗" : "Set the Drive folder");
+    dr.onclick = function () {
+      if (S.driveFolder) { window.open(S.driveFolder, "_blank", "noopener"); return; }
+      askText("Drive folder for product files", { placeholder: "https://drive.google.com/drive/folders/…", ok: "Save" }).then(function (v) { if (v) { S.driveFolder = v; save(); render(); } });
+    };
+    dr.oncontextmenu = function (e) { e.preventDefault(); askText("Drive folder for product files", { value: S.driveFolder, ok: "Save" }).then(function (v) { if (v !== null) { S.driveFolder = v; save(); render(); } }); };
+    foot.appendChild(dr);
+    dir.appendChild(foot);
+    pad.appendChild(dir);
     host.appendChild(pad);
   }
 
@@ -1830,7 +2198,6 @@
   function renderSpace(host, sp) {
     var acts = [newBtn("NEW FEATURE", function () { create([sp]); })];
     acts.push(menu("More", [
-      [ui.smode === "board" ? "Browse view" : "Board view", function () { ui.smode = ui.smode === "board" ? "browse" : "board"; renderView(); }],
       ["Divisions of this space", function () { manageSections(sp); }],
       "-",
       ["Rename space", function () {
@@ -1863,6 +2230,18 @@
     back.onclick = function () { ui.view = "features"; ui.space = null; ui.fmode = "cards"; render(); };
     host.appendChild(header(sp.toUpperCase() + " SPACE", sp + " features", [back].concat(acts)));
 
+    var modeBar = el("div", "bar modebar");
+    var mseg = el("div", "seg");
+    [["Directory", "dir"], ["Browse", "browse"], ["Board", "board"]].forEach(function (m) {
+      var b = el("button", null, m[0]);
+      b.setAttribute("aria-pressed", String(ui.smode === m[1]));
+      b.onclick = function () { ui.smode = m[1]; renderView(); };
+      mseg.appendChild(b);
+    });
+    modeBar.appendChild(mseg);
+    host.appendChild(modeBar);
+
+    if (ui.smode === "dir") return renderSpaceDirectory(host, sp);
     if (ui.smode === "board") {
       var bar = el("div", "bar");
       var seg = el("div", "seg");
@@ -2116,6 +2495,7 @@
     meta.appendChild(statePill(f));
     if (f.owner && f.owner !== "Unassigned") meta.appendChild(pill(f.owner));
     if (f.period) meta.appendChild(pill(laneLabel(laneOfPeriod(f, keys()))));
+    if (f.effort) meta.appendChild(pill("Takes " + effortLabel(f, true)));
     if (f.rnd) meta.appendChild(pill("R&D · " + f.rndStage, "rnd"));
     icpsOf(f).forEach(function (i) { meta.appendChild(pill(i.name, "icp")); });
     head.appendChild(meta);
@@ -3672,7 +4052,8 @@
      }, "Owner")],
      ["When", selectOf([["none", "No date yet"]].concat(keys().map(function (k) { return [k, laneLabel(k)]; })).concat([["later", "Later"]]),
         f.period ? laneOfPeriod(f, keys()) : "none",
-        function (v) { f.period = periodFor(v); touch(f); render(); save(); }, "When")]
+        function (v) { f.period = periodFor(v); touch(f); render(); save(); }, "When")],
+     ["Takes", effortControl(f, function () { render(); })]
     ].forEach(function (pair) {
       var row = el("div", "field");
       row.appendChild(el("label", null, pair[0]));
@@ -3782,6 +4163,7 @@
       ps.appendChild(el("div", "note", "Sub-features sit in their parent's division."));
     }
     right.appendChild(ps);
+    right.appendChild(historyPanel(f));
 
     var pi = el("div", "panel");
     pi.style.marginTop = "18px";
@@ -3914,7 +4296,7 @@
 
   function create(spaces, extra, silent) {
     var f = { id: uid(), project: S.current, name: "New feature", state: "Planned", owner: "Unassigned",
-              spaces: spaces || [], period: null, note: "", link: "", rnd: false, rndStage: "Backlog",
+              spaces: spaces || [], period: null, effort: 0, effortUnit: "weeks", note: "", link: "", rnd: false, rndStage: "Backlog",
               student: "", rndQuestion: "", rndFindings: "", parent: null, thumb: "", image: "", sections: {}, created: Date.now(), updated: Date.now() };
     if (extra) Object.keys(extra).forEach(function (k) { f[k] = extra[k]; });
     S.features.push(f);

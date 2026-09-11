@@ -177,3 +177,33 @@ test("unknown API routes return JSON 404, bad JSON returns 400", async () => {
   const bad = await fetch(base + "/api/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: "{not json" });
   assert.equal(bad.status, 400);
 });
+
+test("every save is recorded in the change log and entries survive later saves", async () => {
+  const st = await api("GET", "/api/state");
+  const s = st.body.state;
+  const f = s.features[0];
+  f.state = "Building"; f.effort = 2; f.effortUnit = "weeks";
+  const put = await api("PUT", "/api/state", { version: st.body.version, state: s, who: "Uzziel" });
+  assert.equal(put.status, 200);
+  const log = put.body.state.log;
+  const mine = log.filter(e => e.fid === f.id);
+  assert.ok(mine.some(e => e.field === "state" && e.to === "Building" && e.who === "Uzziel"), "state change recorded");
+  assert.ok(mine.some(e => e.field === "effort" && e.to === "2 weeks"), "estimate recorded");
+
+  // a client that never saw the log cannot erase it, and it can add a reason to an entry
+  const again = await api("GET", "/api/state");
+  const s2 = again.body.state;
+  const entry = s2.log.find(e => e.field === "effort" && e.fid === f.id);
+  entry.why = "David asked for two weeks";
+  const put2 = await api("PUT", "/api/state", { version: again.body.version, state: Object.assign({}, s2, { log: [entry] }), who: "Uzziel" });
+  assert.equal(put2.status, 200);
+  const kept = put2.body.state.log;
+  assert.ok(kept.some(e => e.field === "state" && e.fid === f.id), "earlier entries kept");
+  assert.equal(kept.find(e => e.id === entry.id).why, "David asked for two weeks");
+
+  // granular edits are logged too
+  const patch = await api("PATCH", "/api/features/" + f.id, { owner: "David", who: "script" });
+  assert.equal(patch.status, 200);
+  const after = await api("GET", "/api/state");
+  assert.ok(after.body.state.log.some(e => e.fid === f.id && e.field === "owner" && e.to === "David"), "PATCH recorded");
+});
