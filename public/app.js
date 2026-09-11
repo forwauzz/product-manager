@@ -1996,7 +1996,7 @@
   function newPilot() {
     askText("New pilot", { placeholder: "Firm, clinic or insurer", ok: "Create" }).then(function (n) {
       if (!n) return;
-      var p = { id: uid(), name: n, status: "Prospect", contact: "", icp: "", since: mKey(new Date()), notes: "", link: "", wants: [], needs: [], deliverables: [], requests: [], created: Date.now(), updated: Date.now() };
+      var p = { id: uid(), name: n, status: "Prospect", contact: "", icp: "", since: mKey(new Date()), notes: "", link: "", wants: [], needs: [], deliverables: [], requests: [], stack: [], created: Date.now(), updated: Date.now() };
       S.pilots = pilots().concat([p]);
       ui.pilot = p.id; ui.view = "pilots"; render(); save();
     });
@@ -2138,6 +2138,7 @@
     host.appendChild(pilotTabs(p));
     if (ui.pilotTab === "deliverables") return renderPilotDeliverables(host, p);
     if (ui.pilotTab === "requests") return renderPilotRequests(host, p);
+    if (ui.pilotTab === "stack") return renderPilotStack(host, p);
     var pad = el("div", "pad");
     var grid = el("div", "grid2 pilotgrid");
     var left = el("div"), right = el("div");
@@ -2278,7 +2279,7 @@
   function pilotTabs(p) {
     var bar = el("div", "bar modebar");
     var seg = el("div", "seg");
-    [["Overview", "overview"], ["Requests" + ((p.requests || []).length ? " · " + p.requests.length : ""), "requests"], ["Deliverables" + ((p.deliverables || []).length ? " · " + p.deliverables.length : ""), "deliverables"]].forEach(function (m) {
+    [["Overview", "overview"], ["Requests" + ((p.requests || []).length ? " · " + p.requests.length : ""), "requests"], ["Deliverables" + ((p.deliverables || []).length ? " · " + p.deliverables.length : ""), "deliverables"], ["Software & partners" + ((p.stack || []).length ? " · " + p.stack.length : ""), "stack"]].forEach(function (m) {
       var b = el("button", null, m[0]);
       b.setAttribute("aria-pressed", String((ui.pilotTab || "overview") === m[1]));
       b.onclick = function () { ui.pilotTab = m[1]; renderView(); };
@@ -2576,6 +2577,86 @@
     });
     sec.appendChild(rows);
     return sec;
+  }
+
+  /* --- software and partners: what the pilot uses today and who they work with --- */
+  var STACK_KINDS = ["Software", "Partner"];
+  var STACK_CATS = ["Case or practice management", "Document management", "Email and calendar", "Accounting and billing", "Dictation and transcription", "Scanning and OCR", "Legal research", "Medical records", "Client portal or e-signature", "Marketing firm", "IT firm", "Accounting firm", "Legal or compliance", "Other"];
+  function renderPilotStack(host, p) {
+    var pad = el("div", "pad");
+    var dir = el("div", "dir");
+    var list = p.stack || [];
+    var sw = list.filter(function (x) { return x.kind === "Software"; }).length, pt = list.length - sw;
+    var intro = el("div", "dsum");
+    intro.appendChild(el("b", null, list.length ? sw + (sw === 1 ? " software" : " softwares") + " · " + pt + (pt === 1 ? " partner" : " partners") : "Nothing documented yet"));
+    intro.appendChild(el("span", "note", "What they use today and who they work with: case management, email, accounting, dictation, and the marketing, IT or accounting firms around them. How they use each one is the part worth writing."));
+    dir.appendChild(intro);
+
+    function section(kind, title, hint) {
+      var items = list.filter(function (x) { return x.kind === kind; });
+      var sec = el("div", "dirsec");
+      var h = el("h2", null, title);
+      h.appendChild(el("em", null, String(items.length)));
+      sec.appendChild(h);
+      sec.appendChild(el("div", "note", hint));
+      var grid = el("div", "stackgrid");
+      if (!items.length) grid.appendChild(el("div", "note empty2", "None yet."));
+      items.forEach(function (x) {
+        var card = el("div", "stackcard");
+        var head = el("div", "dhead");
+        var title = el("input", "dtitle");
+        title.value = x.name; title.placeholder = kind === "Software" ? "Product name" : "Firm name";
+        title.setAttribute("aria-label", "Name");
+        title.onchange = function () { x.name = title.value.trim() || "Untitled"; x.updated = Date.now(); touchPilot(p); save(); };
+        head.appendChild(title);
+        var del = el("button", "dmove del", "×"); del.title = "Remove";
+        del.onclick = function () {
+          askConfirm("Remove “" + x.name + "”?", "", { danger: true, ok: "Remove" }).then(function (yes) {
+            if (!yes) return;
+            p.stack = list.filter(function (y) { return y.id !== x.id; }); touchPilot(p); render(); save();
+          });
+        };
+        head.appendChild(del);
+        card.appendChild(head);
+        var meta = el("div", "reqmeta");
+        var cat = el("span", "reqfit");
+        cat.appendChild(el("label", null, "Category"));
+        cat.appendChild(selectOf([["", "Pick one"]].concat(STACK_CATS.map(function (c) { return [c, c]; })), x.category || "", function (v) { x.category = v; x.updated = Date.now(); touchPilot(p); save(); }, "Category"));
+        meta.appendChild(cat);
+        var lk = el("span", "reqsrc");
+        lk.appendChild(el("label", null, kind === "Software" ? "Link" : "Contact"));
+        var lin = el("input"); lin.value = x.link || ""; lin.placeholder = kind === "Software" ? "Website or login page" : "Name, email, phone";
+        lin.setAttribute("aria-label", kind === "Software" ? "Link" : "Contact");
+        lin.onchange = function () { x.link = lin.value.trim(); x.updated = Date.now(); touchPilot(p); save(); render(); };
+        lk.appendChild(lin);
+        if (/^https?:\/\//.test(x.link || "")) { var go = el("a", "chip", "Open"); go.href = x.link; go.target = "_blank"; go.rel = "noopener"; lk.appendChild(go); }
+        meta.appendChild(lk);
+        card.appendChild(meta);
+        var use = el("div", "reqsec");
+        use.appendChild(el("div", "lab", kind === "Software" ? "How they use it" : "What they do for them"));
+        use.appendChild(richEditor(x.usage, function (h) { x.usage = h; x.updated = Date.now(); touchPilot(p); save(); }, kind === "Software" ? "Who uses it, for what, how often, what it costs, what they like and hate about it." : "Scope, cadence, cost, who the contact is, how happy they are.", "small dnote"));
+        card.appendChild(use);
+        grid.appendChild(card);
+      });
+      sec.appendChild(grid);
+      var add = el("button", "btn ghost rowbtn", kind === "Software" ? "+ Add a software" : "+ Add a partner");
+      add.style.marginTop = "12px";
+      add.onclick = function () {
+        askText(kind === "Software" ? "Which software?" : "Which firm?", { placeholder: kind === "Software" ? "For example: Juris Évolution, Outlook, Dragon" : "For example: their marketing agency, IT provider, accountant", ok: "Add" }).then(function (n) {
+          if (!n) return;
+          p.stack = (p.stack || []).concat([{ id: uid(), name: n, kind: kind, category: "", usage: "", link: "", created: Date.now(), updated: Date.now() }]);
+          touchPilot(p); render(); save();
+        });
+      };
+      sec.appendChild(add);
+      return sec;
+    }
+    dir.appendChild(section("Software", "Software they use", "Every tool in their day: case management, email and calendar, accounting, dictation, scanning, research."));
+    var ps = section("Partner", "Firms and partners", "Marketing, IT, accounting, legal or anyone else they rely on outside the firm.");
+    ps.style.marginTop = "36px";
+    dir.appendChild(ps);
+    pad.appendChild(dir);
+    host.appendChild(pad);
   }
 
   /* --- directory style: square icon, name, one-line description, like a plugin marketplace --- */

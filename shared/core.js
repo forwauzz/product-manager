@@ -157,6 +157,11 @@ export function normalize(state) {
       reason: String(r.reason || ""), source: String(r.source || ""), feature: String(r.feature || ""),
       created: Number(r.created) || Date.now(), updated: Number(r.updated) || Date.now()
     })),
+    stack: (Array.isArray(p.stack) ? p.stack : []).filter(x => x && typeof x === "object").map(x => ({
+      id: String(x.id || uid()), name: String(x.name || "Untitled"), kind: x.kind === "Partner" ? "Partner" : "Software",
+      category: String(x.category || ""), usage: String(x.usage || ""), link: String(x.link || ""),
+      created: Number(x.created) || Date.now(), updated: Number(x.updated) || Date.now()
+    })),
     created: Number(p.created) || Date.now(), updated: Number(p.updated) || Date.now()
   }));
   if (!Array.isArray(s.log)) s.log = [];

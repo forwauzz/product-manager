@@ -249,3 +249,20 @@ test("pilot requests are stored with their decision and a promoted feature link 
   assert.equal(rq[1].feature, f.id);
   assert.equal(rq[1].fit, "");
 });
+
+test("pilot software and partners are stored with kind, category and usage", async () => {
+  const st = await api("GET", "/api/state");
+  const s = st.body.state;
+  s.pilots = [{ id: "p3", name: "Le Cabinet M", status: "Piloting", stack: [
+    { id: "s1", name: "Juris Évolution", kind: "Software", category: "Case or practice management", usage: "<p>Deadlines typed by hand.</p>", link: "https://example.com" },
+    { id: "s2", name: "Agence X", kind: "Partner", category: "Marketing firm" },
+    { id: "s3", name: "Odd", kind: "Whatever" }
+  ] }];
+  const put = await api("PUT", "/api/state", { version: st.body.version, state: s, who: "Uzziel" });
+  assert.equal(put.status, 200);
+  const stack = put.body.state.pilots[0].stack;
+  assert.equal(stack.length, 3);
+  assert.equal(stack[0].category, "Case or practice management");
+  assert.equal(stack[1].kind, "Partner");
+  assert.equal(stack[2].kind, "Software", "unknown kinds fall back to Software");
+});
