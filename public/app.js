@@ -4,6 +4,8 @@
   var STATES = ["Proposed", "Research", "Planned", "Building", "Live", "Needs work", "Feature flag"];
   var BUILT_STATES = ["Building", "Live", "Needs work", "Feature flag"];
   var RND_STAGES = ["Backlog", "Assigned", "In progress", "Findings", "Concluded"];
+  /* Nav items switched off for now. Remove a key here to bring the item back. */
+  var HIDDEN_NAV = { parallel: true, timeline: true, changes: true };
   var ICONS = { roadmap: "▤", features: "◫", parallel: "⋔", timeline: "▦", rnd: "⚗", icp: "◎", space: "◆", changes: "◷", pilots: "◔" };
 
   /* ---------- helpers ---------- */
@@ -630,7 +632,7 @@
      ["rnd", "Research & Development", ICONS.rnd, rndFeats().length],
      ["icp", "Market / ICP", ICONS.icp, S.icps.length],
      ["pilots", "Pilots", ICONS.pilots, (S.pilots || []).length || null],
-     ["changes", "What changed", ICONS.changes, (S.log || []).filter(function (e) { return e.t > Date.now() - 7 * 86400000; }).length || null]].forEach(function (it) {
+     ["changes", "What changed", ICONS.changes, (S.log || []).filter(function (e) { return e.t > Date.now() - 7 * 86400000; }).length || null]].filter(function (it) { return !HIDDEN_NAV[it[0]]; }).forEach(function (it) {
       var b = el("button", "navitem" + (it[0] === "rnd" ? " rnd" : ""));
       b.setAttribute("aria-current", String(ui.view === it[0] && !ui.feature));
       b.dataset.view = it[0];
@@ -2097,6 +2099,8 @@
     host.appendChild(pad);
   }
 
+  function pilotListMode() { try { return localStorage.getItem("alie.pilotlist") === "grid" ? "grid" : "list"; } catch (e) { return "list"; } }
+  function setPilotListMode(m) { try { localStorage.setItem("alie.pilotlist", m); } catch (e) {} }
   function pilotFeatureRow(f, onRemove) {
     var r = el("div", "dirrow prow");
     r.appendChild(dirIcon(f));
@@ -2173,12 +2177,23 @@
     left.appendChild(pn);
 
     /* right: the three lists */
+    var listMode = pilotListMode();
+    var modeRow = el("div", "listmode");
+    var mseg = el("div", "seg small");
+    [["List", "list"], ["Grid", "grid"]].forEach(function (m) {
+      var b = el("button", null, m[0]);
+      b.setAttribute("aria-pressed", String(listMode === m[1]));
+      b.onclick = function () { setPilotListMode(m[1]); renderView(); };
+      mseg.appendChild(b);
+    });
+    modeRow.appendChild(mseg);
+    right.appendChild(modeRow);
     function listPanel(title, hint, key, derived) {
       var pnl = el("div", "panel plist");
       var h = el("h3", null, title);
       pnl.appendChild(h);
       pnl.appendChild(el("div", "note", hint));
-      var rows = el("div", "pilotrows");
+      var rows = el("div", "pilotrows" + (listMode === "grid" ? " grid" : ""));
       var items = derived ? pilotLive(p) : pilotFeats(p, key);
       if (!items.length) rows.appendChild(el("div", "note empty2", derived ? "Nothing they asked for is live yet." : "Nothing here yet."));
       items.forEach(function (f) {
