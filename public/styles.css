@@ -942,3 +942,8 @@
   .pk .go { flex:none; font-size:12.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--gold); }
   .pkempty { padding:16px; }
   @media (max-width:860px) { .pickrow { flex-direction:column; } .pickrow select { max-width:100%; } .picklist { max-height:46vh; } }
+
+  /* regime logos: contained, never cropped */
+  .icpthumb.regime.shot { background:#fff; }
+  .icpthumb.regime.shot img { object-fit:contain; padding:16px 22px; }
+  .icpthumb.hero.regime.shot img { padding:22px 30px; }
