@@ -121,7 +121,7 @@
           }
         },
         {
-          "name": "Case search and status filter",
+          "name": "Search and status filter",
           "spaces": [
             "Health"
           ],
@@ -156,7 +156,7 @@
       }
     },
     {
-      "name": "Case creation and editing",
+      "name": "Creation and editing",
       "spaces": [
         "Health",
         "Legal"
@@ -180,7 +180,7 @@
       }
     },
     {
-      "name": "Case step 1 · Sources",
+      "name": "Sources",
       "spaces": [
         "Health"
       ],
@@ -188,7 +188,7 @@
       "note": "First step of the case workflow: get every page in, classified and OCR'd, before the overview.",
       "children": [
         {
-          "name": "Case file upload with OCR and auto-classification",
+          "name": "File upload with OCR and auto-classification",
           "spaces": [
             "Health"
           ],
@@ -223,7 +223,7 @@
       }
     },
     {
-      "name": "Case step 2 · Overview",
+      "name": "Overview",
       "spaces": [
         "Health"
       ],
@@ -231,7 +231,7 @@
       "note": "Second step: the case brief and the gate into critical review.",
       "children": [
         {
-          "name": "Case brief extraction",
+          "name": "Brief extraction",
           "spaces": [
             "Health"
           ],
@@ -252,7 +252,7 @@
           }
         },
         {
-          "name": "Case document search",
+          "name": "Document search",
           "spaces": [
             "Health"
           ],
@@ -267,7 +267,7 @@
       }
     },
     {
-      "name": "Case step 3 · Review (critical review)",
+      "name": "Review",
       "spaces": [
         "Health"
       ],
@@ -310,7 +310,7 @@
       }
     },
     {
-      "name": "Case step 4 · Draft",
+      "name": "Draft",
       "spaces": [
         "Health"
       ],
@@ -343,7 +343,7 @@
       }
     },
     {
-      "name": "Case left panel (health)",
+      "name": "Left panel",
       "spaces": [
         "Health"
       ],
@@ -608,7 +608,7 @@
       }
     },
     {
-      "name": "Case Context panel",
+      "name": "Context panel",
       "spaces": [
         "Health"
       ],
@@ -1218,7 +1218,7 @@
       }
     },
     {
-      "name": "Case file (legal)",
+      "name": "Case file",
       "spaces": [
         "Legal"
       ],
@@ -1502,19 +1502,21 @@
   "renames": {
     "Case side rail": "Case left panel (health)",
     "Legal case workspace": "Case file (legal)",
-    "Case chat threads with ALIE commands": "Chat with ALIE commands"
+    "Case chat threads with ALIE commands": "Chat with ALIE commands",
+    "Case step 1 · Sources": "Sources",
+    "Case step 2 · Overview": "Overview",
+    "Case step 3 · Review (critical review)": "Review",
+    "Case step 4 · Draft": "Draft",
+    "Case Context panel": "Context panel",
+    "Case left panel (health)": "Left panel",
+    "Case file (legal)": "Case file",
+    "Case creation and editing": "Creation and editing",
+    "Case document search": "Document search",
+    "Case brief extraction": "Brief extraction",
+    "Case search and status filter": "Search and status filter",
+    "Case file upload with OCR and auto-classification": "File upload with OCR and auto-classification"
   },
-  "deletes": [
-    "Requests",
-    "Document requests with secure link",
-    "Messages / secure exchange",
-    "Annotations",
-    "Opinion requests",
-    "Recording modes: quick note, long session, paste transcript",
-    "Dictation mode and language settings",
-    "Patient consent confirmation before recording",
-    "Dictation history"
-  ],
+  "deletes": [],
   "noteSync": [
     "Collaboration panel",
     "Dictate",
