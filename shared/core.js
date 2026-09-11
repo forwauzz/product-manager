@@ -43,6 +43,7 @@ export function seed() {
       { id: G, name: "GEO-Pulse", kind: "SaaS" }
     ],
     spaces: ["Health", "Legal", "Administrative"],
+    sections: {},
     people: ["Uzziel", "David", "Faical", "Unassigned"],
     students: ["Student A", "Student B"],
     icps: seedIcps(),
@@ -50,6 +51,12 @@ export function seed() {
     current: A
   };
 }
+
+export const DEFAULT_SECTIONS = {
+  "Health": ["Command Center", "Schedule", "Cases", "Documents", "Ask ALIE", "Workflows", "Library", "Settings", "Platform"],
+  "Legal": ["Create", "Search", "Ask ALIE", "Prompt Library", "Cases", "Drafts", "Tasks", "Settings", "Platform"],
+  "ALIE Admin": ["Personal", "Workspace", "Platform"]
+};
 
 export const ICP_AVATARS = ["regime", "institution", "physician", "lawyer", "paralegal", "person", "law-firm", "clinic", "insurer", "employer", "other"];
 
@@ -97,6 +104,12 @@ export function normalize(state) {
   s.projects = s.projects.filter(p => p && typeof p === "object").map(p => ({ id: String(p.id || uid()), name: String(p.name || "Untitled"), kind: String(p.kind || "") }));
   if (!Array.isArray(s.spaces)) s.spaces = [];
   s.spaces = s.spaces.filter(x => typeof x === "string" && x.trim()).map(x => x.trim());
+  if (!s.sections || typeof s.sections !== "object" || Array.isArray(s.sections)) s.sections = {};
+  Object.keys(s.sections).forEach(k => {
+    if (!Array.isArray(s.sections[k])) { delete s.sections[k]; return; }
+    s.sections[k] = s.sections[k].filter(x => typeof x === "string" && x.trim()).map(x => x.trim());
+  });
+  s.spaces.forEach(sp => { if (!s.sections[sp]) s.sections[sp] = (DEFAULT_SECTIONS[sp] || []).slice(); });
   if (!Array.isArray(s.people)) s.people = ["Unassigned"];
   s.people = s.people.filter(x => typeof x === "string" && x.trim()).map(x => x.trim());
   if (s.people.indexOf("Unassigned") === -1) s.people.push("Unassigned");
@@ -143,6 +156,8 @@ export function normalize(state) {
     if (typeof f.parent !== "string" || !f.parent) f.parent = null;
     if (typeof f.thumb !== "string") f.thumb = "";
     if (typeof f.image !== "string") f.image = "";
+    if (!f.sections || typeof f.sections !== "object" || Array.isArray(f.sections)) f.sections = {};
+    Object.keys(f.sections).forEach(k => { if (typeof f.sections[k] !== "string" || !f.sections[k]) delete f.sections[k]; });
     if (!f.created) f.created = f.updated || Date.now();
     if (!f.updated) f.updated = Date.now();
   });
@@ -188,7 +203,7 @@ async function mutate(store, fn) {
 }
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
-const EDITABLE = ["name", "state", "owner", "spaces", "period", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent", "thumb", "image"];
+const EDITABLE = ["name", "state", "owner", "spaces", "period", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections"];
 
 /* Handle one API request. `req` = { method, path, query, body } where `path` is relative to /api
    (for example "/features/abc") and `query` is a plain object. Returns { status, body, headers }. */
@@ -290,6 +305,7 @@ export async function handleApi(req, store) {
         parent: typeof body.parent === "string" && body.parent ? body.parent : null,
         thumb: typeof body.thumb === "string" ? body.thumb : "",
         image: typeof body.image === "string" ? body.image : "",
+        sections: body.sections && typeof body.sections === "object" ? body.sections : {},
         created: now, updated: now
       };
       const r = await mutate(store, s => {

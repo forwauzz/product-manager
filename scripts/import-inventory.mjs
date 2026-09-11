@@ -49,15 +49,18 @@ async function ensure(f, parentId) {
   if (!rec) {
     rec = await api("POST", "/api/features", {
       project: project.id, name: f.name, state: f.state || "Live", spaces: f.spaces || [], note: f.note || "",
-      owner: "Unassigned", period: null, parent: parentId || null
+      owner: "Unassigned", period: null, parent: parentId || null, sections: f.sections || {}
     });
     byName.set(f.name.toLowerCase(), rec);
     created++;
   } else {
     skipped++;
-    if ((rec.parent || null) !== (parentId || null)) {
-      await api("PATCH", "/api/features/" + rec.id, { parent: parentId || null });
-      rec.parent = parentId || null;
+    const patch = {};
+    if ((rec.parent || null) !== (parentId || null)) patch.parent = parentId || null;
+    if (f.sections && JSON.stringify(f.sections) !== JSON.stringify(rec.sections || {})) patch.sections = f.sections;
+    if (Object.keys(patch).length) {
+      await api("PATCH", "/api/features/" + rec.id, patch);
+      Object.assign(rec, patch);
       linked++;
     }
   }
@@ -69,7 +72,7 @@ for (const p of inv.patches || []) {
   const f = byName.get(p.name.toLowerCase());
   if (!f) continue;
   const body = {};
-  ["state", "spaces", "note", "owner"].forEach(k => { if (p[k] !== undefined) body[k] = p[k]; });
+  ["state", "spaces", "note", "owner", "sections"].forEach(k => { if (p[k] !== undefined) body[k] = p[k]; });
   await api("PATCH", "/api/features/" + f.id, body);
   patched++;
 }
