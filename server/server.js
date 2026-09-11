@@ -21,7 +21,7 @@ function makeShotStore(dir, store) {
   return {
     async saveShot(featureId, dataUrl) {
       const doc = await store.load();
-      const f = doc.state.features.find(x => x.id === featureId);
+      const f = doc.state.features.find(x => x.id === featureId) || doc.state.icps.find(x => x.id === featureId);
       if (!f) return { error: "unknown feature" };
       const img = parse(dataUrl);
       if (!img) return { error: "data must be a base64 image data URL" };
@@ -43,7 +43,7 @@ function makeShotStore(dir, store) {
     async deleteShot(featureId) {
       for (const e of ["jpg", "png", "webp"]) { try { fs.unlinkSync(path.join(dir, featureId + "." + e)); } catch (_) { /* none */ } }
       const doc = await store.load();
-      const f = doc.state.features.find(x => x.id === featureId);
+      const f = doc.state.features.find(x => x.id === featureId) || doc.state.icps.find(x => x.id === featureId);
       if (f && f.image) { f.image = ""; f.updated = Date.now(); await store.save(doc.state, doc.version); }
     }
   };

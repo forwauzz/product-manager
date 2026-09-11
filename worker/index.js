@@ -61,7 +61,7 @@ async function handleShots(request, env, path) {
     if (!m) return jsonResponse(400, { error: "data must be a base64 image data URL" });
     if (m[2].length > 1.2 * 1024 * 1024) return jsonResponse(400, { error: "image larger than 900 KB; shrink it first" });
     const doc = await store.load();
-    const f = doc.state.features.find(x => x.id === body.feature);
+    const f = doc.state.features.find(x => x.id === body.feature) || doc.state.icps.find(x => x.id === body.feature);
     if (!f) return jsonResponse(400, { error: "unknown feature" });
     await env.DB.prepare("INSERT INTO shots (feature, mime, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(feature) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at")
       .bind(f.id, m[1], m[2], new Date().toISOString()).run();
@@ -73,7 +73,7 @@ async function handleShots(request, env, path) {
   if (request.method === "DELETE" && id) {
     await env.DB.prepare("DELETE FROM shots WHERE feature = ?").bind(id).run();
     const doc = await store.load();
-    const f = doc.state.features.find(x => x.id === id);
+    const f = doc.state.features.find(x => x.id === id) || doc.state.icps.find(x => x.id === id);
     if (f && f.image) { f.image = ""; f.updated = Date.now(); await store.save(doc.state, doc.version); }
     return jsonResponse(204, null);
   }

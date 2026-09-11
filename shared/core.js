@@ -124,6 +124,7 @@ export function normalize(state) {
     return {
       id: String(x.id || uid()), name: String(x.name || "Untitled profile"), kind, avatar,
       description: String(x.description || ""), tam: String(x.tam || ""), sam: String(x.sam || ""), som: String(x.som || ""), notes: String(x.notes || ""),
+      image: String(x.image || ""),
       regimes: Array.isArray(x.regimes) ? x.regimes.filter(r => typeof r === "string") : [],
       facts: Array.isArray(x.facts) ? x.facts.filter(f => f && typeof f === "object").map(f => ({ label: String(f.label || ""), value: String(f.value || "") })).filter(f => f.label || f.value) : []
     };
@@ -347,7 +348,7 @@ export async function handleApi(req, store) {
 
   /* Ideal client profiles (market segments) */
   if (seg[0] === "icps") {
-    const ICP_FIELDS = ["name", "kind", "avatar", "description", "tam", "sam", "som", "notes"];
+    const ICP_FIELDS = ["name", "kind", "avatar", "description", "tam", "sam", "som", "notes", "image"];
     const ICP_LISTS = ["regimes", "facts"];
     if (seg.length === 1 && method === "GET") return json(200, (await store.load()).state.icps);
     if (seg.length === 1 && method === "POST") {

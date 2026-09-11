@@ -2389,6 +2389,20 @@
     return d;
   }
 
+  function icpThumbEl(icp, cls) {
+    var d = el("div", "icpthumb " + (icp.kind === "Regime" ? "regime" : "buyer") + (cls ? " " + cls : ""));
+    if (icp.image) {
+      d.classList.add("shot");
+      var img = document.createElement("img");
+      img.src = icp.image; img.alt = ""; img.loading = "lazy";
+      img.onerror = function () { d.classList.remove("shot"); img.remove(); };
+      d.appendChild(img);
+      return d;
+    }
+    d.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (AVATAR_SVG[icp.avatar] || AVATAR_SVG.other) + "</svg>";
+    d.appendChild(el("span", "k", icp.kind === "Regime" ? "Regime" : avatarLabel(icp.avatar)));
+    return d;
+  }
   function icpById(id) { return S.icps.filter(function (x) { return x.id === id; })[0]; }
   function icpsOf(f) { return (f.icps || []).map(icpById).filter(Boolean); }
   function regimes() { return S.icps.filter(function (x) { return x.kind === "Regime"; }); }
@@ -2640,11 +2654,11 @@
   }
 
   function icpCard(icp) {
-    var c = el("div", "icpcard");
+    var c = el("div", "icpcard big");
     c.setAttribute("role", "button");
     c.tabIndex = 0;
+    c.appendChild(icpThumbEl(icp));
     var top = el("div", "top");
-    top.appendChild(avatarEl(icp.avatar));
     var t = el("div", "t");
     t.appendChild(el("div", "kind", icp.kind === "Regime" ? "Regime" : avatarLabel(icp.avatar)));
     t.appendChild(el("h3", null, icp.name));
@@ -2866,6 +2880,7 @@
 
     /* left: identity, description, notebook */
     var left = el("div");
+    left.appendChild(icpThumbEl(icp, "hero"));
     var idRow = el("div", "idrow");
     idRow.appendChild(avatarEl(icp.avatar, "lg"));
     var nameIn = el("input");
@@ -2958,6 +2973,22 @@
       pr.appendChild(regimeChips(icp.regimes, function () { save(); renderNav(); }));
     }
     right.appendChild(pr);
+
+    var pimg2 = el("div", "panel");
+    pimg2.style.marginTop = "18px";
+    pimg2.appendChild(el("h3", null, "Image"));
+    pimg2.appendChild(el("div", "note", icp.image ? "Shown on the card and at the top of this page." : "Add a logo, a photo or a chart for this segment. Until then the card shows its icon."));
+    var upRow2 = el("div", "acts");
+    upRow2.style.marginTop = "10px";
+    var fileIn2 = document.createElement("input");
+    fileIn2.type = "file"; fileIn2.accept = "image/*"; fileIn2.style.display = "none";
+    fileIn2.onchange = function () { if (fileIn2.files && fileIn2.files[0]) uploadShot(icp, fileIn2.files[0]); };
+    var up2 = el("button", "btn ghost", icp.image ? "Replace image" : "Add image");
+    up2.onclick = function () { fileIn2.click(); };
+    upRow2.appendChild(up2); upRow2.appendChild(fileIn2);
+    if (icp.image) { var rm2 = el("button", "btn ghost", "Remove"); rm2.onclick = function () { removeShot(icp); }; upRow2.appendChild(rm2); }
+    pimg2.appendChild(upRow2);
+    right.appendChild(pimg2);
 
     var pa = el("div", "panel");
     pa.style.marginTop = "18px";
