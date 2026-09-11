@@ -16,5 +16,10 @@
       "database_id": "e13f43ef-b831-47aa-913c-3224eef3b534"
     }
   ],
+  "triggers": { "crons": ["*/10 * * * *"] },
+  "vars": {
+    "FEATURES_SHEET_ID": "17eUHQ9jrZE3LcY5eUpGSOjXuuqHHJ3tGLfNJPAdzBF0",
+    "LOG_SHEET_ID": "1EiTEZuEIrWTWV7ll8vjxPXm0dm8fVp49OqF0yg_8GS0"
+  },
   "observability": { "enabled": true }
 }

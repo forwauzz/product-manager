@@ -2,6 +2,7 @@
    against D1, and gates everything behind a passcode when APP_PASSCODE is set. */
 import { handleApi } from "../shared/core.js";
 import { D1Store } from "./store-d1.js";
+import { syncAll as driveSyncAll, status as driveStatus, configured as driveConfigured } from "./drive.js";
 
 const COOKIE = "pm_auth";
 const COOKIE_DAYS = 30;
@@ -81,7 +82,12 @@ async function handleShots(request, env, path) {
 }
 
 export default {
-  async fetch(request, env) {
+  /* Cron: push anything that changed to Drive. */
+  async scheduled(event, env, ctx) {
+    if (!driveConfigured(env)) return;
+    ctx.waitUntil(driveSyncAll(env).catch(() => {}));
+  },
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
     const required = !!env.APP_PASSCODE;
@@ -112,6 +118,16 @@ export default {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
       return handleShots(request, env, path);
     }
+    if (path === "/api/drive/status" && request.method === "GET") {
+      if (!authed) return jsonResponse(401, { error: "Sign in first." });
+      if (!env.DB) return jsonResponse(500, { error: "D1 binding DB is not configured." });
+      try { return jsonResponse(200, await driveStatus(env)); } catch (e) { return jsonResponse(500, { error: e.message }); }
+    }
+    if (path === "/api/drive/sync" && request.method === "POST") {
+      if (!authed) return jsonResponse(401, { error: "Sign in first." });
+      if (!driveConfigured(env)) return jsonResponse(409, { ok: false, error: "Drive sync is not set up yet." });
+      try { return jsonResponse(200, await driveSyncAll(env, { force: true })); } catch (e) { return jsonResponse(500, { ok: false, error: e.message }); }
+    }
     if (path.startsWith("/api/")) {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
       if (!env.DB) return jsonResponse(500, { error: "D1 binding DB is not configured." });
@@ -125,6 +141,10 @@ export default {
       const query = Object.fromEntries(url.searchParams.entries());
       try {
         const out = await handleApi({ method: request.method, path: path.replace(/^\/api/, ""), query, body }, new D1Store(env.DB));
+        // Any successful edit: push to Drive in the background, shortly after the save.
+        if (request.method !== "GET" && out.status < 300 && driveConfigured(env) && ctx) {
+          ctx.waitUntil(new Promise(r => setTimeout(r, 20000)).then(() => driveSyncAll(env)).catch(() => {}));
+        }
         return jsonResponse(out.status, out.body, out.headers);
       } catch (e) {
         return jsonResponse(500, { error: e.message || "Server error" });

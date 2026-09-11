@@ -141,7 +141,7 @@ export function normalize(state) {
     id: String(p.id || uid()), name: String(p.name || "Untitled pilot"),
     status: PILOT_STATUS.indexOf(p.status) !== -1 ? p.status : "Prospect",
     contact: String(p.contact || ""), icp: String(p.icp || ""), since: typeof p.since === "string" ? p.since : "",
-    notes: String(p.notes || ""), link: String(p.link || ""),
+    notes: String(p.notes || ""), link: String(p.link || ""), driveDoc: String(p.driveDoc || ""),
     wants: Array.isArray(p.wants) ? p.wants.filter(x => typeof x === "string") : [],
     needs: Array.isArray(p.needs) ? p.needs.filter(x => typeof x === "string") : [],
     deliverables: (Array.isArray(p.deliverables) ? p.deliverables : []).filter(d => d && typeof d === "object").map(d => ({

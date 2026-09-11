@@ -1187,3 +1187,9 @@
   .plist .note.empty2 { font-size:15px; }
   .stackcard .reqfit select, .reqfit select { font-size:14.5px; }
   .field { font-size:16px; }
+
+  /* ---------- drive sync line ---------- */
+  .drivesync { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 18px; }
+  .drivesync .note.bad { color:var(--c-needs); }
+  .modal ol.steps { margin:6px 0 12px; padding-left:22px; font-size:15px; line-height:1.55; }
+  .modal ol.steps li { margin-bottom:8px; }

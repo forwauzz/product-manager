@@ -2063,11 +2063,73 @@
     });
   }
 
+  /* Drive copy: the Worker keeps a Google Doc per pilot and the two sheets in step with the app. */
+  var driveState = null;
+  function driveStatusLine() {
+    var line = el("div", "drivesync");
+    function paint() {
+      line.innerHTML = "";
+      if (!driveState) { line.appendChild(el("span", "note", "Checking the Drive copy…")); return; }
+      if (driveState.error && !driveState.configured) {
+        line.appendChild(el("span", "note", "Drive copy: not available on this server."));
+        return;
+      }
+      if (!driveState.configured) {
+        line.appendChild(el("span", "note", "Drive copy: not set up yet. Every change stays in the app; the Drive copy updates once a Google key is added."));
+        var how = el("button", "chip", "How to set it up");
+        how.onclick = driveSetupHelp;
+        line.appendChild(how);
+        return;
+      }
+      var when = driveState.at ? new Date(driveState.at) : null;
+      var ago = when ? Math.round((Date.now() - when.getTime()) / 60000) : null;
+      var txt = driveState.ok === false ? "Drive copy: last attempt failed" + (driveState.error ? " (" + driveState.error.slice(0, 120) + ")" : "")
+        : driveState.pending ? "Drive copy: changes waiting, updates within 10 minutes" + (when ? " · last synced " + (ago < 1 ? "just now" : ago + " min ago") : "")
+        : when ? "Drive copy: up to date · synced " + (ago < 1 ? "just now" : ago < 90 ? ago + " min ago" : when.toLocaleString()) : "Drive copy: never synced yet";
+      line.appendChild(el("span", "note" + (driveState.ok === false ? " bad" : ""), txt));
+      var now = el("button", "chip", "Sync now");
+      now.onclick = function () {
+        now.disabled = true; now.textContent = "Syncing…";
+        fetch("/api/drive/sync", { method: "POST" }).then(function (r) { return r.json(); }).then(function (j) {
+          toast(j.ok ? "Drive copy updated." : "Drive sync failed: " + (j.error || ""), !j.ok);
+          driveState = null; loadDriveStatus(paint);
+        }).catch(function () { toast("Could not reach the server.", true); now.disabled = false; now.textContent = "Sync now"; });
+      };
+      line.appendChild(now);
+    }
+    paint();
+    if (!driveState) loadDriveStatus(paint);
+    return line;
+  }
+  function loadDriveStatus(done) {
+    fetch("/api/drive/status").then(function (r) { return r.ok ? r.json() : { configured: false, error: "status " + r.status }; })
+      .then(function (j) { driveState = j; done(); })
+      .catch(function () { driveState = { configured: false, error: "unreachable" }; done(); });
+  }
+  function driveSetupHelp() {
+    dialog(function (box, close) {
+      box.classList.add("wide");
+      box.appendChild(el("h2", null, "Let the app write to Drive"));
+      var steps = el("ol", "steps");
+      ["In Google Cloud console, pick or create a project and enable the Google Drive API.",
+       "IAM & Admin → Service accounts → Create one (for example alie-product-manager). Under Keys, add a JSON key and download it.",
+       "In Drive, share the Pilot folder and 02_Product with the service account's email address as Editor.",
+       "In the project folder on your PC run:  npx wrangler secret put GOOGLE_SA_KEY  and paste the whole JSON file when asked.",
+       "Come back here and press Sync now. From then on every change reaches Drive within ten minutes."].forEach(function (s) { steps.appendChild(el("li", null, s)); });
+      box.appendChild(steps);
+      box.appendChild(el("p", null, "The key is stored as a Cloudflare secret. Nobody, including Claude, needs to see it."));
+      var acts = el("div", "acts");
+      var ok = el("button", "btn", "Close"); ok.onclick = function () { close(null); };
+      acts.appendChild(ok); box.appendChild(acts);
+    });
+  }
+
   function renderPilots(host) {
     if (ui.pilot) { var cur = pilotById(ui.pilot); if (cur) return renderPilotPage(host, cur); ui.pilot = null; }
     host.appendChild(header("PILOTS", project().name + " · who we are piloting with", [newBtn("NEW PILOT", newPilot)]));
     var pad = el("div", "pad");
     var dir = el("div", "dir");
+    dir.appendChild(driveStatusLine());
     var list = pilots().slice().sort(function (a, b) { return PILOT_STATUS.indexOf(a.status) - PILOT_STATUS.indexOf(b.status) || a.name.localeCompare(b.name); });
     if (!list.length) {
       dir.appendChild(el("div", "empty", "No pilots yet. Add the firm or clinic you are piloting with, then list what they asked for."));
@@ -2154,7 +2216,9 @@
       "-",
       ["Delete", function () { deletePilot(p); }, true]
     ]);
-    host.appendChild(header("PILOT", p.name, [back, more]));
+    var acts0 = [back, more];
+    if (p.driveDoc) { var dd = el("a", "btn ghost", "Drive copy ↗"); dd.href = "https://docs.google.com/document/d/" + p.driveDoc + "/edit"; dd.target = "_blank"; dd.rel = "noopener"; acts0 = [back, dd, more]; }
+    host.appendChild(header("PILOT", p.name, acts0));
     host.appendChild(pilotTabs(p));
     if (ui.pilotTab === "deliverables") return renderPilotDeliverables(host, p);
     if (ui.pilotTab === "requests") return renderPilotRequests(host, p);

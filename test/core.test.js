@@ -149,3 +149,20 @@ test("features can nest one level under a parent in the same project", async () 
   const orphan = await handleApi({ method: "GET", path: "/features/" + child.body.id }, store);
   assert.equal(orphan.body.parent, null, "deleting a parent releases its children");
 });
+
+import { pilotMarkdown, featuresCsv, logCsv, driveFolderId } from "../shared/exports.js";
+test("exports: pilot record, sheets and folder ids come out of the state", () => {
+  const S = normalize(seed());
+  const f = S.features[0];
+  S.pilots = [{ id: "p", name: "Le Cabinet M", status: "Piloting", link: "https://drive.google.com/drive/folders/1OEmlNW5m-gZGqbZK0H5EYkRk5D20qyRa", wants: [f.id], needs: [], deliverables: [{ id: "d", title: "A clean file", tag: "Quick win", note: "", features: [f.id] }], requests: [{ id: "r", title: "Batch email", decision: "Later", reason: "Not core", fit: "Out of scope", bottleneck: "<p>One by one.</p>" }], stack: [{ id: "s", name: "Outlook", kind: "Software", category: "Email and calendar", usage: "" }] }];
+  const md = pilotMarkdown(normalize(S), normalize(S).pilots[0], new Date("2026-09-11T12:00:00Z"));
+  assert.match(md, /# ALIE pilot record — Le Cabinet M/);
+  assert.match(md, /### 1\. Batch email/);
+  assert.match(md, /Decision: Later — Not core/);
+  assert.match(md, /A clean file · Quick win/);
+  assert.match(md, /\*\*Outlook\*\* · Email and calendar/);
+  assert.equal(featuresCsv(S).split("\n")[0], "Spaces,Division,Feature,Sub-feature,State,Owner,Date,Estimate,R&D,Profiles,Description,Drive link,Last updated,Id");
+  assert.equal(logCsv(S).split("\n")[0], "When,Who,Feature,Change,From,To,Why");
+  assert.equal(driveFolderId("https://drive.google.com/drive/folders/1OEmlNW5m-gZGqbZK0H5EYkRk5D20qyRa"), "1OEmlNW5m-gZGqbZK0H5EYkRk5D20qyRa");
+  assert.equal(driveFolderId("https://example.com"), "");
+});
