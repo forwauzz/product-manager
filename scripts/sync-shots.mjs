@@ -7,8 +7,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = path.join(here, "..", "data", "shots");
-const [base, passcode] = process.argv.slice(2);
-if (!base) { console.error("usage: node scripts/sync-shots.mjs <baseUrl> [passcode]"); process.exit(1); }
+const [base, passcode] = process.argv.slice(2).filter(a => !a.startsWith("--"));
+const from = (process.argv.find(a => a.startsWith("--from=")) || "--from=http://localhost:4177").split("=")[1];
+if (!base) { console.error("usage: node scripts/sync-shots.mjs <baseUrl> [passcode] [--from=http://localhost:4177]"); process.exit(1); }
 let cookie = "";
 async function api(method, url, body) {
   const r = await fetch(base + url, { method, headers: Object.assign({ Cookie: cookie }, body !== undefined ? { "Content-Type": "application/json" } : {}), body: body !== undefined ? JSON.stringify(body) : undefined });
@@ -22,18 +23,22 @@ if (session.required && !session.authed) {
   if (!r.ok) { console.error("login failed"); process.exit(1); }
   cookie = (r.headers.get("set-cookie") || "").split(";")[0];
 }
+/* Ids differ between instances, so map source id -> name -> target id. */
+const sourceFeatures = await (await fetch(from + "/api/features")).json();
+const nameOf = new Map(sourceFeatures.map(f => [f.id, f.name.toLowerCase()]));
 const features = await api("GET", "/api/features");
-const ids = new Set(features.map(f => f.id));
+const targetId = new Map(features.map(f => [f.name.toLowerCase(), f.id]));
 let sent = 0, skipped = 0, missing = 0, failed = 0;
 for (const file of fs.readdirSync(dir)) {
   const m = /^(.+)\.(jpg|png|webp)$/.exec(file);
   if (!m) continue;
-  if (!ids.has(m[1])) { missing++; continue; }
+  const tid = targetId.get(nameOf.get(m[1]) || "");
+  if (!tid) { missing++; continue; }
   const buf = fs.readFileSync(path.join(dir, file));
   if (buf.length > 900 * 1024) { skipped++; continue; }
   const mime = m[2] === "jpg" ? "image/jpeg" : "image/" + m[2];
   try {
-    await api("POST", "/api/shots", { feature: m[1], data: "data:" + mime + ";base64," + buf.toString("base64") });
+    await api("POST", "/api/shots", { feature: tid, data: "data:" + mime + ";base64," + buf.toString("base64") });
     sent++;
   } catch (e) { failed++; console.error(file, e.message); }
 }
