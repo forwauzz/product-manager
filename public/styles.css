@@ -1055,3 +1055,12 @@
   .driftrow .btn.small { padding:8px 14px; font-size:13px; margin-left:auto; }
   .driftrow .btn.small + .btn.small { margin-left:0; }
   .driftchip { display:inline-flex; align-items:center; gap:8px; margin:0 0 22px; padding:10px 16px; border-radius:var(--r-pill); background:rgba(179,84,30,.10); color:var(--c-needs); font-weight:600; font-size:14px; border:1px solid rgba(179,84,30,.35); }
+
+  /* ---------- overrun ---------- */
+  .qrow[class] .qpill.over { box-shadow:inset 0 0 0 1.5px var(--c-needs); }
+  .qpill .mo.overtag { color:var(--c-needs); font-weight:600; }
+  .drift.over { border-color:rgba(179,84,30,.45); background:rgba(179,84,30,.05); }
+  .driftchip + .driftchip { margin-left:10px; }
+  .statusflags { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .qpill .nm .mo2 { color:var(--slate); font-weight:400; font-family:var(--mono); font-size:11.5px; }
+  .qpill .nm .mo2.overtag { color:var(--c-needs); font-weight:600; }

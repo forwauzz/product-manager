@@ -278,6 +278,44 @@
     w.appendChild(n); w.appendChild(u);
     return w;
   }
+  /* Expected end = start + estimate. Running over = past that and not shipped. */
+  var SHIPPED_STATES = ["Live", "Needs work", "Feature flag"];
+  function expectedEnd(f) {
+    if (!f.period || !effortDays(f)) return null;
+    var d = toDate(f.period);
+    d.setDate(d.getDate() + effortDays(f));
+    return d;
+  }
+  function overrunDays(f) {
+    var end = expectedEnd(f);
+    if (!end || SHIPPED_STATES.indexOf(f.state) !== -1) return 0;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    return Math.max(0, Math.round((today - end) / 86400000));
+  }
+  function overrunList() { return feats().filter(function (f) { return overrunDays(f) > 0; }).sort(function (a, b) { return overrunDays(b) - overrunDays(a); }); }
+  function dueLabel(f) { var e = expectedEnd(f); return e ? e.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""; }
+  function overrunPanel() {
+    var list = overrunList();
+    if (!list.length) return null;
+    var p = el("div", "drift over");
+    var h = el("div", "drifthead");
+    h.appendChild(el("b", null, list.length + (list.length === 1 ? " feature running over its estimate" : " features running over their estimates")));
+    h.appendChild(el("span", "note", "Start date plus estimate is in the past and it is not live. Extend the estimate with a reason, or mark it live."));
+    p.appendChild(h);
+    list.forEach(function (f) {
+      var r = el("div", "driftrow");
+      var nm = el("button", "fname", f.name);
+      nm.onclick = function () { open(f.id); };
+      r.appendChild(nm);
+      r.appendChild(pill(f.state, stateClass(f.state)));
+      r.appendChild(el("span", "note", (f.owner && f.owner !== "Unassigned" ? f.owner + " · " : "") + "due " + dueLabel(f) + " · " + overrunDays(f) + (overrunDays(f) === 1 ? " day over" : " days over")));
+      var ext = el("button", "btn ghost small", "Extend");
+      ext.onclick = function () { preview(f.id); };
+      r.appendChild(ext);
+      p.appendChild(r);
+    });
+    return p;
+  }
   function unschedule(f) {
     f.period = null; touch(f); render(); save();
     toast(f.name + " removed from the roadmap. The feature itself stays.");
@@ -1269,8 +1307,12 @@
         if (par) nmEl.appendChild(el("span", "pp", par.name + " › "));
         nmEl.appendChild(document.createTextNode(f.name));
         pill.appendChild(nmEl);
-        var tag = [M.pillTag(f), effortLabel(f)].filter(Boolean).join(" · ");
-        if (tag) pill.appendChild(el("span", "mo", tag));
+        var over = overrunDays(f);
+        if (over) pill.classList.add("over");
+        var tag = [M.pillTag(f), effortLabel(f), over ? over + "d over" : ""].filter(Boolean).join(" · ");
+        if (tag && shortPill) nmEl.appendChild(el("span", "mo2" + (over ? " overtag" : ""), " · " + tag));
+        else if (tag) pill.appendChild(el("span", "mo" + (over ? " overtag" : ""), tag));
+        if (over) pill.title += " · running " + over + " days over";
         if (!est) pill.title += " · no estimate yet";
         var x = el("span", "x", "×");
         x.setAttribute("role", "button");
@@ -1910,6 +1952,8 @@
     host.appendChild(bar);
     var pad = el("div", "pad");
     pad.appendChild(driftPanel());
+    var op = overrunPanel();
+    if (op) pad.appendChild(op);
     var list = all.filter(function (e) {
       if (ui.logWho && e.who !== ui.logWho) return false;
       if (ui.logField && e.field !== ui.logField) return false;
@@ -2094,6 +2138,12 @@
     sec.appendChild(tiles);
     dir.appendChild(sec);
 
+    var over = overrunList();
+    if (over.length) {
+      var ochip = el("button", "driftchip", over.length + (over.length === 1 ? " feature running over its estimate" : " features running over their estimates") + " ›");
+      ochip.onclick = function () { ui.view = "changes"; render(); };
+      dir.appendChild(ochip);
+    }
     var drift = driftList();
     if (drift.length) {
       var dchip = el("button", "driftchip", drift.length + (drift.length === 1 ? " feature built without agreement" : " features built without agreement") + " ›");
@@ -2544,6 +2594,7 @@
     if (f.owner && f.owner !== "Unassigned") meta.appendChild(pill(f.owner));
     if (f.period) meta.appendChild(pill(laneLabel(laneOfPeriod(f, keys()))));
     if (f.effort) meta.appendChild(pill("Takes " + effortLabel(f, true)));
+    if (expectedEnd(f) && SHIPPED_STATES.indexOf(f.state) === -1) meta.appendChild(pill((overrunDays(f) ? overrunDays(f) + " days over · due " : "Due ") + dueLabel(f), overrunDays(f) ? "st-needs-work" : ""));
     if (f.agreed) meta.appendChild(pill("Agreed", "st-live"));
     else if (BUILT_STATES.indexOf(f.state) !== -1 && driftList().indexOf(f) !== -1) meta.appendChild(pill("Built without agreement", "st-needs-work"));
     if (f.rnd) meta.appendChild(pill("R&D · " + f.rndStage, "rnd"));
@@ -4110,6 +4161,11 @@
       row.appendChild(pair[1]);
       p1.appendChild(row);
     });
+    var flags = el("div", "statusflags");
+    if (f.agreed) flags.appendChild(pill("Agreed", "st-live"));
+    else if (BUILT_STATES.indexOf(f.state) !== -1 && driftList().indexOf(f) !== -1) flags.appendChild(pill("Built without agreement", "st-needs-work"));
+    if (expectedEnd(f) && SHIPPED_STATES.indexOf(f.state) === -1) flags.appendChild(pill((overrunDays(f) ? overrunDays(f) + " days over · due " : "Due ") + dueLabel(f), overrunDays(f) ? "st-needs-work" : ""));
+    if (flags.childNodes.length) p1.appendChild(flags);
     right.appendChild(p1);
 
     var pr = el("div", "panel");
