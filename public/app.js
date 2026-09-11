@@ -4,7 +4,7 @@
   var STATES = ["Proposed", "Research", "Planned", "Building", "Live", "Needs work", "Feature flag"];
   var BUILT_STATES = ["Building", "Live", "Needs work", "Feature flag"];
   var RND_STAGES = ["Backlog", "Assigned", "In progress", "Findings", "Concluded"];
-  var ICONS = { roadmap: "▤", features: "◫", parallel: "⋔", timeline: "▦", rnd: "⚗", icp: "◎", space: "◆", changes: "◷" };
+  var ICONS = { roadmap: "▤", features: "◫", parallel: "⋔", timeline: "▦", rnd: "⚗", icp: "◎", space: "◆", changes: "◷", pilots: "◔" };
 
   /* ---------- helpers ---------- */
 
@@ -46,7 +46,7 @@
   var VERSION = 0;
   var ui = { view: "roadmap", space: null, feature: null, grain: "month", group: "state", rmode: "quarters", preview: null,
              spaceFilter: null, ownerFilter: "", studentFilter: "", rgroup: "stage", query: "", menu: null,
-             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix", itab: "buyers", icpOpen: null, fview: "grouped", fmode: "cards", smode: "dir", spaceSel: null };
+             icpFilter: "", stateFilter: "", requestedOnly: false, imode: "matrix", itab: "buyers", icpOpen: null, fview: "grouped", fmode: "cards", smode: "dir", spaceSel: null, pilot: null };
   var timer = null, dirty = false, saving = false, conflicts = 0, tombstones = {}, SESSION = { authed: true, required: false };
 
   function setSaveState(text, isErr) {
@@ -129,6 +129,11 @@
     });
     out.features = out.features.filter(function (f) { return out.projects.some(function (p) { return p.id === f.project; }); });
     out.current = out.projects.some(function (p) { return p.id === mine.current; }) ? mine.current : out.projects[0].id;
+    out.pilots = (out.pilots || []).filter(function (p) { return !tombstones[p.id]; });
+    (mine.pilots || []).forEach(function (p) {
+      var t3 = out.pilots.filter(function (x) { return x.id === p.id; })[0];
+      if (!t3) out.pilots.push(p); else if ((p.updated || 0) >= (t3.updated || 0)) Object.keys(p).forEach(function (k) { t3[k] = p[k]; });
+    });
     var byLog = {};
     out.log = (out.log || []).filter(Boolean);
     out.log.forEach(function (e) { byLog[e.id] = e; });
@@ -519,7 +524,7 @@
     if (m[0] === "feature" && m[1] && feature(m[1])) { ui.feature = m[1]; S.current = feature(m[1]).project; return; }
     if (m[0] === "icp" && m[1] && S.icps.some(function (x) { return x.id === m[1]; })) { ui.view = "icp"; ui.icpOpen = m[1]; return; }
     if (m[0] === "space" && m[1]) { var sp = decodeURIComponent(m[1]); if (S.spaces.indexOf(sp) !== -1) { ui.view = "space"; ui.space = sp; if (m[2] && feature(m[2])) ui.spaceSel = m[2]; } return; }
-    if (["roadmap", "features", "parallel", "timeline", "rnd", "icp", "changes"].indexOf(m[0]) !== -1) ui.view = m[0];
+    if (["roadmap", "features", "parallel", "timeline", "rnd", "icp", "changes", "pilots"].indexOf(m[0]) !== -1) ui.view = m[0];
   }
 
   /* ---------- nav ---------- */
@@ -624,6 +629,7 @@
      ["timeline", "Timeline", ICONS.timeline, null],
      ["rnd", "Research & Development", ICONS.rnd, rndFeats().length],
      ["icp", "Market / ICP", ICONS.icp, S.icps.length],
+     ["pilots", "Pilots", ICONS.pilots, (S.pilots || []).length || null],
      ["changes", "What changed", ICONS.changes, (S.log || []).filter(function (e) { return e.t > Date.now() - 7 * 86400000; }).length || null]].forEach(function (it) {
       var b = el("button", "navitem" + (it[0] === "rnd" ? " rnd" : ""));
       b.setAttribute("aria-current", String(ui.view === it[0] && !ui.feature));
@@ -631,7 +637,7 @@
       b.appendChild(el("span", "ic", it[2]));
       b.appendChild(el("span", "nm", it[1]));
       if (it[3] !== null) b.appendChild(el("span", "ct", String(it[3])));
-      b.onclick = function () { ui.view = it[0]; ui.feature = null; ui.space = null; ui.icpOpen = null; if (it[0] === "features") ui.fmode = "cards"; closeNavIfNarrow(); render(); };
+      b.onclick = function () { ui.view = it[0]; ui.feature = null; ui.space = null; ui.icpOpen = null; ui.pilot = null; if (it[0] === "features") ui.fmode = "cards"; closeNavIfNarrow(); render(); };
       if (it[0] === "rnd") {
         b.title = "Drop a feature here to push it to R&D";
         b.addEventListener("dragover", function (e) { e.preventDefault(); b.classList.add("dragover"); });
@@ -860,6 +866,7 @@
     if (ui.feature) { var f = feature(ui.feature); if (f) return renderFeature(host, f); ui.feature = null; }
     if (ui.view === "roadmap") return renderRoadmap(host);
     if (ui.view === "changes") return renderChanges(host);
+    if (ui.view === "pilots") return renderPilots(host);
     if (ui.view === "features") return renderFeatures(host);
     if (ui.view === "parallel") return renderParallel(host);
     if (ui.view === "timeline") return renderTimeline(host);
@@ -1137,6 +1144,8 @@
           return (f.name + " " + plain(f.note) + " " + (f.spaces || []).join(" ") + " " + f.state + " " + f.owner + " " + (par ? par.name : "")).toLowerCase().indexOf(q) !== -1;
         });
         all.sort(function (a, b) {
+          var na = q && a.name.toLowerCase().indexOf(q) !== -1 ? 0 : 1, nb = q && b.name.toLowerCase().indexOf(q) !== -1 ? 0 : 1;
+          if (na !== nb) return na - nb;
           var pa = a.period ? 1 : 0, pb = b.period ? 1 : 0;
           if (pa !== pb) return pa - pb;
           if (!!a.parent !== !!b.parent) return a.parent ? 1 : -1;
@@ -1970,6 +1979,244 @@
       pad.appendChild(wrap);
     });
     host.appendChild(pad);
+  }
+
+  /* --- pilots: who we are piloting with, what they asked for, what is live for them, what we think they will need --- */
+  var PILOT_STATUS = ["Prospect", "Piloting", "Live client", "Paused"];
+  var PILOT_STATUS_CLASS = { "Prospect": "st-planned", "Piloting": "st-building", "Live client": "st-live", "Paused": "st-feature-flag" };
+  function pilots() { return S.pilots || []; }
+  function pilotById(id) { return pilots().filter(function (p) { return p.id === id; })[0]; }
+  function pilotFeats(p, key) { return (p[key] || []).map(feature).filter(Boolean); }
+  function pilotLive(p) { return pilotFeats(p, "wants").filter(function (f) { return f.state === "Live" || f.state === "Needs work"; }); }
+  function pilotStatusPill(p) { return pill(p.status, PILOT_STATUS_CLASS[p.status] || ""); }
+  function pilotsFor(f) { return pilots().filter(function (p) { return (p.wants || []).indexOf(f.id) !== -1 || (p.needs || []).indexOf(f.id) !== -1; }); }
+
+  function newPilot() {
+    askText("New pilot", { placeholder: "Firm, clinic or insurer", ok: "Create" }).then(function (n) {
+      if (!n) return;
+      var p = { id: uid(), name: n, status: "Prospect", contact: "", icp: "", since: mKey(new Date()), notes: "", link: "", wants: [], needs: [], created: Date.now(), updated: Date.now() };
+      S.pilots = pilots().concat([p]);
+      ui.pilot = p.id; ui.view = "pilots"; render(); save();
+    });
+  }
+  function deletePilot(p) {
+    askConfirm("Delete " + p.name + "?", "Its lists go away. Features stay untouched.", { danger: true, ok: "Delete" }).then(function (yes) {
+      if (!yes) return;
+      tombstones[p.id] = true;
+      S.pilots = pilots().filter(function (x) { return x.id !== p.id; });
+      ui.pilot = null; render(); save();
+    });
+  }
+
+  /* search the whole inventory and pick one feature */
+  function pickFeature(title, exclude) {
+    return dialog(function (box, close) {
+      box.classList.add("wide");
+      box.appendChild(el("h2", null, title));
+      box.appendChild(el("p", null, "Search the inventory, sub-features included."));
+      var row = el("div", "pickrow");
+      var inp = el("input"); inp.type = "search"; inp.placeholder = "Search features…"; inp.setAttribute("aria-label", "Search features");
+      row.appendChild(inp); box.appendChild(row);
+      var list = el("div", "picklist"); box.appendChild(list);
+      function draw() {
+        list.innerHTML = "";
+        var q = inp.value.trim().toLowerCase();
+        var all = feats().filter(function (f) {
+          if ((exclude || []).indexOf(f.id) !== -1) return false;
+          if (!q) return true;
+          var par = f.parent ? feature(f.parent) : null;
+          return (f.name + " " + plain(f.note) + " " + (f.spaces || []).join(" ") + " " + f.state + " " + (par ? par.name : "")).toLowerCase().indexOf(q) !== -1;
+        }).sort(function (a, b) {
+          var na = q && a.name.toLowerCase().indexOf(q) !== -1 ? 0 : 1, nb = q && b.name.toLowerCase().indexOf(q) !== -1 ? 0 : 1;
+          if (na !== nb) return na - nb;
+          if (!!a.parent !== !!b.parent) return a.parent ? 1 : -1;
+          return a.name.localeCompare(b.name);
+        });
+        if (!all.length) { list.appendChild(el("div", "note pkempty", "Nothing matches.")); return; }
+        all.slice(0, 120).forEach(function (f) {
+          var par = f.parent ? feature(f.parent) : null;
+          var b = el("button", "pk");
+          b.appendChild(el("i", "sd " + stateClass(f.state)));
+          var t = el("div", "t");
+          var nm = el("b");
+          if (par) nm.appendChild(el("span", "pp", par.name + " › "));
+          nm.appendChild(document.createTextNode(f.name));
+          t.appendChild(nm);
+          t.appendChild(el("span", null, [(f.spaces || []).join(" · ") || "No space", f.state].join("  ·  ")));
+          b.appendChild(t);
+          b.appendChild(el("span", "go", "Add"));
+          b.onclick = function () { close(f); };
+          list.appendChild(b);
+        });
+        if (all.length > 120) list.appendChild(el("div", "note pkempty", (all.length - 120) + " more. Keep typing."));
+      }
+      inp.oninput = draw;
+      inp.onkeydown = function (e) { if (e.key === "Enter") { var first = list.querySelector(".pk"); if (first) { e.preventDefault(); first.click(); } } };
+      draw();
+      var acts = el("div", "acts");
+      var cancel = el("button", "btn ghost", "Cancel");
+      cancel.onclick = function () { close(null); };
+      acts.appendChild(cancel); box.appendChild(acts);
+      setTimeout(function () { inp.focus(); }, 0);
+    });
+  }
+
+  function renderPilots(host) {
+    if (ui.pilot) { var cur = pilotById(ui.pilot); if (cur) return renderPilotPage(host, cur); ui.pilot = null; }
+    host.appendChild(header("PILOTS", project().name + " · who we are piloting with", [newBtn("NEW PILOT", newPilot)]));
+    var pad = el("div", "pad");
+    var dir = el("div", "dir");
+    var list = pilots().slice().sort(function (a, b) { return PILOT_STATUS.indexOf(a.status) - PILOT_STATUS.indexOf(b.status) || a.name.localeCompare(b.name); });
+    if (!list.length) {
+      dir.appendChild(el("div", "empty", "No pilots yet. Add the firm or clinic you are piloting with, then list what they asked for."));
+    }
+    var tiles = el("div", "cattiles");
+    list.forEach(function (p) {
+      var t = el("button", "cattile pilot");
+      var icp = p.icp ? icpById(p.icp) : null;
+      t.appendChild(avatarEl(icp ? icp.avatar : "law-firm", "lg"));
+      var tx = el("div", "tx");
+      var nm = el("b"); nm.appendChild(document.createTextNode(p.name + " ")); nm.appendChild(pilotStatusPill(p));
+      tx.appendChild(nm);
+      var w = pilotFeats(p, "wants").length, l = pilotLive(p).length, n = pilotFeats(p, "needs").length;
+      tx.appendChild(el("span", null, (w ? w + " asked for · " + l + " of those live" : "Nothing asked for yet") + (n ? " · " + n + " we think they need" : "") + (p.contact ? " · " + p.contact : "")));
+      t.appendChild(tx);
+      var nn = el("div", "n");
+      nn.appendChild(el("b", null, w ? Math.round(100 * l / w) + "%" : "—"));
+      nn.appendChild(el("span", null, "of asks live"));
+      t.appendChild(nn);
+      t.onclick = function () { ui.pilot = p.id; renderView(); };
+      tiles.appendChild(t);
+    });
+    dir.appendChild(tiles);
+    pad.appendChild(dir);
+    host.appendChild(pad);
+  }
+
+  function pilotFeatureRow(f, onRemove) {
+    var r = el("div", "dirrow prow");
+    r.appendChild(dirIcon(f));
+    var t = el("div", "t");
+    var b = el("button", "pname");
+    var par = f.parent ? feature(f.parent) : null;
+    if (par) b.appendChild(el("span", "pp", par.name + " › "));
+    b.appendChild(document.createTextNode(f.name));
+    b.onclick = function () { open(f.id); };
+    t.appendChild(b);
+    var meta = el("span", "d");
+    meta.appendChild(statePill(f));
+    if (f.period) meta.appendChild(document.createTextNode("  " + laneLabelOf(f)));
+    if (f.owner && f.owner !== "Unassigned") meta.appendChild(document.createTextNode("  ·  " + f.owner));
+    t.appendChild(meta);
+    r.appendChild(t);
+    if (onRemove) {
+      var x = el("button", "act x", "×");
+      x.title = "Remove from this list"; x.setAttribute("aria-label", "Remove " + f.name);
+      x.onclick = function () { onRemove(f); };
+      r.appendChild(x);
+    }
+    return r;
+  }
+
+  function renderPilotPage(host, p) {
+    var back = el("button", "btn ghost", "Pilots");
+    back.onclick = function () { ui.pilot = null; renderView(); };
+    var more = menu("More", [
+      ["Rename", function () { askText("Rename pilot", { value: p.name, ok: "Rename" }).then(function (n) { if (n) { p.name = n; p.updated = Date.now(); render(); save(); } }); }],
+      "-",
+      ["Delete", function () { deletePilot(p); }, true]
+    ]);
+    host.appendChild(header("PILOT", p.name, [back, more]));
+    var pad = el("div", "pad");
+    var grid = el("div", "grid2 pilotgrid");
+    var left = el("div"), right = el("div");
+
+    /* left: facts and notebook */
+    var pf = el("div", "panel");
+    pf.appendChild(el("h3", null, "About"));
+    [["Status", selectOf(PILOT_STATUS, p.status, function (v) { p.status = v; p.updated = Date.now(); render(); save(); }, "Status")],
+     ["Profile", selectOf([["", "No profile"]].concat(S.icps.filter(function (x) { return x.kind === "Buyer"; }).map(function (x) { return [x.id, x.name]; })), p.icp || "", function (v) { p.icp = v; p.updated = Date.now(); render(); save(); }, "Buyer profile")],
+     ["Since", selectOf((function () { var ks = [], m = mAdd(mKey(new Date()), -12); for (var i = 0; i < 24; i++) ks.push([mAdd(m, i), mLong(mAdd(m, i))]); return ks; })(), p.since || mKey(new Date()), function (v) { p.since = v; p.updated = Date.now(); save(); }, "Since")]
+    ].forEach(function (pair) {
+      var row = el("div", "field");
+      row.appendChild(el("label", null, pair[0]));
+      row.appendChild(pair[1]);
+      pf.appendChild(row);
+    });
+    var crow = el("div", "field");
+    crow.appendChild(el("label", null, "Contact"));
+    var cin = el("input"); cin.value = p.contact || ""; cin.placeholder = "Name, role, email";
+    cin.setAttribute("aria-label", "Contact");
+    cin.onchange = function () { p.contact = cin.value.trim(); p.updated = Date.now(); save(); };
+    crow.appendChild(cin); pf.appendChild(crow);
+    var lrow = el("div", "field");
+    lrow.appendChild(el("label", null, "Drive"));
+    var lin = el("input"); lin.value = p.link || ""; lin.placeholder = "https://drive.google.com/…";
+    lin.setAttribute("aria-label", "Drive link");
+    lin.onchange = function () { p.link = lin.value.trim(); p.updated = Date.now(); save(); render(); };
+    lrow.appendChild(lin);
+    if (p.link) { var go = el("a", "btn ghost", "Open"); go.href = p.link; go.target = "_blank"; go.rel = "noopener"; lrow.appendChild(go); }
+    pf.appendChild(lrow);
+    left.appendChild(pf);
+
+    var pn = el("div", "panel");
+    pn.style.marginTop = "18px";
+    pn.appendChild(el("h3", null, "Notebook"));
+    pn.appendChild(richEditor(p.notes, function (h) { p.notes = h; p.updated = Date.now(); save(); }, "What they do, what hurts, what they said, next steps, dates.", "writer"));
+    left.appendChild(pn);
+
+    /* right: the three lists */
+    function listPanel(title, hint, key, derived) {
+      var pnl = el("div", "panel plist");
+      var h = el("h3", null, title);
+      pnl.appendChild(h);
+      pnl.appendChild(el("div", "note", hint));
+      var rows = el("div", "pilotrows");
+      var items = derived ? pilotLive(p) : pilotFeats(p, key);
+      if (!items.length) rows.appendChild(el("div", "note empty2", derived ? "Nothing they asked for is live yet." : "Nothing here yet."));
+      items.forEach(function (f) {
+        rows.appendChild(pilotFeatureRow(f, derived ? null : function (x) { p[key] = (p[key] || []).filter(function (id) { return id !== x.id; }); p.updated = Date.now(); render(); save(); }));
+      });
+      pnl.appendChild(rows);
+      if (!derived) {
+        var add = el("button", "btn ghost rowbtn", "+ Add a feature");
+        add.onclick = function () {
+          pickFeature(title, p[key] || []).then(function (f) {
+            if (!f) return;
+            p[key] = (p[key] || []).concat([f.id]); p.updated = Date.now(); render(); save();
+          });
+        };
+        pnl.appendChild(add);
+      }
+      return pnl;
+    }
+    right.appendChild(listPanel("They asked for", "Features this client requested. Their state shows how far along each one is.", "wants", false));
+    var lv = listPanel("Live for them", "Derived: what they asked for that is already shipped.", "wants", true);
+    lv.style.marginTop = "18px"; right.appendChild(lv);
+    var nd = listPanel("We think they will need", "Our own view of what will matter to them, before they ask.", "needs", false);
+    nd.style.marginTop = "18px"; right.appendChild(nd);
+
+    grid.appendChild(left); grid.appendChild(right);
+    pad.appendChild(grid);
+    host.appendChild(pad);
+  }
+
+  /* feature page: which pilots care about this feature */
+  function pilotsPanel(f) {
+    var list = pilotsFor(f);
+    var p = el("div", "panel");
+    p.style.marginTop = "18px";
+    p.appendChild(el("h3", null, "Pilots"));
+    if (!list.length) { p.appendChild(el("div", "note", "No pilot has asked for this yet.")); return p; }
+    list.forEach(function (pl) {
+      var r = el("div", "fl");
+      var b = el("button", null, pl.name + ((pl.wants || []).indexOf(f.id) !== -1 ? " · asked for it" : " · we think they need it"));
+      b.onclick = function () { ui.view = "pilots"; ui.pilot = pl.id; ui.feature = null; render(); };
+      r.appendChild(b);
+      r.appendChild(pilotStatusPill(pl));
+      p.appendChild(r);
+    });
+    return p;
   }
 
   /* --- directory style: square icon, name, one-line description, like a plugin marketplace --- */
@@ -4269,6 +4516,7 @@
       ps.appendChild(el("div", "note", "Sub-features sit in their parent's division."));
     }
     right.appendChild(ps);
+    right.appendChild(pilotsPanel(f));
     right.appendChild(historyPanel(f));
 
     var pi = el("div", "panel");

@@ -218,3 +218,16 @@ test("new features start Proposed, Planned marks them agreed, creation keeps the
   assert.equal(plain.body.state, "Proposed");
   assert.equal(plain.body.agreed, false);
 });
+
+test("pilots are kept in the document and their feature lists only keep real features", async () => {
+  const st = await api("GET", "/api/state");
+  const s = st.body.state;
+  const f = s.features[0];
+  s.pilots = [{ id: "p1", name: "Le Cabinet M", status: "Piloting", wants: [f.id, "ghost"], needs: [] }];
+  const put = await api("PUT", "/api/state", { version: st.body.version, state: s, who: "Uzziel" });
+  assert.equal(put.status, 200);
+  const p = put.body.state.pilots[0];
+  assert.equal(p.name, "Le Cabinet M");
+  assert.deepEqual(p.wants, [f.id], "unknown feature ids are dropped");
+  assert.equal(p.status, "Piloting");
+});

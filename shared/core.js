@@ -135,6 +135,17 @@ export function normalize(state) {
   const regimeIds = new Set(s.icps.filter(x => x.kind === "Regime").map(x => x.id));
   s.icps.forEach(x => { x.regimes = x.kind === "Regime" ? [] : x.regimes.filter(r => regimeIds.has(r)); });
   if (typeof s.driveFolder !== "string") s.driveFolder = "";
+  if (!Array.isArray(s.pilots)) s.pilots = [];
+  const PILOT_STATUS = ["Prospect", "Piloting", "Live client", "Paused"];
+  s.pilots = s.pilots.filter(p => p && typeof p === "object").map(p => ({
+    id: String(p.id || uid()), name: String(p.name || "Untitled pilot"),
+    status: PILOT_STATUS.indexOf(p.status) !== -1 ? p.status : "Prospect",
+    contact: String(p.contact || ""), icp: String(p.icp || ""), since: typeof p.since === "string" ? p.since : "",
+    notes: String(p.notes || ""), link: String(p.link || ""),
+    wants: Array.isArray(p.wants) ? p.wants.filter(x => typeof x === "string") : [],
+    needs: Array.isArray(p.needs) ? p.needs.filter(x => typeof x === "string") : [],
+    created: Number(p.created) || Date.now(), updated: Number(p.updated) || Date.now()
+  }));
   if (!Array.isArray(s.log)) s.log = [];
   s.log = s.log.filter(e => e && typeof e === "object" && e.id).map(e => ({
     id: String(e.id), t: Number(e.t) || 0, who: String(e.who || ""), fid: String(e.fid || ""), fname: String(e.fname || ""),
@@ -184,6 +195,8 @@ export function normalize(state) {
   // one level only: you cannot nest under something that is itself nested
   const parentOf = new Map(s.features.map(f => [f.id, f.parent]));
   s.features.forEach(f => { if (f.parent && parentOf.get(f.parent)) f.parent = null; });
+  const featIds = new Set(s.features.map(f => f.id));
+  s.pilots.forEach(p => { p.wants = p.wants.filter(id => featIds.has(id)); p.needs = p.needs.filter(id => featIds.has(id)); });
   return s;
 }
 
