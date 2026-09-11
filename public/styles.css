@@ -702,3 +702,43 @@
   .icpthumb.scene > svg { position:absolute; inset:0; width:100%; height:100%; max-width:none; }
   .icpthumb.scene .k { position:absolute; left:14px; bottom:10px; background:rgba(15,23,42,.72); color:var(--bone); padding:4px 10px; border-radius:var(--r-pill); opacity:1; font-weight:600; }
   .icpthumb.hero.scene .k { left:18px; bottom:14px; }
+
+  /* ---------- rich text ---------- */
+  .rte { border:1px solid var(--line); border-radius:var(--r-md); background:var(--bone); overflow:hidden; }
+  .rte:focus-within { border-color:var(--slate); }
+  .rtebar { display:flex; gap:2px; flex-wrap:wrap; padding:6px 8px; border-bottom:1px solid var(--hair); background:var(--tint); }
+  .rtb { min-width:32px; height:30px; padding:0 8px; border-radius:6px; font-size:12.5px; font-weight:600; color:var(--slate); font-family:var(--sys); }
+  .rtb:hover { background:var(--soft); color:var(--ink); }
+  .rtebody { min-height:120px; padding:16px 20px; font-family:var(--read); font-size:17px; line-height:1.6; outline:none; }
+  .rte.writer .rtebody { min-height:260px; font-size:18px; padding:20px 24px; }
+  .rte.small .rtebody { min-height:110px; font-size:16px; }
+  .rtebody:empty:before, .rtebody:has(> br:only-child):before { content:attr(data-placeholder); color:var(--slate); opacity:.7; pointer-events:none; }
+  .rich, .rtebody { color:var(--ink); }
+  .rich p, .rtebody p { margin:0 0 .7em; }
+  .rich p:last-child { margin-bottom:0; }
+  .rich ul, .rich ol, .rtebody ul, .rtebody ol { margin:.3em 0 .8em; padding-left:1.4em; }
+  .rich li, .rtebody li { margin:.2em 0; }
+  .rich h3, .rtebody h3, .rich h4, .rtebody h4 { margin:.9em 0 .35em; font-family:var(--sys); font-size:1em; font-weight:700; letter-spacing:-.01em; }
+  .rich blockquote, .rtebody blockquote { margin:.6em 0; padding:.2em 0 .2em 1em; border-left:3px solid var(--gold); color:var(--slate); }
+  .rich a, .rtebody a { color:var(--ink); text-decoration:underline; text-decoration-color:var(--gold); text-underline-offset:3px; }
+  .rich code, .rtebody code { font-family:var(--mono); font-size:.9em; background:var(--tint); padding:1px 5px; border-radius:4px; }
+  .rich.desc { font-family:var(--read); font-size:19px; line-height:1.6; margin:16px 0 18px; max-width:72ch; }
+  .drawer .rich.desc { font-size:17.5px; margin:0 0 22px; }
+  .lbcap .rich { font-family:var(--read); font-size:16.5px; line-height:1.55; margin:8px 0 12px; max-width:80ch; }
+  .sublab + .rte { margin-top:0; }
+  @media (max-width:860px) {
+    .rtebody { padding:14px 16px; font-size:16px; }
+    .rte.writer .rtebody { padding:16px; font-size:17px; min-height:200px; }
+    .rtb { min-width:36px; height:36px; }
+  }
+  @media (max-width:860px) {
+    .jump { flex-wrap:nowrap; overflow-x:auto; padding-bottom:6px; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+    .jumpb { flex:none; white-space:nowrap; }
+    .titlerow .trash.lg { width:38px; height:38px; }
+    .lbcap { padding:14px 16px 18px; }
+    .lbtitle h3 { font-size:18px; }
+  }
+  .spacegrid > * { min-width:0; }
+  .sheet { min-width:0; }
+  .jump { min-width:0; max-width:100%; }
+  @media (max-width:860px) { .spacegrid { grid-template-columns:minmax(0,1fr); } }

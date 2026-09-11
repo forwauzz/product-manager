@@ -959,7 +959,7 @@
     top.appendChild(el("h3", null, f.name));
     c.appendChild(top);
 
-    if (f.note) c.appendChild(el("p", null, f.note.slice(0, 88)));
+    if (f.note) c.appendChild(el("p", null, plain(f.note).slice(0, 88)));
 
     var tags = el("div", "tags");
     tags.appendChild(statePill(f));
@@ -1119,11 +1119,11 @@
     if (dkids) pills.appendChild(pill(dkids + " sub-feature" + (dkids === 1 ? "" : "s"), "sub"));
     d.appendChild(pills);
 
-    d.appendChild(el("p", "desc" + (f.note ? "" : " muted"), f.note || "No description yet. Add one so the team knows what this is."));
+    d.appendChild(f.note ? richView(f.note, "desc") : el("p", "desc muted", "No description yet. Add one so the team knows what this is."));
 
     if (f.rnd && f.rndQuestion) {
       d.appendChild(el("div", "lab", "Research question"));
-      d.appendChild(el("p", "desc", f.rndQuestion));
+      d.appendChild(richView(f.rndQuestion, "desc"));
     }
 
     d.appendChild(el("div", "lab", "Artifacts"));
@@ -1208,7 +1208,7 @@
 
     var body = el("div", "body");
     body.appendChild(el("b", null, f.name));
-    body.appendChild(el("span", null, f.note || "No description yet."));
+    body.appendChild(el("span", null, plain(f.note) || "No description yet."));
     var par = parentOf(f);
     if (par && !row.classList.contains("sub")) body.appendChild(el("span", "meta", "Part of " + par.name));
     row.appendChild(body);
@@ -1287,7 +1287,7 @@
     if (f.thumb && f.thumb !== "auto" && THUMB_SVG[f.thumb]) return f.thumb;
     var i;
     for (i = 0; i < THUMB_RULES.length; i++) if (THUMB_RULES[i][1].test(f.name)) return THUMB_RULES[i][0];
-    var note = (f.note || "").slice(0, 80);
+    var note = plain(f.note).slice(0, 80);
     for (i = 0; i < THUMB_RULES.length; i++) if (THUMB_RULES[i][1].test(note)) return THUMB_RULES[i][0];
     return "spark";
   }
@@ -1593,7 +1593,7 @@
     var nav = el("nav", "subnav");
     nav.setAttribute("aria-label", sp + " features");
     var q = (ui.subq || "").trim().toLowerCase();
-    function hit(f) { return !q || (f.name + " " + (f.note || "")).toLowerCase().indexOf(q) !== -1; }
+    function hit(f) { return !q || (f.name + " " + plain(f.note)).toLowerCase().indexOf(q) !== -1; }
     var fin = el("input", "subfind");
     fin.type = "search";
     fin.placeholder = "Filter " + sp + "…";
@@ -1730,7 +1730,7 @@
       cap.appendChild(t);
       var par = parentOf(f);
       if (par) cap.appendChild(el("div", "note", "Part of " + par.name));
-      cap.appendChild(el("p", null, f.note || "No description yet."));
+      cap.appendChild(f.note ? richView(f.note) : el("p", null, "No description yet."));
       var acts = el("div", "acts");
       if (siblings && siblings.length > 1) {
         var prev = el("button", "btn ghost", "‹ Previous"); prev.onclick = function () { step(-1); }; acts.appendChild(prev);
@@ -1794,7 +1794,7 @@
     head.appendChild(domainBadges(f));
     box.appendChild(head);
 
-    box.appendChild(el("p", "desc" + (f.note ? "" : " muted"), f.note || "No description yet. Open the page to write what this is."));
+    box.appendChild(f.note ? richView(f.note, "desc") : el("p", "desc muted", "No description yet. Open the page to write what this is."));
 
     var acts = el("div", "acts sheetacts");
     var edit = el("button", "btn", "Open page");
@@ -1851,7 +1851,7 @@
         ch.appendChild(statePill(k));
         ch.appendChild(trashBtn(k));
         c.appendChild(ch);
-        c.appendChild(el("p", null, k.note || "No description yet."));
+        c.appendChild(el("p", null, plain(k.note) || "No description yet."));
         var extra = el("div", "bcf");
         if (k.spaces.some(function (s) { return s !== sp; })) extra.appendChild(domainBadges(k));
         if (k.owner && k.owner !== "Unassigned") extra.appendChild(pill(k.owner));
@@ -1969,7 +1969,7 @@
     t.tabIndex = 0;
     t.appendChild(thumbEl(f, "tile"));
     t.appendChild(el("b", null, f.name));
-    if (f.note) t.appendChild(el("p", null, f.note));
+    if (f.note) t.appendChild(el("p", null, plain(f.note)));
     var foot = el("div", "tf");
     foot.appendChild(el("span", "st", f.state));
     if (f.owner && f.owner !== "Unassigned") foot.appendChild(el("span", null, f.owner));
@@ -2050,7 +2050,7 @@
     c.draggable = true;
     c.dataset.id = f.id;
     c.appendChild(el("h3", null, f.name));
-    c.appendChild(el("p", null, (f.note || "").slice(0, 92)));
+    c.appendChild(el("p", null, plain(f.note).slice(0, 92)));
 
     var tags = el("div", "tags");
     if (ui.group !== "state") tags.appendChild(statePill(f));
@@ -2133,7 +2133,7 @@
         c.draggable = true;
         c.dataset.id = f.id;
         c.appendChild(el("h3", null, f.name));
-        c.appendChild(el("p", null, (f.note || "").slice(0, 88)));
+        c.appendChild(el("p", null, plain(f.note).slice(0, 88)));
         var tags = el("div", "tags");
         tags.appendChild(statePill(f));
         tags.appendChild(pill(f.owner));
@@ -2326,8 +2326,8 @@
     c.draggable = true;
     c.dataset.id = f.id;
     c.appendChild(el("h3", null, f.name));
-    if (f.rndQuestion) c.appendChild(el("p", "q", f.rndQuestion.slice(0, 140)));
-    else c.appendChild(el("p", null, (f.note || "No research question yet.").slice(0, 92)));
+    if (f.rndQuestion) c.appendChild(el("p", "q", plain(f.rndQuestion).slice(0, 140)));
+    else c.appendChild(el("p", null, (plain(f.note) || "No research question yet.").slice(0, 92)));
     c.appendChild(el("div", "stu", f.student ? "Student: " + f.student : "No student assigned"));
 
     var tags = el("div", "tags");
@@ -2362,6 +2362,132 @@
     c.onclick = function () { preview(f.id); };
     c.ondblclick = function () { open(f.id); };
     return c;
+  }
+
+  /* --- rich text: a small editor for notes and descriptions, with safe rendering --- */
+
+  var RICH_TAGS = { P: 1, BR: 1, B: 1, STRONG: 1, I: 1, EM: 1, U: 1, S: 1, UL: 1, OL: 1, LI: 1, H3: 1, H4: 1, A: 1, BLOCKQUOTE: 1, CODE: 1 };
+  function isHtml(s) { return /<\/?[a-z][\s\S]*>/i.test(String(s || "")); }
+  function escapeHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  /* Plain text with newlines becomes paragraphs; lines starting with "- " or "* " become bullets. */
+  function textToHtml(t) {
+    var lines = String(t || "").split(/\r?\n/), out = "", inList = false;
+    lines.forEach(function (line) {
+      var m = /^\s*[-*•]\s+(.*)$/.exec(line);
+      if (m) { if (!inList) { out += "<ul>"; inList = true; } out += "<li>" + escapeHtml(m[1]) + "</li>"; return; }
+      if (inList) { out += "</ul>"; inList = false; }
+      if (line.trim()) out += "<p>" + escapeHtml(line) + "</p>";
+    });
+    if (inList) out += "</ul>";
+    return out;
+  }
+  function sanitizeHtml(html) {
+    var doc = new DOMParser().parseFromString("<div>" + String(html || "") + "</div>", "text/html");
+    var root = doc.body.firstChild;
+    function walk(node) {
+      Array.prototype.slice.call(node.childNodes).forEach(function (n) {
+        if (n.nodeType === 3) return;
+        if (n.nodeType !== 1 || n.tagName === "SCRIPT" || n.tagName === "STYLE") { n.remove(); return; }
+        walk(n);
+        var tag = n.tagName;
+        if (tag === "DIV") { var p = doc.createElement("p"); while (n.firstChild) p.appendChild(n.firstChild); n.replaceWith(p); n = p; tag = "P"; }
+        if (tag === "SPAN" || tag === "FONT") { while (n.firstChild) n.parentNode.insertBefore(n.firstChild, n); n.remove(); return; }
+        if (!RICH_TAGS[tag]) { while (n.firstChild) n.parentNode.insertBefore(n.firstChild, n); n.remove(); return; }
+        Array.prototype.slice.call(n.attributes).forEach(function (a) { n.removeAttribute(a.name); });
+        if (tag === "A") {
+          var href = (n.getAttribute("data-href") || "");
+          n.setAttribute("target", "_blank"); n.setAttribute("rel", "noopener");
+        }
+      });
+    }
+    // keep hrefs through the attribute wipe
+    Array.prototype.forEach.call(root.querySelectorAll("a[href]"), function (a) {
+      var h = a.getAttribute("href") || "";
+      if (/^(https?:|mailto:)/i.test(h)) a.setAttribute("data-href", h);
+    });
+    walk(root);
+    Array.prototype.forEach.call(root.querySelectorAll("a"), function (a) {
+      var h = a.getAttribute("data-href");
+      if (h) { a.setAttribute("href", h); a.removeAttribute("data-href"); } else { while (a.firstChild) a.parentNode.insertBefore(a.firstChild, a); a.remove(); }
+    });
+    // block elements never sit inside a paragraph
+    Array.prototype.slice.call(root.querySelectorAll("p")).forEach(function (pEl) {
+      if (pEl.querySelector("ul, ol, h3, h4, blockquote, p")) { while (pEl.firstChild) pEl.parentNode.insertBefore(pEl.firstChild, pEl); pEl.remove(); }
+    });
+    return root.innerHTML.replace(/<p>(\s|&nbsp;|<br>)*<\/p>/g, "").trim();
+  }
+  function richHtml(s) { return isHtml(s) ? sanitizeHtml(s) : textToHtml(s); }
+  /* Plain text for cards, rows, search. */
+  function plain(s) {
+    if (!isHtml(s)) return String(s || "");
+    var doc = new DOMParser().parseFromString("<div>" + s + "</div>", "text/html");
+    Array.prototype.forEach.call(doc.querySelectorAll("li"), function (li) { li.insertBefore(doc.createTextNode("• "), li.firstChild); li.appendChild(doc.createTextNode("  ")); });
+    Array.prototype.forEach.call(doc.querySelectorAll("p, h3, h4, br, blockquote"), function (b) { b.appendChild(doc.createTextNode(" ")); });
+    return (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+  }
+  function richView(s, cls) {
+    var d = el("div", "rich" + (cls ? " " + cls : ""));
+    d.innerHTML = richHtml(s);
+    return d;
+  }
+
+  /* contenteditable editor with a small toolbar; calls onChange(html) as you type */
+  function richEditor(value, onChange, placeholder, cls) {
+    var wrap = el("div", "rte" + (cls ? " " + cls : ""));
+    var bar = el("div", "rtebar");
+    var body = el("div", "rtebody");
+    body.contentEditable = "true";
+    body.setAttribute("role", "textbox");
+    body.setAttribute("aria-multiline", "true");
+    body.dataset.placeholder = placeholder || "";
+    body.innerHTML = richHtml(value);
+    function cmd(name, arg) { body.focus(); document.execCommand(name, false, arg || null); emit(); }
+    function emit() { onChange(sanitizeHtml(body.innerHTML)); }
+    [["B", "bold", "Bold"], ["I", "italic", "Italic"], ["U", "underline", "Underline"],
+     ["•", "insertUnorderedList", "Bullet list"], ["1.", "insertOrderedList", "Numbered list"],
+     ["H", "formatBlock", "Heading", "H4"], ["¶", "formatBlock", "Paragraph", "P"], ["“", "formatBlock", "Quote", "BLOCKQUOTE"]].forEach(function (t) {
+      var b = el("button", "rtb", t[0]);
+      b.type = "button";
+      b.title = t[2];
+      b.setAttribute("aria-label", t[2]);
+      b.onmousedown = function (e) { e.preventDefault(); };
+      b.onclick = function () { cmd(t[1], t[3]); };
+      bar.appendChild(b);
+    });
+    var link = el("button", "rtb", "Link");
+    link.type = "button"; link.title = "Link";
+    link.onmousedown = function (e) { e.preventDefault(); };
+    link.onclick = function () {
+      var sel = window.getSelection();
+      var range = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+      askText("Link address", { placeholder: "https://…", ok: "Add link" }).then(function (url) {
+        if (!url) return;
+        if (!/^(https?:|mailto:)/i.test(url)) url = "https://" + url;
+        body.focus();
+        if (range) { sel.removeAllRanges(); sel.addRange(range); }
+        if (!range || range.collapsed) document.execCommand("insertHTML", false, '<a href="' + escapeHtml(url) + '">' + escapeHtml(url) + "</a>");
+        else document.execCommand("createLink", false, url);
+        emit();
+      });
+    };
+    bar.appendChild(link);
+    var clear = el("button", "rtb", "Tx");
+    clear.type = "button"; clear.title = "Clear formatting";
+    clear.onmousedown = function (e) { e.preventDefault(); };
+    clear.onclick = function () { cmd("removeFormat"); cmd("formatBlock", "P"); };
+    bar.appendChild(clear);
+    body.addEventListener("input", emit);
+    body.addEventListener("paste", function (e) {
+      e.preventDefault();
+      var t = (e.clipboardData || window.clipboardData).getData("text/plain");
+      document.execCommand("insertText", false, t);
+    });
+    body.addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); link.click(); }
+    });
+    wrap.appendChild(bar);
+    wrap.appendChild(body);
+    return wrap;
   }
 
   /* --- market / ICP: ideal client profiles --- */
@@ -2769,7 +2895,7 @@
     more.querySelector(".menu").style.cssText += ";top:34px;";
     top.appendChild(more);
     c.appendChild(top);
-    if (icp.description) c.appendChild(el("p", null, icp.description));
+    if (icp.description) c.appendChild(el("p", null, plain(icp.description)));
     var tam = el("div", "tam");
     var d = el("div");
     d.appendChild(el("b", null, icp.tam || "—"));
@@ -2878,7 +3004,7 @@
         var b = el("b", null, f.name);
         b.onclick = function () { preview(f.id); };
         td0.appendChild(b);
-        if (f.note) td0.appendChild(el("span", null, f.note));
+        if (f.note) td0.appendChild(el("span", null, plain(f.note)));
         tr.appendChild(td0);
         var tds = el("td");
         tds.appendChild(statePill(f));
@@ -2936,7 +3062,7 @@
         c.draggable = true;
         c.dataset.id = f.id;
         c.appendChild(el("h3", null, f.name));
-        c.appendChild(el("p", null, (f.note || "").slice(0, 88)));
+        c.appendChild(el("p", null, plain(f.note).slice(0, 88)));
         var tags = el("div", "tags");
         tags.appendChild(statePill(f));
         icpsOf(f).filter(function (x) { return x.id !== lane.key; }).forEach(function (x) { tags.appendChild(pill("also " + x.name, "icp")); });
@@ -2989,21 +3115,10 @@
     left.appendChild(idRow);
 
     left.appendChild(el("div", "sublab", "Who they are"));
-    var desc = el("textarea", "writer small");
-    desc.style.marginTop = "0";
-    desc.value = icp.description;
-    desc.placeholder = isRegime ? "What this regime is, who it commissions, what it pays for." : "Who they are, what they buy, what matters to them.";
-    desc.setAttribute("aria-label", "Description");
-    desc.oninput = function () { icp.description = desc.value; save(); };
-    left.appendChild(desc);
+    left.appendChild(richEditor(icp.description, function (h) { icp.description = h; save(); }, isRegime ? "What this regime is, who it commissions, what it pays for." : "Who they are, what they buy, what matters to them.", "small"));
 
     left.appendChild(el("div", "sublab", "Notebook"));
-    var notes = el("textarea", "writer");
-    notes.value = icp.notes;
-    notes.placeholder = "Anything you learn about this segment: pricing, volumes, pains, quotes, sources. Add to it whenever you find something new.";
-    notes.setAttribute("aria-label", "Notes");
-    notes.oninput = function () { icp.notes = notes.value; save(); };
-    left.appendChild(notes);
+    left.appendChild(richEditor(icp.notes, function (h) { icp.notes = h; save(); }, "Anything you learn about this segment: pricing, volumes, pains, quotes, sources. Bullet points, numbered lists, bold, links.", "writer"));
     g.appendChild(left);
 
     /* right: numbers and links */
@@ -3184,31 +3299,14 @@
     nameIn.oninput = function () { f.name = nameIn.value; touch(f); renderNav(); var h = host.querySelector(".head h1"); if (h) h.textContent = f.name; save(); };
     left.appendChild(nameIn);
 
-    var ta = el("textarea", "writer");
-    ta.value = f.note;
-    ta.placeholder = "What this feature is, where it stands, what has to happen next, and what the team needs to know.";
-    ta.setAttribute("aria-label", "Description");
-    ta.oninput = function () { f.note = ta.value; touch(f); save(); };
-    left.appendChild(ta);
+    left.appendChild(richEditor(f.note, function (h) { f.note = h; touch(f); save(); }, "What this feature is, where it stands, what has to happen next, and what the team needs to know.", "writer"));
 
     if (f.rnd) {
       left.appendChild(el("div", "sublab", "Research question"));
-      var q = el("textarea", "writer small");
-      q.style.marginTop = "0";
-      q.value = f.rndQuestion;
-      q.placeholder = "The question the student should answer. What would a good result look like?";
-      q.setAttribute("aria-label", "Research question");
-      q.oninput = function () { f.rndQuestion = q.value; touch(f); save(); };
-      left.appendChild(q);
+      left.appendChild(richEditor(f.rndQuestion, function (h) { f.rndQuestion = h; touch(f); save(); }, "The question the student should answer. What would a good result look like?", "small"));
 
       left.appendChild(el("div", "sublab", "Findings"));
-      var fd = el("textarea", "writer small");
-      fd.style.marginTop = "0";
-      fd.value = f.rndFindings;
-      fd.placeholder = "What was learned, what was tried, and the recommendation for the product.";
-      fd.setAttribute("aria-label", "Findings");
-      fd.oninput = function () { f.rndFindings = fd.value; touch(f); save(); };
-      left.appendChild(fd);
+      left.appendChild(richEditor(f.rndFindings, function (h) { f.rndFindings = h; touch(f); save(); }, "What was learned, what was tried, and the recommendation for the product.", "small"));
     }
     g.appendChild(left);
 
@@ -3448,7 +3546,7 @@
   function renderSearch(host) {
     var q = ui.query.trim().toLowerCase();
     var hits = S.features.filter(function (f) {
-      return (f.name + " " + f.note + " " + f.owner + " " + f.state + " " + f.student + " " + f.rndQuestion + " " + (f.spaces || []).join(" ") + " " + icpsOf(f).map(function (i) { return i.name; }).join(" ") + (f.rnd ? " r&d research" : "")).toLowerCase().indexOf(q) !== -1;
+      return (f.name + " " + plain(f.note) + " " + f.owner + " " + f.state + " " + f.student + " " + plain(f.rndQuestion) + " " + (f.spaces || []).join(" ") + " " + icpsOf(f).map(function (i) { return i.name; }).join(" ") + (f.rnd ? " r&d research" : "")).toLowerCase().indexOf(q) !== -1;
     });
     host.appendChild(header("SEARCH", hits.length + (hits.length === 1 ? " result" : " results") + " for “" + ui.query.trim() + "”", []));
     var pad = el("div", "pad");
