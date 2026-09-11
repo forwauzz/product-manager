@@ -900,3 +900,5 @@
     .qpill .mo { display:none; }
   }
   @media print { .qframe { box-shadow:none; overflow:visible; } .qpending, .qfoot .note { display:none; } }
+  .qcell.nowm { box-shadow:inset 2px 0 0 var(--gold); }
+  .qpill .mo { margin-left:auto; }

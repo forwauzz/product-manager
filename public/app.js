@@ -811,11 +811,11 @@
     pr.onclick = function () { window.print(); };
     acts.push(pr);
 
-    host.appendChild(header("PRODUCT ROADMAP", ui.rmode === "quarters" ? p.name + " by quarter" : p.name + " deployment order", acts));
+    host.appendChild(header("PRODUCT ROADMAP", ui.rmode === "quarters" ? p.name + " by quarter" : ui.rmode === "months" ? p.name + " by month" : p.name + " deployment order", acts));
 
     var bar = el("div", "bar");
     var seg = el("div", "seg");
-    [["Quarters", "quarters"], ["List", "order"], ["Gantt", "gantt"]].forEach(function (m) {
+    [["Quarters", "quarters"], ["Months", "months"], ["List", "order"], ["Gantt", "gantt"]].forEach(function (m) {
       var b = el("button", null, m[0]);
       b.setAttribute("aria-pressed", String(ui.rmode === m[1]));
       b.onclick = function () { ui.rmode = m[1]; renderView(); };
@@ -823,7 +823,7 @@
     });
     bar.appendChild(seg);
 
-    if (ui.rmode !== "quarters") {
+    if (ui.rmode !== "quarters" && ui.rmode !== "months") {
       var g = el("div", "seg");
       [["Weekly", "week"], ["Monthly", "month"], ["Quarterly", "quarter"]].forEach(function (m) {
         var b = el("button", null, m[0]);
@@ -838,7 +838,7 @@
     if (S.icps.length) bar.appendChild(icpSelect(renderView));
     host.appendChild(bar);
 
-    if (ui.rmode === "quarters") return renderQuarters(host);
+    if (ui.rmode === "quarters" || ui.rmode === "months") return renderPeriodGrid(host, ui.rmode);
     if (ui.rmode === "gantt") return renderGantt(host);
     if (ui.rmode === "timeline") return renderColumns(host);
 
@@ -1014,21 +1014,56 @@
     });
   }
 
-  /* --- quarters: the roadmap as a simple grid, one row per space, four quarters across --- */
-  function renderQuarters(host) {
-    var qs = [], q = qOf(mKey(new Date())), i;
-    for (i = 0; i < 4; i++) { qs.push(q); q = qOf(mAdd(qFirst(q), 3)); }
-    var months = [];
-    qs.forEach(function (qq) { for (var j = 0; j < 3; j++) months.push(mAdd(qFirst(qq), j)); });
-    var first = months[0], last = months[months.length - 1];
-    var nowM = mKey(new Date());
+  /* --- period grid: the roadmap as a simple grid, one row per space, four quarters or four months across --- */
+  var WEEK_STARTS = [1, 8, 15, 22];
+  function gridMode(mode) {
+    var i, j, groups = [], slots = [];
+    if (mode === "months") {
+      var m = mKey(new Date());
+      for (i = 0; i < 4; i++) groups.push(mAdd(m, i));
+      groups.forEach(function (g) {
+        for (j = 0; j < 4; j++) slots.push(j === 0 ? g : g + "-" + ("0" + WEEK_STARTS[j]).slice(-2));
+      });
+      var today = new Date(), dd = today.getDate(), wi = dd >= 22 ? 3 : dd >= 15 ? 2 : dd >= 8 ? 1 : 0;
+      return {
+        per: 4, groups: groups, slots: slots, span: 4,
+        label: function (g) { var d = toDate(g); return [d.toLocaleDateString(undefined, { month: "long" }), String(d.getFullYear())]; },
+        slotTitle: function (k) { var d = toDate(k); return d.toLocaleDateString(undefined, { month: "long", day: "numeric" }) + " week"; },
+        posOf: function (f) {
+          var d = toDate(f.period), mk = mKey(d), gi = groups.indexOf(mk);
+          if (mk < groups[0]) return 0;
+          if (gi === -1) return -1;
+          var day = f.period.length > 7 ? d.getDate() : 1;
+          return gi * 4 + (day >= 22 ? 3 : day >= 15 ? 2 : day >= 8 ? 1 : 0);
+        },
+        nowSlot: mKey(today) + (wi ? "-" + ("0" + WEEK_STARTS[wi]).slice(-2) : ""),
+        laterKey: mAdd(groups[3], 1),
+        pillTag: function (f) { var d = toDate(f.period); return f.period.length > 7 ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""; }
+      };
+    }
+    var q = qOf(mKey(new Date()));
+    for (i = 0; i < 4; i++) { groups.push(q); q = qOf(mAdd(qFirst(q), 3)); }
+    groups.forEach(function (qq) { for (j = 0; j < 3; j++) slots.push(mAdd(qFirst(qq), j)); });
+    return {
+      per: 3, groups: groups, slots: slots, span: 4,
+      label: function (g) { return [g.split("-")[1], g.split("-")[0]]; },
+      slotTitle: function (k) { return mLong(k); },
+      posOf: function (f) { var mk = mKey(toDate(f.period)); if (mk < slots[0]) return 0; return slots.indexOf(mk); },
+      nowSlot: mKey(new Date()),
+      laterKey: mAdd(slots[slots.length - 1], 1),
+      pillTag: function () { return ""; }
+    };
+  }
 
+  function renderPeriodGrid(host, mode) {
+    var M = gridMode(mode);
+    var total = M.slots.length;
     var list = feats().filter(passes).filter(function (f) { return !f.parent; });
     var scheduled = list.filter(function (f) { return f.period; });
     var pending = list.filter(function (f) { return !f.period && f.state !== "Live"; });
     var shipped = list.filter(function (f) { return !f.period && f.state === "Live"; }).length;
-    var hasLater = scheduled.some(function (f) { return mKey(toDate(f.period)) > last; });
-    var cols = "repeat(12, minmax(56px, 1fr))" + (hasLater ? " minmax(120px, .8fr)" : "");
+    var hasLater = scheduled.some(function (f) { return M.posOf(f) === -1; });
+    var cols = "repeat(" + total + ", minmax(" + (mode === "months" ? 42 : 56) + "px, 1fr))" + (hasLater ? " minmax(120px, .8fr)" : "");
     var rowsSp = ui.spaceFilter ? [ui.spaceFilter] : S.spaces.slice();
 
     var pad = el("div", "pad");
@@ -1037,21 +1072,31 @@
     head.appendChild(el("div", "qteam", "Teams"));
     var hl = el("div", "qlanes");
     hl.style.gridTemplateColumns = cols;
-    qs.forEach(function (qq, qi) {
-      var h = el("div", "qcol" + (qi === 0 ? " now" : ""));
-      h.style.gridColumn = (qi * 3 + 1) + " / span 3";
-      h.appendChild(el("b", null, qq.split("-")[1]));
-      h.appendChild(el("span", null, qq.split("-")[0]));
+    M.groups.forEach(function (g, gi) {
+      var h = el("div", "qcol" + (gi === 0 ? " now" : ""));
+      h.style.gridColumn = (gi * M.per + 1) + " / span " + M.per;
+      var lb = M.label(g);
+      h.appendChild(el("b", null, lb[0]));
+      h.appendChild(el("span", null, lb[1]));
       hl.appendChild(h);
     });
-    if (hasLater) { var lh = el("div", "qcol later"); lh.style.gridColumn = "13"; lh.appendChild(el("b", null, "Later")); hl.appendChild(lh); }
+    if (hasLater) { var lh = el("div", "qcol later"); lh.style.gridColumn = String(total + 1); lh.appendChild(el("b", null, "Later")); hl.appendChild(lh); }
     head.appendChild(hl);
     frame.appendChild(head);
 
-    function schedule(f, m, sp) {
-      f.period = m;
+    function schedule(f, k, sp) {
+      f.period = k;
       if (sp && (f.spaces || []).indexOf(sp) === -1) { f.spaces = (f.spaces || []).concat([sp]); toast(f.name + " added to " + sp + "."); }
       touch(f); render(); save();
+    }
+    function dropCell(cell, k, sp) {
+      cell.addEventListener("dragover", function (e) { e.preventDefault(); cell.classList.add("over"); });
+      cell.addEventListener("dragleave", function () { cell.classList.remove("over"); });
+      cell.addEventListener("drop", function (e) {
+        e.preventDefault(); cell.classList.remove("over");
+        var d = feature(e.dataTransfer.getData("text/plain"));
+        if (d) schedule(d, k, sp);
+      });
     }
 
     rowsSp.forEach(function (sp) {
@@ -1066,42 +1111,33 @@
       var n = Math.max(items.length, 1);
       lanes.style.gridTemplateColumns = cols;
       lanes.style.gridTemplateRows = "repeat(" + n + ", 46px)";
-      months.forEach(function (m, mi) {
-        var cell = el("div", "qcell" + (mi % 3 === 0 ? " qb" : "") + (m === nowM ? " nowm" : ""));
-        cell.style.gridColumn = String(mi + 1);
+      M.slots.forEach(function (k, si) {
+        var cell = el("div", "qcell" + (si % M.per === 0 ? " qb" : "") + (k === M.nowSlot ? " nowm" : ""));
+        cell.style.gridColumn = String(si + 1);
         cell.style.gridRow = "1 / span " + n;
-        cell.title = mLong(m);
-        cell.addEventListener("dragover", function (e) { e.preventDefault(); cell.classList.add("over"); });
-        cell.addEventListener("dragleave", function () { cell.classList.remove("over"); });
-        cell.addEventListener("drop", function (e) {
-          e.preventDefault(); cell.classList.remove("over");
-          var d = feature(e.dataTransfer.getData("text/plain"));
-          if (d) schedule(d, m, sp);
-        });
+        cell.title = M.slotTitle(k);
+        dropCell(cell, k, sp);
         lanes.appendChild(cell);
       });
       if (hasLater) {
         var lc = el("div", "qcell qb later");
-        lc.style.gridColumn = "13"; lc.style.gridRow = "1 / span " + n;
-        lc.addEventListener("dragover", function (e) { e.preventDefault(); lc.classList.add("over"); });
-        lc.addEventListener("dragleave", function () { lc.classList.remove("over"); });
-        lc.addEventListener("drop", function (e) { e.preventDefault(); lc.classList.remove("over"); var d = feature(e.dataTransfer.getData("text/plain")); if (d) schedule(d, mAdd(last, 1), sp); });
+        lc.style.gridColumn = String(total + 1); lc.style.gridRow = "1 / span " + n;
+        dropCell(lc, M.laterKey, sp);
         lanes.appendChild(lc);
       }
       items.forEach(function (f, idx) {
-        var mk = mKey(toDate(f.period));
-        var pos = months.indexOf(mk);
-        var span = 4;
-        if (mk < first) { pos = 0; }
-        if (mk > last) { pos = 12; span = 1; }
-        if (pos + span > 12 && pos < 12) span = 12 - pos;
+        var pos = M.posOf(f), span = M.span;
+        if (pos === -1) { pos = total; span = 1; }
+        if (pos + span > total && pos < total) span = total - pos;
         var pill = el("button", "qpill " + stateClass(f.state));
         pill.style.gridColumn = (pos + 1) + " / span " + span;
         pill.style.gridRow = String(idx + 1);
         pill.draggable = true;
-        pill.title = f.name + " · " + mLong(mk) + " · " + f.state + " · " + f.owner;
+        pill.title = f.name + " · " + laneLabelOf(f) + " · " + f.state + " · " + f.owner;
         pill.appendChild(el("i", "sd " + stateClass(f.state)));
         pill.appendChild(el("span", "nm", f.name));
+        var tag = M.pillTag(f);
+        if (tag) pill.appendChild(el("span", "mo", tag));
         wireDrag(pill, f, null);
         pill.onclick = function () { preview(f.id); };
         lanes.appendChild(pill);
@@ -1115,14 +1151,14 @@
     var lg = el("div", "legend");
     STATES.forEach(function (st) { var s = el("span", "lg " + stateClass(st)); s.appendChild(el("i")); s.appendChild(document.createTextNode(st)); lg.appendChild(s); });
     foot.appendChild(lg);
-    foot.appendChild(el("span", "note", "Drag a pill to another month. Click it for details." + (shipped ? " " + shipped + " live features without a date are not shown." : "")));
+    foot.appendChild(el("span", "note", (mode === "months" ? "Each month is split into weeks. " : "") + "Drag a pill to move it. Click it for details." + (shipped ? " " + shipped + " live features without a date are not shown." : "")));
     pad.appendChild(foot);
 
     if (pending.length) {
       var pk = el("div", "qpending");
       var ph = el("div", "qph");
       ph.appendChild(el("b", null, "Not scheduled yet"));
-      ph.appendChild(el("span", "note", "Drag one onto a month, or open it and pick when."));
+      ph.appendChild(el("span", "note", "Drag one onto the grid, or open it and pick when."));
       pk.appendChild(ph);
       var chips = el("div", "qchips");
       pending.forEach(function (f) {
@@ -1139,6 +1175,10 @@
       pad.appendChild(pk);
     }
     host.appendChild(pad);
+  }
+  function laneLabelOf(f) {
+    var d = toDate(f.period);
+    return f.period.length > 7 ? d.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : mLong(mKey(d));
   }
 
   function renderGantt(host) {
