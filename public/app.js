@@ -2389,6 +2389,101 @@
     return d;
   }
 
+  /* --- hero illustrations per segment type (flat scenes, app palette) --- */
+  var HERO_DEFS = '<defs><linearGradient id="hg-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7f5f0"/><stop offset="1" stop-color="#e9e4d8"/></linearGradient><linearGradient id="hg-ink" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16203a"/><stop offset="1" stop-color="#0f172a"/></linearGradient></defs>';
+  var HERO_SVG = {
+    "physician":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<rect x="0" y="132" width="420" height="48" fill="#e2ddd2"/>' +
+      '<rect x="292" y="30" width="86" height="70" rx="6" fill="#fbfaf7" stroke="#d9d3c6"/><path d="M335 44v42M314 65h42" stroke="#b8963e" stroke-width="7" stroke-linecap="round"/>' +
+      '<rect x="40" y="104" width="150" height="10" rx="3" fill="#b8963e"/><rect x="48" y="114" width="8" height="24" fill="#8c6f26"/><rect x="174" y="114" width="8" height="24" fill="#8c6f26"/>' +
+      '<rect x="60" y="86" width="52" height="18" rx="3" fill="#fbfaf7" stroke="#d9d3c6"/><path d="M66 92h40M66 98h28" stroke="#9aa3b2" stroke-width="2" stroke-linecap="round"/>' +
+      '<circle cx="222" cy="52" r="20" fill="#e8c9a8"/><path d="M204 46c2-16 34-16 36 0-6-4-30-4-36 0z" fill="#3a2a1a"/>' +
+      '<path d="M182 132c0-34 18-58 40-58s40 24 40 58z" fill="#fbfaf7" stroke="#d9d3c6"/><path d="M204 76l18 12 18-12" fill="none" stroke="#d9d3c6" stroke-width="2"/>' +
+      '<path d="M210 78c-6 20-2 34 6 40M234 78c6 20 2 34-6 40" fill="none" stroke="#0f172a" stroke-width="3.5" stroke-linecap="round"/><circle cx="222" cy="122" r="6" fill="#0f172a"/><circle cx="222" cy="122" r="2.5" fill="#b8963e"/>' +
+      '<rect x="20" y="20" width="60" height="42" rx="4" fill="#fbfaf7" stroke="#d9d3c6"/><path d="M28 34h44M28 44h30" stroke="#c9c2b3" stroke-width="3" stroke-linecap="round"/>',
+    "lawyer":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<rect x="0" y="126" width="420" height="54" fill="#d8d2c4"/>' +
+      '<rect x="230" y="40" width="34" height="86" fill="#8c6f26"/><rect x="270" y="40" width="34" height="86" fill="#0f172a"/><rect x="310" y="40" width="34" height="86" fill="#4b5563"/><rect x="350" y="40" width="34" height="86" fill="#b8963e"/>' +
+      '<path d="M236 60h22M276 60h22M316 60h22M356 60h22M236 100h22M316 100h22" stroke="#f7f5f0" stroke-width="2" opacity=".7"/>' +
+      '<path d="M120 42v84M84 126h72" stroke="#0f172a" stroke-width="5" stroke-linecap="round"/><path d="M120 50L64 66M120 50l56 16" stroke="#0f172a" stroke-width="4" stroke-linecap="round"/>' +
+      '<path d="M44 92a20 20 0 0 0 40 0z" fill="#b8963e"/><path d="M156 92a20 20 0 0 0 40 0z" fill="#b8963e"/><path d="M64 66l-20 26M64 66l20 26M176 66l-20 26M176 66l20 26" stroke="#0f172a" stroke-width="2"/>' +
+      '<circle cx="120" cy="40" r="7" fill="#b8963e"/>',
+    "law-firm":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<rect x="0" y="140" width="420" height="40" fill="#d8d2c4"/>' +
+      '<path d="M60 70L210 22l150 48z" fill="#0f172a"/><rect x="72" y="70" width="276" height="12" fill="#16203a"/>' +
+      '<rect x="88" y="82" width="22" height="58" fill="#fbfaf7" stroke="#cfc8b9"/><rect x="140" y="82" width="22" height="58" fill="#fbfaf7" stroke="#cfc8b9"/><rect x="192" y="82" width="22" height="58" fill="#fbfaf7" stroke="#cfc8b9"/><rect x="244" y="82" width="22" height="58" fill="#fbfaf7" stroke="#cfc8b9"/><rect x="296" y="82" width="22" height="58" fill="#fbfaf7" stroke="#cfc8b9"/>' +
+      '<rect x="72" y="140" width="276" height="8" fill="#b8963e"/>' +
+      '<rect x="196" y="100" width="28" height="40" fill="#0f172a"/><circle cx="210" cy="52" r="10" fill="#b8963e"/>' +
+      '<path d="M120 100h44M120 110h44M120 120h30" stroke="#c9c2b3" stroke-width="3" stroke-linecap="round" opacity=".0"/>',
+    "clinic":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<rect x="0" y="140" width="420" height="40" fill="#dcd7cb"/>' +
+      '<rect x="96" y="54" width="228" height="86" rx="4" fill="#fbfaf7" stroke="#cfc8b9"/><rect x="96" y="44" width="228" height="14" rx="3" fill="#0f172a"/>' +
+      '<rect x="112" y="70" width="30" height="24" rx="2" fill="#dfe6ef"/><rect x="156" y="70" width="30" height="24" rx="2" fill="#dfe6ef"/><rect x="234" y="70" width="30" height="24" rx="2" fill="#dfe6ef"/><rect x="278" y="70" width="30" height="24" rx="2" fill="#dfe6ef"/>' +
+      '<rect x="194" y="98" width="32" height="42" rx="2" fill="#0f172a"/><rect x="204" y="114" width="4" height="8" fill="#b8963e"/>' +
+      '<rect x="196" y="20" width="28" height="28" rx="6" fill="#b8963e"/><path d="M210 27v14M203 34h14" stroke="#0f172a" stroke-width="5" stroke-linecap="round"/>' +
+      '<circle cx="48" cy="112" r="20" fill="#7a9a6b"/><rect x="45" y="128" width="6" height="14" fill="#5b4632"/><circle cx="372" cy="108" r="24" fill="#93ab84"/><rect x="369" y="128" width="6" height="14" fill="#5b4632"/>',
+    "insurer":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<rect x="0" y="136" width="420" height="44" fill="#dcd7cb"/>' +
+      '<path d="M90 96a120 120 0 0 1 240 0z" fill="#b8963e"/><path d="M90 96a120 120 0 0 1 240 0" fill="none" stroke="#8c6f26" stroke-width="3"/><path d="M130 96c8-40 40-60 80-62M210 34c40 2 72 22 80 62" fill="none" stroke="#f7f5f0" stroke-width="2" opacity=".5"/>' +
+      '<path d="M210 96v46a10 10 0 0 0 20 0" fill="none" stroke="#0f172a" stroke-width="5" stroke-linecap="round"/>' +
+      '<path d="M150 136v-24l30-22 30 22v24z" fill="#fbfaf7" stroke="#cfc8b9"/><rect x="174" y="118" width="12" height="18" fill="#0f172a"/>' +
+      '<rect x="236" y="116" width="60" height="20" rx="6" fill="#0f172a"/><circle cx="250" cy="138" r="6" fill="#4b5563"/><circle cx="282" cy="138" r="6" fill="#4b5563"/><path d="M246 116l8-10h24l8 10" fill="#0f172a"/>' +
+      '<path d="M40 60l18 6v16c0 12-8 20-18 26-10-6-18-14-18-26V66z" fill="#fbfaf7" stroke="#8c6f26" stroke-width="2"/><path d="M33 82l5 5 10-11" fill="none" stroke="#2f7a4a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>',
+    "employer":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<rect x="0" y="140" width="420" height="40" fill="#d8d2c4"/>' +
+      '<path d="M60 140V84l50 26V84l50 26V84l50 26v30z" fill="#4b5563"/><rect x="60" y="130" width="150" height="10" fill="#0f172a"/>' +
+      '<rect x="74" y="40" width="14" height="50" fill="#0f172a"/><rect x="100" y="52" width="14" height="38" fill="#0f172a"/>' +
+      '<rect x="232" y="60" width="130" height="80" rx="3" fill="#fbfaf7" stroke="#cfc8b9"/>' +
+      '<rect x="244" y="72" width="22" height="16" fill="#dfe6ef"/><rect x="276" y="72" width="22" height="16" fill="#dfe6ef"/><rect x="308" y="72" width="22" height="16" fill="#dfe6ef"/><rect x="244" y="98" width="22" height="16" fill="#dfe6ef"/><rect x="276" y="98" width="22" height="16" fill="#dfe6ef"/><rect x="308" y="98" width="22" height="16" fill="#dfe6ef"/>' +
+      '<rect x="284" y="118" width="26" height="22" fill="#0f172a"/><rect x="232" y="52" width="130" height="8" fill="#b8963e"/>' +
+      '<circle cx="386" cy="118" r="8" fill="#e8c9a8"/><path d="M372 140c0-12 6-18 14-18s14 6 14 18z" fill="#0f172a"/><circle cx="216" cy="122" r="7" fill="#e8c9a8"/><path d="M204 140c0-10 5-15 12-15s12 5 12 15z" fill="#b8963e"/>',
+    "regime":
+      '<rect width="420" height="180" fill="url(#hg-ink)"/>' +
+      '<rect x="0" y="140" width="420" height="40" fill="#0b1224"/>' +
+      '<path d="M70 66L210 26l140 40z" fill="#b8963e"/><rect x="86" y="66" width="248" height="10" fill="#8c6f26"/>' +
+      '<rect x="100" y="76" width="18" height="58" fill="#f7f5f0"/><rect x="146" y="76" width="18" height="58" fill="#f7f5f0"/><rect x="192" y="76" width="18" height="58" fill="#f7f5f0"/><rect x="238" y="76" width="18" height="58" fill="#f7f5f0"/><rect x="284" y="76" width="18" height="58" fill="#f7f5f0"/>' +
+      '<rect x="86" y="134" width="248" height="6" fill="#f7f5f0"/><rect x="78" y="140" width="264" height="6" fill="#c9c2b3"/>' +
+      '<circle cx="210" cy="50" r="9" fill="#0f172a"/><path d="M206 50l3 3 6-7" fill="none" stroke="#b8963e" stroke-width="2" stroke-linecap="round"/>' +
+      '<rect x="24" y="40" width="30" height="40" rx="2" fill="#f7f5f0" opacity=".9"/><path d="M30 50h18M30 58h18M30 66h12" stroke="#4b5563" stroke-width="2" stroke-linecap="round"/><circle cx="46" cy="72" r="4" fill="#b8963e"/>',
+    "institution":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<rect x="0" y="140" width="420" height="40" fill="#d8d2c4"/>' +
+      '<rect x="110" y="50" width="200" height="90" fill="#fbfaf7" stroke="#cfc8b9"/><path d="M100 50h220l-10-14H110z" fill="#0f172a"/>' +
+      '<rect x="126" y="66" width="24" height="40" fill="#dfe6ef"/><rect x="166" y="66" width="24" height="40" fill="#dfe6ef"/><rect x="230" y="66" width="24" height="40" fill="#dfe6ef"/><rect x="270" y="66" width="24" height="40" fill="#dfe6ef"/>' +
+      '<rect x="196" y="100" width="28" height="40" fill="#0f172a"/><rect x="110" y="140" width="200" height="6" fill="#b8963e"/>' +
+      '<rect x="206" y="14" width="4" height="26" fill="#4b5563"/><path d="M210 14h26l-6 7 6 7h-26z" fill="#b8963e"/>',
+    "paralegal":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<rect x="0" y="136" width="420" height="44" fill="#e2ddd2"/>' +
+      '<rect x="60" y="104" width="300" height="10" rx="3" fill="#8c6f26"/><rect x="70" y="114" width="8" height="22" fill="#5b4632"/><rect x="342" y="114" width="8" height="22" fill="#5b4632"/>' +
+      '<circle cx="210" cy="56" r="18" fill="#e8c9a8"/><path d="M194 52c4-16 30-16 34 0-6-4-28-4-34 0z" fill="#3a2a1a"/>' +
+      '<path d="M170 104c0-24 16-40 40-40s40 16 40 40z" fill="#0f172a"/><path d="M196 70l14 10 14-10" fill="none" stroke="#b8963e" stroke-width="3"/>' +
+      '<rect x="252" y="76" width="70" height="28" rx="3" fill="#fbfaf7" stroke="#cfc8b9"/><path d="M260 86h54M260 94h36" stroke="#9aa3b2" stroke-width="2" stroke-linecap="round"/>' +
+      '<rect x="96" y="70" width="60" height="34" rx="3" fill="#fbfaf7" stroke="#cfc8b9"/><rect x="104" y="78" width="44" height="18" fill="#dfe6ef"/>' +
+      '<rect x="24" y="30" width="34" height="46" rx="2" fill="#fbfaf7" stroke="#cfc8b9"/><path d="M31 42h20M31 50h20M31 58h12" stroke="#c9c2b3" stroke-width="3" stroke-linecap="round"/>' +
+      '<rect x="364" y="26" width="34" height="46" rx="2" fill="#fbfaf7" stroke="#cfc8b9"/><path d="M371 38h20M371 46h20M371 54h12" stroke="#c9c2b3" stroke-width="3" stroke-linecap="round"/>',
+    "person":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<rect x="0" y="136" width="420" height="44" fill="#e2ddd2"/>' +
+      '<circle cx="210" cy="58" r="22" fill="#e8c9a8"/><path d="M190 52c4-18 36-18 40 0-8-4-32-4-40 0z" fill="#3a2a1a"/>' +
+      '<path d="M160 136c0-30 22-50 50-50s50 20 50 50z" fill="#0f172a"/><path d="M196 88l14 12 14-12" fill="none" stroke="#b8963e" stroke-width="3"/>' +
+      '<circle cx="330" cy="80" r="26" fill="#f2efe9" stroke="#d9d3c6"/><path d="M318 80h24M330 68v24" stroke="#b8963e" stroke-width="4" stroke-linecap="round" opacity=".0"/>' +
+      '<circle cx="80" cy="96" r="16" fill="#7a9a6b"/><rect x="77" y="108" width="6" height="28" fill="#5b4632"/>',
+    "other":
+      '<rect width="420" height="180" fill="url(#hg-sky)"/>' +
+      '<circle cx="210" cy="90" r="46" fill="#0f172a"/><circle cx="210" cy="90" r="14" fill="#b8963e"/>' +
+      '<circle cx="90" cy="60" r="10" fill="#b8963e"/><circle cx="330" cy="120" r="10" fill="#b8963e"/><path d="M100 64l70 20M320 116l-70-20" stroke="#4b5563" stroke-width="2"/>'
+  };
+  function heroSvg(key) {
+    return '<svg viewBox="0 0 420 180" preserveAspectRatio="xMidYMid slice" aria-hidden="true">' + HERO_DEFS + (HERO_SVG[key] || HERO_SVG.other) + "</svg>";
+  }
+
   function icpThumbEl(icp, cls) {
     var d = el("div", "icpthumb " + (icp.kind === "Regime" ? "regime" : "buyer") + (cls ? " " + cls : ""));
     if (icp.image) {
@@ -2399,7 +2494,8 @@
       d.appendChild(img);
       return d;
     }
-    d.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (AVATAR_SVG[icp.avatar] || AVATAR_SVG.other) + "</svg>";
+    d.classList.add("scene");
+    d.innerHTML = heroSvg(icp.kind === "Regime" && (icp.avatar === "person" || !icp.avatar) ? "regime" : icp.avatar);
     d.appendChild(el("span", "k", icp.kind === "Regime" ? "Regime" : avatarLabel(icp.avatar)));
     return d;
   }

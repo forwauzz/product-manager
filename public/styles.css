@@ -698,3 +698,7 @@
   .icpthumb.hero { border:1px solid var(--line); border-radius:var(--r-lg); aspect-ratio:21/9; margin-bottom:18px; }
   .icpthumb.hero svg { width:22%; }
   @media (max-width:860px) { .icpthumb.hero { aspect-ratio:16/9; } }
+  .icpthumb.scene { background:var(--tint); }
+  .icpthumb.scene > svg { position:absolute; inset:0; width:100%; height:100%; max-width:none; }
+  .icpthumb.scene .k { position:absolute; left:14px; bottom:10px; background:rgba(15,23,42,.72); color:var(--bone); padding:4px 10px; border-radius:var(--r-pill); opacity:1; font-weight:600; }
+  .icpthumb.hero.scene .k { left:18px; bottom:14px; }
