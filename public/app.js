@@ -1,7 +1,8 @@
 (function () {
   "use strict";
 
-  var STATES = ["Research", "Planned", "Building", "Live", "Needs work", "Feature flag"];
+  var STATES = ["Proposed", "Research", "Planned", "Building", "Live", "Needs work", "Feature flag"];
+  var BUILT_STATES = ["Building", "Live", "Needs work", "Feature flag"];
   var RND_STAGES = ["Backlog", "Assigned", "In progress", "Findings", "Concluded"];
   var ICONS = { roadmap: "▤", features: "◫", parallel: "⋔", timeline: "▦", rnd: "⚗", icp: "◎", space: "◆", changes: "◷" };
 
@@ -188,6 +189,7 @@
 
   function setState(f, v) {
     f.state = v;
+    if (v === "Planned") f.agreed = true; // Planned is the agreement
     if (v === "Research" && !f.rnd) { f.rnd = true; toast(f.name + " tagged as R&D."); }
     touch(f);
   }
@@ -1699,7 +1701,7 @@
   }
   function subsOf(f) { return childrenOf(f); }
 
-  var UPCOMING_STATES = ["Building", "Planned", "Research"];
+  var UPCOMING_STATES = ["Building", "Planned", "Research", "Proposed"];
   function upcoming() { return feats().filter(function (f) { return UPCOMING_STATES.indexOf(f.state) !== -1; }); }
 
   function renderFeatures(host) {
@@ -1787,8 +1789,47 @@
   }
 
   /* --- change log: every edit is recorded by the server; here we show it --- */
-  var LOG_FIELDS = { created: "Created", deleted: "Deleted", name: "Name", state: "State", owner: "Owner", period: "Date", effort: "Estimate",
+  var LOG_FIELDS = { created: "Created", deleted: "Deleted", name: "Name", state: "State", owner: "Owner", period: "Date", effort: "Estimate", agreed: "Agreed",
     spaces: "Spaces", parent: "Parent", rnd: "R&D", rndStage: "R&D stage", student: "Student", link: "Drive link", note: "Description", image: "Screenshot" };
+  /* Drift: exists in the product (Building or beyond) without ever having been Planned, and not marked agreed.
+     Features with no history at all were inventoried from the live apps and are left alone. */
+  function driftList() {
+    var byF = {};
+    (S.log || []).forEach(function (e) { (byF[e.fid] = byF[e.fid] || []).push(e); });
+    return feats().filter(function (f) {
+      if (f.agreed || BUILT_STATES.indexOf(f.state) === -1) return false;
+      var es = byF[f.id];
+      if (!es || !es.length) return false;
+      if (es.some(function (e) { return e.field === "state" && e.to === "Planned"; })) return false;
+      var born = es.filter(function (e) { return e.field === "created"; })[0];
+      if (born && BUILT_STATES.indexOf(born.from) !== -1) return true;
+      return es.some(function (e) { return e.field === "state" && BUILT_STATES.indexOf(e.to) !== -1 && ["Proposed", "Research", ""].indexOf(e.from) !== -1; });
+    });
+  }
+  function driftPanel() {
+    var list = driftList();
+    var p = el("div", "drift" + (list.length ? "" : " ok"));
+    var h = el("div", "drifthead");
+    h.appendChild(el("b", null, list.length ? list.length + (list.length === 1 ? " feature built without agreement" : " features built without agreement") : "No drift"));
+    h.appendChild(el("span", "note", list.length ? "Reached Building or Live without ever being Planned. Mark it agreed, or move it back to Proposed and talk." : "Everything that is being built went through Planned first."));
+    p.appendChild(h);
+    list.forEach(function (f) {
+      var r = el("div", "driftrow");
+      var nm = el("button", "fname", f.name);
+      nm.onclick = function () { open(f.id); };
+      r.appendChild(nm);
+      r.appendChild(pill(f.state, stateClass(f.state)));
+      r.appendChild(el("span", "note", f.owner && f.owner !== "Unassigned" ? f.owner : ""));
+      var ok = el("button", "btn ghost small", "Mark agreed");
+      ok.onclick = function () { f.agreed = true; touch(f); save(); render(); toast(f.name + " marked as agreed."); };
+      r.appendChild(ok);
+      var back = el("button", "btn ghost small", "Back to Proposed");
+      back.onclick = function () { setState(f, "Proposed"); save(); render(); toast(f.name + " is Proposed again."); };
+      r.appendChild(back);
+      p.appendChild(r);
+    });
+    return p;
+  }
   function logEntries() { return (S.log || []).slice().sort(function (a, b) { return (b.t || 0) - (a.t || 0); }); }
   function logVal(field, v) {
     if (v === null || v === undefined || v === "") return "none";
@@ -1797,7 +1838,7 @@
   }
   function logLine(e) {
     var lab = LOG_FIELDS[e.field] || e.field;
-    if (e.field === "created") return "Created";
+    if (e.field === "created") return "Created" + (e.from ? " as " + e.from : "");
     if (e.field === "deleted") return "Deleted";
     if (e.field === "note" || e.field === "image") return lab + " " + (e.to || "edited");
     return lab + ": " + logVal(e.field, e.from) + " → " + logVal(e.field, e.to);
@@ -1868,6 +1909,7 @@
     }
     host.appendChild(bar);
     var pad = el("div", "pad");
+    pad.appendChild(driftPanel());
     var list = all.filter(function (e) {
       if (ui.logWho && e.who !== ui.logWho) return false;
       if (ui.logField && e.field !== ui.logField) return false;
@@ -2052,6 +2094,12 @@
     sec.appendChild(tiles);
     dir.appendChild(sec);
 
+    var drift = driftList();
+    if (drift.length) {
+      var dchip = el("button", "driftchip", drift.length + (drift.length === 1 ? " feature built without agreement" : " features built without agreement") + " ›");
+      dchip.onclick = function () { ui.view = "changes"; render(); };
+      dir.appendChild(dchip);
+    }
     var recent = feats().slice().sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); }).slice(0, 8);
     if (recent.length) {
       dir.appendChild(dirSection("Recently updated", undefined, recent.map(function (f) {
@@ -2105,7 +2153,7 @@
         if (a.period && b.period && a.period !== b.period) return a.period < b.period ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-      var hint = st === "Building" ? "In development now." : st === "Planned" ? "Decided, not started." : "Being explored by the R&D team.";
+      var hint = st === "Building" ? "In development now." : st === "Planned" ? "Agreed, not started." : st === "Research" ? "Being explored by the R&D team." : "Not agreed yet. Move it to Planned once it is.";
       var head = sectionTitle(st + " · " + items.length);
       var hs = el("span", "note", hint);
       hs.style.cssText = "text-transform:none;letter-spacing:0;font-size:14px;margin-left:10px;";
@@ -2496,6 +2544,8 @@
     if (f.owner && f.owner !== "Unassigned") meta.appendChild(pill(f.owner));
     if (f.period) meta.appendChild(pill(laneLabel(laneOfPeriod(f, keys()))));
     if (f.effort) meta.appendChild(pill("Takes " + effortLabel(f, true)));
+    if (f.agreed) meta.appendChild(pill("Agreed", "st-live"));
+    else if (BUILT_STATES.indexOf(f.state) !== -1 && driftList().indexOf(f) !== -1) meta.appendChild(pill("Built without agreement", "st-needs-work"));
     if (f.rnd) meta.appendChild(pill("R&D · " + f.rndStage, "rnd"));
     icpsOf(f).forEach(function (i) { meta.appendChild(pill(i.name, "icp")); });
     head.appendChild(meta);
@@ -4295,7 +4345,7 @@
   /* ---------- actions ---------- */
 
   function create(spaces, extra, silent) {
-    var f = { id: uid(), project: S.current, name: "New feature", state: "Planned", owner: "Unassigned",
+    var f = { id: uid(), project: S.current, name: "New feature", state: "Proposed", agreed: false, owner: "Unassigned",
               spaces: spaces || [], period: null, effort: 0, effortUnit: "weeks", note: "", link: "", rnd: false, rndStage: "Backlog",
               student: "", rndQuestion: "", rndFindings: "", parent: null, thumb: "", image: "", sections: {}, created: Date.now(), updated: Date.now() };
     if (extra) Object.keys(extra).forEach(function (k) { f[k] = extra[k]; });

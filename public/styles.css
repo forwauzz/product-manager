@@ -1038,3 +1038,20 @@
   .logrow .why:hover { text-decoration:underline; text-decoration-color:var(--gold); text-underline-offset:3px; }
   .loglist.wide { border:1px solid var(--line); border-radius:var(--r-md); background:#fff; padding:4px 18px; max-width:1040px; }
   .loglist.wide .logrow { padding:12px 0; }
+
+  /* ---------- Proposed state and drift ---------- */
+  :root { --c-proposed:#9a5a8a; }
+  .pill.st-proposed { color:var(--c-proposed); border-color:var(--c-proposed); background:rgba(154,90,138,.08); }
+  .legend .lg.st-proposed i, .dot.st-proposed i, .subnav .sd.st-proposed, .qpill .sd.st-proposed, .icpcard .cf .sd.st-proposed, .sd.st-proposed { background:var(--c-proposed); }
+  .tile.st-proposed { border-left-color:var(--c-proposed); } .tile.st-proposed .st { color:var(--c-proposed); }
+  .thumb.st-proposed { color:var(--c-proposed); background:rgba(154,90,138,.06); }
+  .drift { border:1px solid rgba(179,84,30,.45); border-radius:var(--r-md); background:rgba(179,84,30,.05); padding:16px 20px; margin:0 0 22px; max-width:1040px; }
+  .drift.ok { border-color:rgba(47,122,74,.35); background:rgba(47,122,74,.05); }
+  .drifthead { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .drifthead b { font-size:16px; }
+  .driftrow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 0 0; margin-top:10px; border-top:1px solid rgba(15,23,42,.08); }
+  .driftrow .fname { font-weight:600; padding:0; text-align:left; }
+  .driftrow .fname:hover { text-decoration:underline; text-decoration-color:var(--gold); text-underline-offset:3px; }
+  .driftrow .btn.small { padding:8px 14px; font-size:13px; margin-left:auto; }
+  .driftrow .btn.small + .btn.small { margin-left:0; }
+  .driftchip { display:inline-flex; align-items:center; gap:8px; margin:0 0 22px; padding:10px 16px; border-radius:var(--r-pill); background:rgba(179,84,30,.10); color:var(--c-needs); font-weight:600; font-size:14px; border:1px solid rgba(179,84,30,.35); }

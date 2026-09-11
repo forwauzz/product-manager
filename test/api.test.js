@@ -207,3 +207,14 @@ test("every save is recorded in the change log and entries survive later saves",
   const after = await api("GET", "/api/state");
   assert.ok(after.body.state.log.some(e => e.fid === f.id && e.field === "owner" && e.to === "David"), "PATCH recorded");
 });
+
+test("new features start Proposed, Planned marks them agreed, creation keeps the birth state", async () => {
+  const made = await api("POST", "/api/features", { name: "Drift probe", state: "Building", who: "script" });
+  assert.equal(made.status, 201);
+  const st = await api("GET", "/api/state");
+  const born = st.body.state.log.find(e => e.fid === made.body.id && e.field === "created");
+  assert.equal(born.from, "Building", "the created entry remembers the state it was born in");
+  const plain = await api("POST", "/api/features", { name: "Fresh idea" });
+  assert.equal(plain.body.state, "Proposed");
+  assert.equal(plain.body.agreed, false);
+});

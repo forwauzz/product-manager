@@ -1,7 +1,9 @@
 /* Runtime-neutral core: data model, seed, normalisation, and the HTTP API handler.
    Used by the local Express server and by the Cloudflare Worker. No Node or Workers APIs here. */
 
-export const STATES = ["Research", "Planned", "Building", "Live", "Needs work", "Feature flag"];
+export const STATES = ["Proposed", "Research", "Planned", "Building", "Live", "Needs work", "Feature flag"];
+/* States that mean the thing exists in the product. Reaching one of them without ever being Planned is drift. */
+export const BUILT_STATES = ["Building", "Live", "Needs work", "Feature flag"];
 export const RND_STAGES = ["Backlog", "Assigned", "In progress", "Findings", "Concluded"];
 
 export function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -154,6 +156,7 @@ export function normalize(state) {
     if (!Array.isArray(f.spaces)) f.spaces = [];
     f.spaces = f.spaces.filter(x => typeof x === "string");
     if (f.period === undefined || f.period === "" || (f.period !== null && typeof f.period !== "string")) f.period = null;
+    f.agreed = !!f.agreed;
     f.effort = Math.max(0, Math.round(Number(f.effort) || 0));
     if (EFFORT_UNITS.indexOf(f.effortUnit) === -1) f.effortUnit = "weeks";
     if (typeof f.note !== "string") f.note = "";
@@ -205,7 +208,7 @@ function effortText(f) { return f && f.effort ? f.effort + " " + (f.effort === 1
 function trackedValues(f, byId) {
   const parent = f.parent && byId[f.parent] ? byId[f.parent].name : "";
   return {
-    name: f.name, state: f.state, owner: f.owner, period: f.period || "", effort: effortText(f),
+    name: f.name, state: f.state, owner: f.owner, period: f.period || "", effort: effortText(f), agreed: f.agreed ? "yes" : "no",
     spaces: (f.spaces || []).slice().sort().join(", "), parent, rnd: f.rnd ? "yes" : "no",
     rndStage: f.rnd ? f.rndStage : "", student: f.student || "", link: f.link || "",
     note: f.note || "", image: f.image ? "set" : ""
@@ -236,7 +239,7 @@ export function applyLog(prevState, nextState, who) {
   }
   (nextState.features || []).forEach(f => {
     const p = prevBy[f.id];
-    if (!p) { add(f, "created", "", f.name); return; }
+    if (!p) { add(f, "created", f.state, f.name); return; } // "from" keeps the state it was born in
     const a = trackedValues(p, prevBy), b = trackedValues(f, nextBy);
     Object.keys(b).forEach(k => {
       if (a[k] === b[k]) return;
@@ -249,7 +252,9 @@ export function applyLog(prevState, nextState, who) {
   return log.length > LOG_CAP ? log.slice(log.length - LOG_CAP) : log;
 }
 
+let currentWho = ""; // set per request by handleApi so granular edits are attributed to their caller
 async function mutate(store, fn, who) {
+  who = who || currentWho;
   for (let attempt = 0; attempt < 4; attempt++) {
     const doc = await store.load();
     const state = normalize(JSON.parse(JSON.stringify(doc.state)));
@@ -268,7 +273,7 @@ async function mutate(store, fn, who) {
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
 const EFFORT_UNITS = ["days", "weeks", "months"];
-const EDITABLE = ["name", "state", "owner", "spaces", "period", "effort", "effortUnit", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections"];
+const EDITABLE = ["name", "state", "owner", "spaces", "period", "effort", "effortUnit", "agreed", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections"];
 
 /* Handle one API request. `req` = { method, path, query, body } where `path` is relative to /api
    (for example "/features/abc") and `query` is a plain object. Returns { status, body, headers }. */
@@ -278,6 +283,7 @@ export async function handleApi(req, store) {
   const query = req.query || {};
   const body = req.body && typeof req.body === "object" ? req.body : {};
   const seg = path.split("/").filter(Boolean).map(decodeURIComponent);
+  currentWho = String(body.who || (req.query && req.query.who) || "").trim() || "script";
 
   if (path === "/health" && method === "GET") {
     const doc = await store.load();
@@ -365,7 +371,8 @@ export async function handleApi(req, store) {
       const now = Date.now();
       const f = {
         id: uid(), project: body.project || null, name: String(body.name || "New feature"),
-        state: STATES.indexOf(body.state) !== -1 ? body.state : "Planned",
+        state: STATES.indexOf(body.state) !== -1 ? body.state : "Proposed",
+        agreed: !!body.agreed,
         owner: typeof body.owner === "string" && body.owner ? body.owner : "Unassigned",
         spaces: Array.isArray(body.spaces) ? body.spaces.filter(x => typeof x === "string") : [],
         period: typeof body.period === "string" && body.period ? body.period : null,
