@@ -144,6 +144,11 @@ export function normalize(state) {
     notes: String(p.notes || ""), link: String(p.link || ""),
     wants: Array.isArray(p.wants) ? p.wants.filter(x => typeof x === "string") : [],
     needs: Array.isArray(p.needs) ? p.needs.filter(x => typeof x === "string") : [],
+    deliverables: (Array.isArray(p.deliverables) ? p.deliverables : []).filter(d => d && typeof d === "object").map(d => ({
+      id: String(d.id || uid()), title: String(d.title || "Untitled deliverable"), note: String(d.note || ""),
+      tag: ["Quick win", "Big bet", "Later", "Blocked"].indexOf(d.tag) !== -1 ? d.tag : "",
+      features: Array.isArray(d.features) ? d.features.filter(x => typeof x === "string") : []
+    })),
     created: Number(p.created) || Date.now(), updated: Number(p.updated) || Date.now()
   }));
   if (!Array.isArray(s.log)) s.log = [];
@@ -196,7 +201,10 @@ export function normalize(state) {
   const parentOf = new Map(s.features.map(f => [f.id, f.parent]));
   s.features.forEach(f => { if (f.parent && parentOf.get(f.parent)) f.parent = null; });
   const featIds = new Set(s.features.map(f => f.id));
-  s.pilots.forEach(p => { p.wants = p.wants.filter(id => featIds.has(id)); p.needs = p.needs.filter(id => featIds.has(id)); });
+  s.pilots.forEach(p => {
+    p.wants = p.wants.filter(id => featIds.has(id)); p.needs = p.needs.filter(id => featIds.has(id));
+    p.deliverables.forEach(d => { d.features = d.features.filter(id => featIds.has(id)); });
+  });
   return s;
 }
 

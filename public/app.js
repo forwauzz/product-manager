@@ -1994,7 +1994,7 @@
   function newPilot() {
     askText("New pilot", { placeholder: "Firm, clinic or insurer", ok: "Create" }).then(function (n) {
       if (!n) return;
-      var p = { id: uid(), name: n, status: "Prospect", contact: "", icp: "", since: mKey(new Date()), notes: "", link: "", wants: [], needs: [], created: Date.now(), updated: Date.now() };
+      var p = { id: uid(), name: n, status: "Prospect", contact: "", icp: "", since: mKey(new Date()), notes: "", link: "", wants: [], needs: [], deliverables: [], created: Date.now(), updated: Date.now() };
       S.pilots = pilots().concat([p]);
       ui.pilot = p.id; ui.view = "pilots"; render(); save();
     });
@@ -2079,13 +2079,14 @@
       var nm = el("b"); nm.appendChild(document.createTextNode(p.name + " ")); nm.appendChild(pilotStatusPill(p));
       tx.appendChild(nm);
       var w = pilotFeats(p, "wants").length, l = pilotLive(p).length, n = pilotFeats(p, "needs").length;
-      tx.appendChild(el("span", null, (w ? w + " asked for · " + l + " of those live" : "Nothing asked for yet") + (n ? " · " + n + " we think they need" : "") + (p.contact ? " · " + p.contact : "")));
+      var dn = (p.deliverables || []).length;
+      tx.appendChild(el("span", null, (w ? w + " asked for · " + l + " of those live" : "Nothing asked for yet") + (n ? " · " + n + " we think they need" : "") + (dn ? " · " + dn + (dn === 1 ? " deliverable" : " deliverables") : "") + (p.contact ? " · " + p.contact : "")));
       t.appendChild(tx);
       var nn = el("div", "n");
       nn.appendChild(el("b", null, w ? Math.round(100 * l / w) + "%" : "—"));
       nn.appendChild(el("span", null, "of asks live"));
       t.appendChild(nn);
-      t.onclick = function () { ui.pilot = p.id; renderView(); };
+      t.onclick = function () { ui.pilot = p.id; ui.pilotTab = "overview"; renderView(); };
       tiles.appendChild(t);
     });
     dir.appendChild(tiles);
@@ -2127,6 +2128,8 @@
       ["Delete", function () { deletePilot(p); }, true]
     ]);
     host.appendChild(header("PILOT", p.name, [back, more]));
+    host.appendChild(pilotTabs(p));
+    if (ui.pilotTab === "deliverables") return renderPilotDeliverables(host, p);
     var pad = el("div", "pad");
     var grid = el("div", "grid2 pilotgrid");
     var left = el("div"), right = el("div");
@@ -2204,10 +2207,19 @@
   /* feature page: which pilots care about this feature */
   function pilotsPanel(f) {
     var list = pilotsFor(f);
+    var dl = pilotDeliverablesFor(f);
     var p = el("div", "panel");
     p.style.marginTop = "18px";
     p.appendChild(el("h3", null, "Pilots"));
-    if (!list.length) { p.appendChild(el("div", "note", "No pilot has asked for this yet.")); return p; }
+    dl.forEach(function (x) {
+      var r = el("div", "fl");
+      var b = el("button", null, x.pilot.name + " · delivers “" + x.d.title + "”");
+      b.onclick = function () { ui.view = "pilots"; ui.pilot = x.pilot.id; ui.pilotTab = "deliverables"; ui.feature = null; render(); };
+      r.appendChild(b);
+      if (x.d.tag) r.appendChild(pill(x.d.tag, DELIV_TAG_CLASS[x.d.tag]));
+      p.appendChild(r);
+    });
+    if (!list.length && !dl.length) { p.appendChild(el("div", "note", "No pilot has asked for this yet.")); return p; }
     list.forEach(function (pl) {
       var r = el("div", "fl");
       var b = el("button", null, pl.name + ((pl.wants || []).indexOf(f.id) !== -1 ? " · asked for it" : " · we think they need it"));
@@ -2217,6 +2229,166 @@
       p.appendChild(r);
     });
     return p;
+  }
+
+  /* --- deliverables: what the pilot needs delivered, which features provide it, and in what order to build --- */
+  var DELIV_TAGS = ["", "Quick win", "Big bet", "Later", "Blocked"];
+  var DELIV_TAG_CLASS = { "Quick win": "st-live", "Big bet": "st-building", "Later": "st-planned", "Blocked": "st-needs-work" };
+  function delivFeats(d) { return (d.features || []).map(feature).filter(Boolean); }
+  function delivProgress(d) {
+    var fs = delivFeats(d);
+    if (!fs.length) return null;
+    var live = fs.filter(function (f) { return f.state === "Live" || f.state === "Needs work" || f.state === "Feature flag"; }).length;
+    return { live: live, total: fs.length };
+  }
+  function pilotDeliverablesFor(f) {
+    var out = [];
+    pilots().forEach(function (p) { (p.deliverables || []).forEach(function (d) { if ((d.features || []).indexOf(f.id) !== -1) out.push({ pilot: p, d: d }); }); });
+    return out;
+  }
+  function touchPilot(p) { p.updated = Date.now(); }
+
+  function pilotTabs(p) {
+    var bar = el("div", "bar modebar");
+    var seg = el("div", "seg");
+    [["Overview", "overview"], ["Deliverables" + ((p.deliverables || []).length ? " · " + p.deliverables.length : ""), "deliverables"]].forEach(function (m) {
+      var b = el("button", null, m[0]);
+      b.setAttribute("aria-pressed", String((ui.pilotTab || "overview") === m[1]));
+      b.onclick = function () { ui.pilotTab = m[1]; renderView(); };
+      seg.appendChild(b);
+    });
+    bar.appendChild(seg);
+    return bar;
+  }
+
+  function renderPilotDeliverables(host, p) {
+    var pad = el("div", "pad");
+    var dir = el("div", "dir");
+    var list = p.deliverables || [];
+    var allF = [];
+    list.forEach(function (d) { delivFeats(d).forEach(function (f) { if (allF.indexOf(f) === -1) allF.push(f); }); });
+    var liveN = allF.filter(function (f) { return f.state === "Live" || f.state === "Needs work" || f.state === "Feature flag"; }).length;
+
+    var intro = el("div", "dsum");
+    intro.appendChild(el("b", null, list.length ? list.length + (list.length === 1 ? " deliverable" : " deliverables") + " · " + allF.length + " features involved · " + liveN + " live" : "No deliverables yet"));
+    intro.appendChild(el("span", "note", "Each deliverable is something the client gets. Tag the features that provide it, label quick wins, and drag the order to say what we build first."));
+    dir.appendChild(intro);
+
+    var wrap = el("div", "delivs");
+    if (!list.length) wrap.appendChild(el("div", "empty", "Add the first deliverable: the outcome the client is waiting for, in their words."));
+    list.forEach(function (d, i) {
+      var card = el("div", "deliv");
+      card.draggable = true;
+      card.addEventListener("dragstart", function (e) { e.dataTransfer.setData("text/plain", "deliv:" + d.id); card.classList.add("dragging"); });
+      card.addEventListener("dragend", function () { card.classList.remove("dragging"); });
+      card.addEventListener("dragover", function (e) { e.preventDefault(); card.classList.add("dragover"); });
+      card.addEventListener("dragleave", function () { card.classList.remove("dragover"); });
+      card.addEventListener("drop", function (e) {
+        e.preventDefault(); card.classList.remove("dragover");
+        var id = (e.dataTransfer.getData("text/plain") || "").replace(/^deliv:/, "");
+        var from = list.findIndex(function (x) { return x.id === id; });
+        if (from === -1 || from === i) return;
+        var moved = list.splice(from, 1)[0];
+        list.splice(i, 0, moved);
+        touchPilot(p); render(); save();
+      });
+
+      var head = el("div", "dhead");
+      var num = el("span", "dnum", String(i + 1));
+      head.appendChild(num);
+      var title = el("input", "dtitle");
+      title.value = d.title; title.placeholder = "What the client gets, in their words";
+      title.setAttribute("aria-label", "Deliverable title");
+      title.onchange = function () { d.title = title.value.trim() || "Untitled deliverable"; touchPilot(p); save(); };
+      head.appendChild(title);
+      var tagSel = selectOf(DELIV_TAGS.map(function (t) { return [t, t || "No label"]; }), d.tag || "", function (v) { d.tag = v; touchPilot(p); render(); save(); }, "Label");
+      tagSel.classList.add("dtag");
+      if (d.tag && DELIV_TAG_CLASS[d.tag]) tagSel.classList.add(DELIV_TAG_CLASS[d.tag]);
+      head.appendChild(tagSel);
+      var prog = delivProgress(d);
+      head.appendChild(el("span", "dprog" + (prog && prog.live === prog.total ? " done" : ""), prog ? prog.live + " of " + prog.total + " live" : "no features yet"));
+      var up = el("button", "dmove", "↑"); up.title = "Move up"; up.disabled = i === 0;
+      up.onclick = function () { list.splice(i - 1, 0, list.splice(i, 1)[0]); touchPilot(p); render(); save(); };
+      var down = el("button", "dmove", "↓"); down.title = "Move down"; down.disabled = i === list.length - 1;
+      down.onclick = function () { list.splice(i + 1, 0, list.splice(i, 1)[0]); touchPilot(p); render(); save(); };
+      head.appendChild(up); head.appendChild(down);
+      var del = el("button", "dmove del", "×"); del.title = "Delete deliverable";
+      del.onclick = function () {
+        askConfirm("Delete “" + d.title + "”?", "Features stay untouched.", { danger: true, ok: "Delete" }).then(function (yes) {
+          if (!yes) return;
+          p.deliverables = list.filter(function (x) { return x.id !== d.id; }); touchPilot(p); render(); save();
+        });
+      };
+      head.appendChild(del);
+      card.appendChild(head);
+
+      card.appendChild(richEditor(d.note, function (h) { d.note = h; touchPilot(p); save(); }, "Why it matters to them, what done looks like, open questions from the team.", "small dnote"));
+
+      var fl = el("div", "dfeats");
+      delivFeats(d).forEach(function (f) {
+        var chip = el("span", "dchip " + stateClass(f.state));
+        var b = el("button", null, f.name);
+        b.title = f.state + (f.effort ? " · takes " + effortLabel(f, true) : "") + (f.owner && f.owner !== "Unassigned" ? " · " + f.owner : "");
+        b.onclick = function () { open(f.id); };
+        chip.appendChild(el("i", "sd " + stateClass(f.state)));
+        chip.appendChild(b);
+        if (f.effort) chip.appendChild(el("em", null, effortLabel(f)));
+        var x = el("button", "x", "×"); x.setAttribute("aria-label", "Untag " + f.name);
+        x.onclick = function () { d.features = (d.features || []).filter(function (id) { return id !== f.id; }); touchPilot(p); render(); save(); };
+        chip.appendChild(x);
+        fl.appendChild(chip);
+      });
+      var addF = el("button", "chip", "+ Tag a feature");
+      addF.onclick = function () {
+        pickFeature("Which feature provides “" + d.title + "”?", d.features || []).then(function (f) {
+          if (!f) return;
+          d.features = (d.features || []).concat([f.id]); touchPilot(p); render(); save();
+        });
+      };
+      fl.appendChild(addF);
+      card.appendChild(fl);
+      wrap.appendChild(card);
+    });
+    dir.appendChild(wrap);
+
+    var addD = el("button", "btn ghost rowbtn", "+ Add a deliverable");
+    addD.style.marginTop = "14px";
+    addD.onclick = function () {
+      askText("New deliverable", { placeholder: "For example: a medical chronology within 24 hours of upload", ok: "Add" }).then(function (t) {
+        if (!t) return;
+        p.deliverables = (p.deliverables || []).concat([{ id: uid(), title: t, note: "", tag: "", features: [] }]);
+        touchPilot(p); render(); save();
+      });
+    };
+    dir.appendChild(addD);
+
+    /* derived build order: features in the order their deliverables sit, not yet live first */
+    if (allF.length) {
+      var order = el("div", "dirsec");
+      order.style.marginTop = "36px";
+      var h = el("h2", null, "Build order for this pilot");
+      h.appendChild(el("em", null, allF.length + " features"));
+      order.appendChild(h);
+      order.appendChild(el("div", "note", "Features in the order their deliverables are ranked. Live ones are shown last so the queue is what is left to do."));
+      var todo = allF.filter(function (f) { return ["Live", "Needs work", "Feature flag"].indexOf(f.state) === -1; });
+      var done = allF.filter(function (f) { return todo.indexOf(f) === -1; });
+      var rows = el("div", "pilotrows buildorder");
+      todo.concat(done).forEach(function (f, idx) {
+        var r = pilotFeatureRow(f, null);
+        var n = el("span", "dnum small", String(idx + 1));
+        r.insertBefore(n, r.firstChild);
+        var which = list.filter(function (d) { return (d.features || []).indexOf(f.id) !== -1; }).map(function (d) { return d.title; });
+        var extra = el("span", "d");
+        extra.appendChild(el("span", "note", "for " + which.join(", ") + (f.effort ? " · takes " + effortLabel(f, true) : " · no estimate")));
+        r.querySelector(".t").appendChild(extra);
+        if (todo.indexOf(f) === -1) r.classList.add("isdone");
+        rows.appendChild(r);
+      });
+      order.appendChild(rows);
+      dir.appendChild(order);
+    }
+    pad.appendChild(dir);
+    host.appendChild(pad);
   }
 
   /* --- directory style: square icon, name, one-line description, like a plugin marketplace --- */
