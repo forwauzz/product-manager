@@ -922,3 +922,23 @@
   .icpcard .cf .nm { white-space:normal; line-height:1.35; }
   .icpcard .cf:hover { background:none; }
   .icpcard .cf:hover .nm { text-decoration:underline; text-decoration-color:var(--gold); text-underline-offset:3px; }
+
+  /* ---------- roadmap picker ---------- */
+  .modal.wide { width:680px; }
+  .pickrow { display:flex; gap:10px; }
+  .pickrow input { flex:1; min-width:0; }
+  .pickrow select { width:auto; flex:none; max-width:46%; }
+  .picklist { max-height:52vh; overflow-y:auto; border:1px solid var(--line); border-radius:var(--r-md); background:#fff; }
+  .pk { display:flex; align-items:center; gap:12px; width:100%; text-align:left; padding:11px 16px; border-bottom:1px solid var(--hair); }
+  .pk:last-child { border-bottom:none; }
+  .pk:hover { background:var(--tint); }
+  .pk .sd { width:9px; height:9px; border-radius:50%; flex:none; background:var(--slate); }
+  .pk .sd.st-research { background:var(--c-research); } .pk .sd.st-planned { background:var(--c-planned); } .pk .sd.st-building { background:var(--c-building); }
+  .pk .sd.st-live { background:var(--c-live); } .pk .sd.st-needs-work { background:var(--c-needs); } .pk .sd.st-feature-flag { background:var(--c-flag); }
+  .pk .t { flex:1; min-width:0; }
+  .pk b { display:block; font-size:15.5px; font-weight:600; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pk b .pp, .qpill .nm .pp { color:var(--slate); font-weight:400; }
+  .pk .t > span { display:block; font-size:13px; color:var(--slate); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pk .go { flex:none; font-size:12.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--gold); }
+  .pkempty { padding:16px; }
+  @media (max-width:860px) { .pickrow { flex-direction:column; } .pickrow select { max-width:100%; } .picklist { max-height:46vh; } }

@@ -799,14 +799,9 @@
   function renderRoadmap(host) {
     var p = project();
     var acts = [];
-    acts.push(menu("Add feature", [
-      ["Create a new feature", function () { create(); }],
-      "-"
-    ].concat(feats().filter(function (f) { return !f.period; }).slice(0, 8).map(function (f) {
-      return ["Schedule " + f.name, function () {
-        f.period = mKey(new Date()); touch(f); render(); save();
-      }];
-    })), "btn"));
+    var addB = el("button", "btn", "+ Add feature");
+    addB.onclick = function () { pickForRoadmap(); };
+    acts.push(addB);
     var pr = el("button", "btn ghost", "Print");
     pr.onclick = function () { window.print(); };
     acts.push(pr);
@@ -1014,6 +1009,82 @@
     });
   }
 
+  /* --- roadmap: pick any feature from the whole inventory and give it a month --- */
+  function pickForRoadmap() {
+    var months = [], m0 = mKey(new Date()), i;
+    for (i = 0; i < 18; i++) months.push(mAdd(m0, i));
+    var when = m0;
+    return dialog(function (box, close) {
+      box.classList.add("wide");
+      box.appendChild(el("h2", null, "Add to the roadmap"));
+      box.appendChild(el("p", null, "Search the whole inventory, including sub-features. Pick one and the month it ships."));
+      var row = el("div", "pickrow");
+      var inp = el("input");
+      inp.type = "search";
+      inp.placeholder = "Search features…";
+      inp.setAttribute("aria-label", "Search features");
+      var sel = el("select");
+      sel.setAttribute("aria-label", "Month");
+      months.forEach(function (k) { var o = el("option", null, mLong(k)); o.value = k; sel.appendChild(o); });
+      sel.onchange = function () { when = sel.value; };
+      row.appendChild(inp); row.appendChild(sel);
+      box.appendChild(row);
+      var list = el("div", "picklist");
+      box.appendChild(list);
+      function pick(f) {
+        f.period = when; touch(f);
+        if (ui.spaceFilter && (f.spaces || []).indexOf(ui.spaceFilter) === -1) f.spaces = (f.spaces || []).concat([ui.spaceFilter]);
+        close(f); render(); save();
+        toast(f.name + " scheduled for " + mLong(when) + ".");
+      }
+      function draw() {
+        list.innerHTML = "";
+        var q = inp.value.trim().toLowerCase();
+        var all = feats().filter(function (f) {
+          if (!q) return true;
+          var par = f.parent ? feature(f.parent) : null;
+          return (f.name + " " + plain(f.note) + " " + (f.spaces || []).join(" ") + " " + f.state + " " + f.owner + " " + (par ? par.name : "")).toLowerCase().indexOf(q) !== -1;
+        });
+        all.sort(function (a, b) {
+          var pa = a.period ? 1 : 0, pb = b.period ? 1 : 0;
+          if (pa !== pb) return pa - pb;
+          if (!!a.parent !== !!b.parent) return a.parent ? 1 : -1;
+          return a.name.localeCompare(b.name);
+        });
+        if (!all.length) { list.appendChild(el("div", "note pkempty", "Nothing matches.")); return; }
+        all.slice(0, 120).forEach(function (f) {
+          var par = f.parent ? feature(f.parent) : null;
+          var b = el("button", "pk");
+          b.appendChild(el("i", "sd " + stateClass(f.state)));
+          var t = el("div", "t");
+          var nm = el("b");
+          if (par) nm.appendChild(el("span", "pp", par.name + " › "));
+          nm.appendChild(document.createTextNode(f.name));
+          t.appendChild(nm);
+          var meta = [(f.spaces || []).join(" · ") || "No space", f.state];
+          if (f.period) meta.push("On the roadmap: " + laneLabelOf(f));
+          t.appendChild(el("span", null, meta.join("  ·  ")));
+          b.appendChild(t);
+          b.appendChild(el("span", "go", f.period ? "Move" : "Add"));
+          b.onclick = function () { pick(f); };
+          list.appendChild(b);
+        });
+        if (all.length > 120) list.appendChild(el("div", "note pkempty", (all.length - 120) + " more. Keep typing to narrow it down."));
+      }
+      inp.oninput = draw;
+      inp.onkeydown = function (e) { if (e.key === "Enter") { var first = list.querySelector(".pk"); if (first) { e.preventDefault(); first.click(); } } };
+      draw();
+      var acts = el("div", "acts");
+      var mk = el("button", "btn ghost", "Create a new feature");
+      mk.onclick = function () { close(null); create(ui.spaceFilter ? [ui.spaceFilter] : [], { period: when }); };
+      var cancel = el("button", "btn ghost", "Cancel");
+      cancel.onclick = function () { close(null); };
+      acts.appendChild(mk); acts.appendChild(cancel);
+      box.appendChild(acts);
+      setTimeout(function () { inp.focus(); }, 0);
+    });
+  }
+
   /* --- period grid: the roadmap as a simple grid, one row per space, four quarters or four months across --- */
   var WEEK_STARTS = [1, 8, 15, 22];
   function gridMode(mode) {
@@ -1058,9 +1129,9 @@
   function renderPeriodGrid(host, mode) {
     var M = gridMode(mode);
     var total = M.slots.length;
-    var list = feats().filter(passes).filter(function (f) { return !f.parent; });
+    var list = feats().filter(passes);
     var scheduled = list.filter(function (f) { return f.period; });
-    var pending = list.filter(function (f) { return !f.period && f.state !== "Live"; });
+    var pending = list.filter(function (f) { return !f.parent && !f.period && f.state !== "Live"; });
     var shipped = list.filter(function (f) { return !f.period && f.state === "Live"; }).length;
     var hasLater = scheduled.some(function (f) { return M.posOf(f) === -1; });
     var cols = "repeat(" + total + ", minmax(" + (mode === "months" ? 42 : 56) + "px, 1fr))" + (hasLater ? " minmax(120px, .8fr)" : "");
@@ -1133,9 +1204,13 @@
         pill.style.gridColumn = (pos + 1) + " / span " + span;
         pill.style.gridRow = String(idx + 1);
         pill.draggable = true;
-        pill.title = f.name + " · " + laneLabelOf(f) + " · " + f.state + " · " + f.owner;
+        var par = f.parent ? feature(f.parent) : null;
+        pill.title = (par ? par.name + " › " : "") + f.name + " · " + laneLabelOf(f) + " · " + f.state + " · " + f.owner;
         pill.appendChild(el("i", "sd " + stateClass(f.state)));
-        pill.appendChild(el("span", "nm", f.name));
+        var nmEl = el("span", "nm");
+        if (par) nmEl.appendChild(el("span", "pp", par.name + " › "));
+        nmEl.appendChild(document.createTextNode(f.name));
+        pill.appendChild(nmEl);
         var tag = M.pillTag(f);
         if (tag) pill.appendChild(el("span", "mo", tag));
         wireDrag(pill, f, null);
