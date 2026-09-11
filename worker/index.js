@@ -2,7 +2,7 @@
    against D1, and gates everything behind a passcode when APP_PASSCODE is set. */
 import { handleApi } from "../shared/core.js";
 import { D1Store } from "./store-d1.js";
-import { syncAll as driveSyncAll, status as driveStatus, configured as driveConfigured } from "./drive.js";
+import { syncAll as driveSyncAll, status as driveStatus, configured as driveConfigured, oauthReady as driveOauthReady, authUrl as driveAuthUrl, finishConnect as driveFinishConnect, disconnect as driveDisconnect, connectedAccount as driveAccount } from "./drive.js";
 
 const COOKIE = "pm_auth";
 const COOKIE_DAYS = 30;
@@ -118,6 +118,30 @@ export default {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
       return handleShots(request, env, path);
     }
+    if (path === "/api/drive/connect" && request.method === "GET") {
+      if (!authed) return Response.redirect(url.origin + "/login.html", 302);
+      if (!driveOauthReady(env)) return jsonResponse(409, { error: "The Google OAuth client is not configured on this server." });
+      const state = await sessionToken(env.APP_PASSCODE + ":drive:" + new Date().toISOString().slice(0, 13));
+      return Response.redirect(driveAuthUrl(env, url.origin, state), 302);
+    }
+    if (path === "/api/drive/callback" && request.method === "GET") {
+      if (!authed) return Response.redirect(url.origin + "/login.html", 302);
+      const code = url.searchParams.get("code"), state = url.searchParams.get("state") || "";
+      const now = new Date();
+      const okState = state && (timingSafeEqual(state, await sessionToken(env.APP_PASSCODE + ":drive:" + now.toISOString().slice(0, 13))) || timingSafeEqual(state, await sessionToken(env.APP_PASSCODE + ":drive:" + new Date(now.getTime() - 3600000).toISOString().slice(0, 13))));
+      if (!code || !okState) return Response.redirect(url.origin + "/#pilots?drive=denied", 302);
+      try {
+        await driveFinishConnect(env, url.origin, code);
+        if (ctx) ctx.waitUntil(driveSyncAll(env, { force: true }).catch(() => {}));
+        return Response.redirect(url.origin + "/#pilots?drive=connected", 302);
+      } catch (e) {
+        return Response.redirect(url.origin + "/#pilots?drive=failed&why=" + encodeURIComponent(String(e.message || "").slice(0, 120)), 302);
+      }
+    }
+    if (path === "/api/drive/disconnect" && request.method === "POST") {
+      if (!authed) return jsonResponse(401, { error: "Sign in first." });
+      try { await driveDisconnect(env); return jsonResponse(200, { ok: true }); } catch (e) { return jsonResponse(500, { error: e.message }); }
+    }
     if (path === "/api/drive/status" && request.method === "GET") {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
       if (!env.DB) return jsonResponse(500, { error: "D1 binding DB is not configured." });
@@ -126,6 +150,7 @@ export default {
     if (path === "/api/drive/sync" && request.method === "POST") {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
       if (!driveConfigured(env)) return jsonResponse(409, { ok: false, error: "Drive sync is not set up yet." });
+      if (driveOauthReady(env) && !(await driveAccount(env))) return jsonResponse(409, { ok: false, error: "Connect Google Drive first." });
       try { return jsonResponse(200, await driveSyncAll(env, { force: true })); } catch (e) { return jsonResponse(500, { ok: false, error: e.message }); }
     }
     if (path.startsWith("/api/")) {

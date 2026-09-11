@@ -5,6 +5,7 @@ import { pilotMarkdown, featuresCsv, logCsv, driveFolderId } from "../shared/exp
 
 const SCOPE = "https://www.googleapis.com/auth/drive";
 const MARK = "drive-sync";
+const AUTH = "drive-auth";
 
 function b64url(bytes) {
   const s = typeof bytes === "string" ? bytes : String.fromCharCode(...new Uint8Array(bytes));
@@ -17,11 +18,67 @@ function pemToDer(pem) {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out.buffer;
 }
-export function configured(env) { return !!(env.GOOGLE_SA_KEY && env.DB); }
+/* --- OAuth as the signed-in Google user (preferred): the refresh token lives in D1, never in the client --- */
+export function oauthReady(env) { return !!(env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET && env.DB); }
+async function readAuth(env) {
+  const row = await env.DB.prepare("SELECT state FROM documents WHERE id = ?").bind(AUTH).first();
+  try { return row ? JSON.parse(row.state) : null; } catch (_) { return null; }
+}
+async function writeAuth(env, auth) {
+  if (!auth) { await env.DB.prepare("DELETE FROM documents WHERE id = ?").bind(AUTH).run(); return; }
+  await env.DB.prepare("INSERT INTO documents (id, version, state, updated_at) VALUES (?, 1, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at")
+    .bind(AUTH, JSON.stringify(auth), new Date().toISOString()).run();
+}
+export async function connectedAccount(env) {
+  if (!oauthReady(env)) return null;
+  const a = await readAuth(env);
+  return a && a.refresh_token ? { email: a.email || "", since: a.at || null } : null;
+}
+export function authUrl(env, origin, state) {
+  const q = new URLSearchParams({
+    client_id: env.GOOGLE_OAUTH_CLIENT_ID, redirect_uri: origin + "/api/drive/callback", response_type: "code",
+    scope: SCOPE + " https://www.googleapis.com/auth/userinfo.email", access_type: "offline", prompt: "consent", include_granted_scopes: "true", state
+  });
+  return "https://accounts.google.com/o/oauth2/v2/auth?" + q.toString();
+}
+export async function finishConnect(env, origin, code) {
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ code, client_id: env.GOOGLE_OAUTH_CLIENT_ID, client_secret: env.GOOGLE_OAUTH_CLIENT_SECRET, redirect_uri: origin + "/api/drive/callback", grant_type: "authorization_code" }).toString()
+  });
+  const j = await r.json();
+  if (!r.ok || !j.refresh_token) throw new Error("Google did not return a refresh token: " + (j.error_description || j.error || r.status));
+  let email = "";
+  try { const u = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: "Bearer " + j.access_token } }); email = (await u.json()).email || ""; } catch (_) { /* optional */ }
+  await writeAuth(env, { refresh_token: j.refresh_token, email, at: new Date().toISOString() });
+  cachedToken = { value: j.access_token, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
+  return { email };
+}
+export async function disconnect(env) {
+  const a = await readAuth(env);
+  if (a && a.refresh_token) { try { await fetch("https://oauth2.googleapis.com/revoke?token=" + encodeURIComponent(a.refresh_token), { method: "POST" }); } catch (_) { /* best effort */ } }
+  await writeAuth(env, null);
+  cachedToken = null;
+}
+async function oauthAccessToken(env) {
+  const a = await readAuth(env);
+  if (!a || !a.refresh_token) throw new Error("Google Drive is not connected yet.");
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ refresh_token: a.refresh_token, client_id: env.GOOGLE_OAUTH_CLIENT_ID, client_secret: env.GOOGLE_OAUTH_CLIENT_SECRET, grant_type: "refresh_token" }).toString()
+  });
+  const j = await r.json();
+  if (!r.ok || !j.access_token) throw new Error("Google token refresh: " + (j.error_description || j.error || r.status));
+  return { value: j.access_token, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
+}
+
+export function configured(env) { return !!(env.DB && (oauthReady(env) || env.GOOGLE_SA_KEY)); }
 
 let cachedToken = null;
 export async function accessToken(env) {
   if (cachedToken && cachedToken.exp > Date.now() + 60000) return cachedToken.value;
+  if (oauthReady(env)) { cachedToken = await oauthAccessToken(env); return cachedToken.value; }
+  if (!env.GOOGLE_SA_KEY) throw new Error("No Google credential configured.");
   const sa = JSON.parse(env.GOOGLE_SA_KEY);
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
@@ -70,13 +127,17 @@ export async function status(env) {
   const mark = await readMark(env);
   const store = new D1Store(env.DB);
   const doc = await store.load();
-  return { configured: configured(env), version: doc.version, syncedVersion: mark.version || 0, at: mark.at || null, ok: mark.ok !== false, error: mark.error || "", files: mark.files || [], pending: (mark.version || 0) !== doc.version };
+  const account = await connectedAccount(env);
+  const ready = oauthReady(env) ? !!account : !!env.GOOGLE_SA_KEY;
+  return { configured: ready, canConnect: oauthReady(env) && !account, mode: oauthReady(env) ? "user" : env.GOOGLE_SA_KEY ? "service" : "none", account: account ? account.email : "",
+    version: doc.version, syncedVersion: mark.version || 0, at: mark.at || null, ok: mark.ok !== false, error: mark.error || "", files: mark.files || [], pending: (mark.version || 0) !== doc.version };
 }
 
 /* Sync everything that has a Drive home: one Google Doc per pilot with a folder, plus the two sheets. */
 export async function syncAll(env, opts) {
   opts = opts || {};
-  if (!configured(env)) return { ok: false, error: "Drive sync is not set up: add the GOOGLE_SA_KEY secret." };
+  if (!configured(env)) return { ok: false, error: "Drive sync is not set up yet." };
+  if (oauthReady(env) && !(await connectedAccount(env))) return { ok: false, error: "Google Drive is not connected yet. Use Connect Google Drive on the Pilots page." };
   const store = new D1Store(env.DB);
   let doc = await store.load();
   const mark = await readMark(env);

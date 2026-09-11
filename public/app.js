@@ -2074,8 +2074,15 @@
         line.appendChild(el("span", "note", "Drive copy: not available on this server."));
         return;
       }
+      if (!driveState.configured && driveState.canConnect) {
+        line.appendChild(el("span", "note", "Drive copy: not connected yet. Connect your Google account once and every change reaches Drive on its own."));
+        var con = el("a", "btn", "Connect Google Drive");
+        con.href = "/api/drive/connect";
+        line.appendChild(con);
+        return;
+      }
       if (!driveState.configured) {
-        line.appendChild(el("span", "note", "Drive copy: not set up yet. Every change stays in the app; the Drive copy updates once a Google key is added."));
+        line.appendChild(el("span", "note", "Drive copy: not set up yet. Every change stays in the app; the Drive copy updates once Google access is configured."));
         var how = el("button", "chip", "How to set it up");
         how.onclick = driveSetupHelp;
         line.appendChild(how);
@@ -2086,6 +2093,7 @@
       var txt = driveState.ok === false ? "Drive copy: last attempt failed" + (driveState.error ? " (" + driveState.error.slice(0, 120) + ")" : "")
         : driveState.pending ? "Drive copy: changes waiting, updates within 10 minutes" + (when ? " · last synced " + (ago < 1 ? "just now" : ago + " min ago") : "")
         : when ? "Drive copy: up to date · synced " + (ago < 1 ? "just now" : ago < 90 ? ago + " min ago" : when.toLocaleString()) : "Drive copy: never synced yet";
+      if (driveState.account) txt += " · as " + driveState.account;
       line.appendChild(el("span", "note" + (driveState.ok === false ? " bad" : ""), txt));
       var now = el("button", "chip", "Sync now");
       now.onclick = function () {
@@ -2096,11 +2104,32 @@
         }).catch(function () { toast("Could not reach the server.", true); now.disabled = false; now.textContent = "Sync now"; });
       };
       line.appendChild(now);
+      if (driveState.mode === "user") {
+        var dis = el("button", "chip", "Disconnect");
+        dis.onclick = function () {
+          askConfirm("Disconnect Google Drive?", "The app stops updating the Drive copies until you connect again.", { danger: true, ok: "Disconnect" }).then(function (yes) {
+            if (!yes) return;
+            fetch("/api/drive/disconnect", { method: "POST" }).then(function () { driveState = null; loadDriveStatus(paint); toast("Google Drive disconnected."); });
+          });
+        };
+        line.appendChild(dis);
+      }
     }
     paint();
     if (!driveState) loadDriveStatus(paint);
     return line;
   }
+  /* after the Google round-trip */
+  (function () {
+    var m = /[#&?]drive=(connected|denied|failed)(?:&why=([^&]*))?/.exec(location.hash + location.search);
+    if (!m) return;
+    setTimeout(function () {
+      if (m[1] === "connected") toast("Google Drive connected. The first sync is running.");
+      else if (m[1] === "denied") toast("Google Drive was not connected.", true);
+      else toast("Google Drive connection failed: " + decodeURIComponent(m[2] || ""), true);
+    }, 600);
+    try { history.replaceState(null, "", location.pathname + "#pilots"); } catch (e) { /* fine */ }
+  })();
   function loadDriveStatus(done) {
     fetch("/api/drive/status").then(function (r) { return r.ok ? r.json() : { configured: false, error: "status " + r.status }; })
       .then(function (j) { driveState = j; done(); })
@@ -2111,13 +2140,12 @@
       box.classList.add("wide");
       box.appendChild(el("h2", null, "Let the app write to Drive"));
       var steps = el("ol", "steps");
-      ["In Google Cloud console, pick or create a project and enable the Google Drive API.",
-       "IAM & Admin → Service accounts → Create one (for example alie-product-manager). Under Keys, add a JSON key and download it.",
-       "In Drive, share the Pilot folder and 02_Product with the service account's email address as Editor.",
-       "In the project folder on your PC run:  npx wrangler secret put GOOGLE_SA_KEY  and paste the whole JSON file when asked.",
-       "Come back here and press Sync now. From then on every change reaches Drive within ten minutes."].forEach(function (s) { steps.appendChild(el("li", null, s)); });
+      ["In Google Cloud console, project Andere, create an OAuth client of type Web application with the redirect URI " + location.origin + "/api/drive/callback.",
+       "Store its id and secret on Cloudflare:  npx wrangler secret put GOOGLE_OAUTH_CLIENT_ID  and  npx wrangler secret put GOOGLE_OAUTH_CLIENT_SECRET.",
+       "Come back to the Pilots page and press Connect Google Drive; approve once with your Google account.",
+       "From then on every change reaches Drive within ten minutes, written as you. Disconnect here or from your Google account at any time."].forEach(function (s) { steps.appendChild(el("li", null, s)); });
       box.appendChild(steps);
-      box.appendChild(el("p", null, "The key is stored as a Cloudflare secret. Nobody, including Claude, needs to see it."));
+      box.appendChild(el("p", null, "The client secret is stored as a Cloudflare secret and the Google refresh token in the app's database. Nobody, including Claude, needs to see either."));
       var acts = el("div", "acts");
       var ok = el("button", "btn", "Close"); ok.onclick = function () { close(null); };
       acts.appendChild(ok); box.appendChild(acts);
