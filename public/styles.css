@@ -902,3 +902,23 @@
   @media print { .qframe { box-shadow:none; overflow:visible; } .qpending, .qfoot .note { display:none; } }
   .qcell.nowm { box-shadow:inset 2px 0 0 var(--gold); }
   .qpill .mo { margin-left:auto; }
+
+  /* ---------- ICP cards: the features each profile asks for ---------- */
+  .icpcard .cfeat { margin-top:6px; padding-top:12px; border-top:1px solid var(--hair); display:flex; flex-direction:column; gap:2px; }
+  .icpcard .cfeat .lab { font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); margin-bottom:6px; }
+  .icpcard .cf { display:flex; align-items:center; gap:9px; width:100%; text-align:left; padding:6px 8px; margin:0 -8px; border-radius:var(--r-xs); font-size:14.5px; color:var(--ink); min-width:0; }
+  .icpcard .cf:hover { background:var(--tint); }
+  .icpcard .cf .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .icpcard .cf .sd { width:8px; height:8px; border-radius:50%; flex:none; background:var(--slate); }
+  .icpcard .cf .sd.st-research { background:var(--c-research); } .icpcard .cf .sd.st-planned { background:var(--c-planned); } .icpcard .cf .sd.st-building { background:var(--c-building); }
+  .icpcard .cf .sd.st-live { background:var(--c-live); } .icpcard .cf .sd.st-needs-work { background:var(--c-needs); } .icpcard .cf .sd.st-feature-flag { background:var(--c-flag); }
+  .icpcard .cf.more { color:var(--slate); font-size:13px; }
+  .icpcard .cfeat .note { font-size:13.5px; }
+  .icpcard.big .foot { margin-top:0; }
+  .icpcard .cfeat { margin-top:auto; padding-top:14px; }
+  .icpcard.big > .cfeat { margin-left:22px; margin-right:22px; }
+  .icpcard .cf { margin:0; padding:5px 0; align-items:flex-start; }
+  .icpcard .cf .sd { margin-top:6px; }
+  .icpcard .cf .nm { white-space:normal; line-height:1.35; }
+  .icpcard .cf:hover { background:none; }
+  .icpcard .cf:hover .nm { text-decoration:underline; text-decoration-color:var(--gold); text-underline-offset:3px; }
