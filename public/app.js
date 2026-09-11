@@ -1630,9 +1630,13 @@
   }
   function subsOf(f) { return childrenOf(f); }
 
+  var UPCOMING_STATES = ["Building", "Planned", "Research"];
+  function upcoming() { return feats().filter(function (f) { return UPCOMING_STATES.indexOf(f.state) !== -1; }); }
+
   function renderFeatures(host) {
     var p = project();
     if (ui.fmode === "all") return renderAllFeatures(host);
+    if (ui.fmode === "upcoming") return renderUpcoming(host);
     host.appendChild(header("FEATURES", p.name + " features", [newBtn("NEW FEATURE", function () { create(); })]));
     var pad = el("div", "pad");
     var sbox = el("div", "fsearch");
@@ -1678,6 +1682,28 @@
       });
       cards.appendChild(c);
     });
+    (function () {
+      var up = upcoming();
+      var c = el("button", "spacecard upcoming");
+      c.appendChild(avatarEl("upcoming", "lg"));
+      c.appendChild(el("h2", null, "Upcoming"));
+      c.appendChild(el("p", null, "What is being built, planned or researched across all spaces."));
+      var dated = up.filter(function (f) { return f.period; }).length;
+      c.appendChild(el("div", "count", up.length + " feature" + (up.length === 1 ? "" : "s") + (dated ? " · " + dated + " on the roadmap" : "")));
+      var dots = el("div", "dots");
+      UPCOMING_STATES.forEach(function (st) {
+        var n = up.filter(function (f) { return f.state === st; }).length;
+        if (!n) return;
+        var d = el("span", "dot " + stateClass(st));
+        d.appendChild(el("i"));
+        d.appendChild(document.createTextNode(n + " " + st.toLowerCase()));
+        dots.appendChild(d);
+      });
+      if (!up.length) dots.appendChild(el("span", "note", "Everything is live."));
+      c.appendChild(dots);
+      c.onclick = function () { ui.fmode = "upcoming"; renderView(); };
+      cards.appendChild(c);
+    })();
     pad.appendChild(cards);
     var foot = el("div", "spacefoot");
     var all = el("button", "chip", "Browse all " + feats().length + " features as a list");
@@ -1687,6 +1713,40 @@
     addSp.onclick = newSpace;
     foot.appendChild(addSp);
     pad.appendChild(foot);
+    host.appendChild(pad);
+  }
+
+  /* Upcoming: everything not yet live, grouped by how far along it is. */
+  function renderUpcoming(host) {
+    var p = project();
+    var back = el("button", "btn ghost", "Spaces");
+    back.onclick = function () { ui.fmode = "cards"; renderView(); };
+    host.appendChild(header("UPCOMING", p.name + " · what is coming", [back, newBtn("NEW FEATURE", function () { create([], { state: "Planned" }); })]));
+    var bar = el("div", "bar");
+    spaceChips(bar);
+    bar.appendChild(ownerSelect(renderView));
+    host.appendChild(bar);
+    var pad = el("div", "pad");
+    var list = upcoming().filter(passes);
+    if (!list.length) pad.appendChild(el("div", "empty", "Nothing upcoming. Set a feature to Building, Planned or Research and it shows up here."));
+    UPCOMING_STATES.forEach(function (st) {
+      var items = list.filter(function (f) { return f.state === st; });
+      if (!items.length) return;
+      items.sort(function (a, b) {
+        if (!!a.period !== !!b.period) return a.period ? -1 : 1;
+        if (a.period && b.period && a.period !== b.period) return a.period < b.period ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      var hint = st === "Building" ? "In development now." : st === "Planned" ? "Decided, not started." : "Being explored by the R&D team.";
+      var head = sectionTitle(st + " · " + items.length);
+      var hs = el("span", "note", hint);
+      hs.style.cssText = "text-transform:none;letter-spacing:0;font-size:14px;margin-left:10px;";
+      head.appendChild(hs);
+      pad.appendChild(head);
+      var tiles = el("div", "tiles");
+      items.forEach(function (f) { tiles.appendChild(tile(f)); });
+      pad.appendChild(tiles);
+    });
     host.appendChild(pad);
   }
 
@@ -2763,6 +2823,7 @@
   var ICP_AVATARS = [["regime", "Regime"], ["institution", "Institution"], ["physician", "Physician"], ["lawyer", "Lawyer"], ["paralegal", "Paralegal"],
                      ["person", "Person"], ["law-firm", "Law firm"], ["clinic", "Clinic"], ["insurer", "Insurer"], ["employer", "Employer"], ["other", "Other"]];
   var AVATAR_SVG = {
+    "upcoming": '<path d="M5 19l4-4"/><path d="M9 15c0-5 3-9 9-11-2 6-6 9-11 9"/><path d="M14 6l4 4"/><path d="M7 12H4M12 20v-3"/>',
     "regime": '<path d="M3 9.5 12 4l9 5.5H3z"/><path d="M5 9.5v8M10 9.5v8M14 9.5v8M19 9.5v8M3 17.5h18M3 20.5h18"/>',
     "institution": '<path d="M4 20h16M5 20V9h14v11M9 20v-5h6v5M3 9h18M12 3v3M9.5 6h5"/>',
     "physician": '<circle cx="11" cy="7" r="3.5"/><path d="M4 20a7 7 0 0 1 12.5-4.3"/><path d="M17.5 13.5v6M14.5 16.5h6"/>',
