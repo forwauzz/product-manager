@@ -142,6 +142,7 @@ export function normalize(state) {
     f.icps = f.icps.filter(x => typeof x === "string" && icpIds.has(x));
     if (typeof f.parent !== "string" || !f.parent) f.parent = null;
     if (typeof f.thumb !== "string") f.thumb = "";
+    if (typeof f.image !== "string") f.image = "";
     if (!f.created) f.created = f.updated || Date.now();
     if (!f.updated) f.updated = Date.now();
   });
@@ -187,7 +188,7 @@ async function mutate(store, fn) {
 }
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
-const EDITABLE = ["name", "state", "owner", "spaces", "period", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent", "thumb"];
+const EDITABLE = ["name", "state", "owner", "spaces", "period", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent", "thumb", "image"];
 
 /* Handle one API request. `req` = { method, path, query, body } where `path` is relative to /api
    (for example "/features/abc") and `query` is a plain object. Returns { status, body, headers }. */
@@ -288,6 +289,7 @@ export async function handleApi(req, store) {
         icps: Array.isArray(body.icps) ? body.icps.filter(x => typeof x === "string") : [],
         parent: typeof body.parent === "string" && body.parent ? body.parent : null,
         thumb: typeof body.thumb === "string" ? body.thumb : "",
+        image: typeof body.image === "string" ? body.image : "",
         created: now, updated: now
       };
       const r = await mutate(store, s => {

@@ -44,6 +44,42 @@ async function isAuthed(request, env) {
   return timingSafeEqual(token, await sessionToken(env.APP_PASSCODE));
 }
 
+/* Feature screenshots: one D1 row per feature, image kept as a base64 data URL. */
+async function handleShots(request, env, path) {
+  const id = path.split("/")[3] || "";
+  const store = new D1Store(env.DB);
+  if (request.method === "GET" && id) {
+    const row = await env.DB.prepare("SELECT mime, data FROM shots WHERE feature = ?").bind(id).first();
+    if (!row) return jsonResponse(404, { error: "no screenshot" });
+    const bin = Uint8Array.from(atob(row.data), c => c.charCodeAt(0));
+    return new Response(bin, { status: 200, headers: { "Content-Type": row.mime, "Cache-Control": "public, max-age=60" } });
+  }
+  if (request.method === "POST") {
+    let body = {};
+    try { body = await request.json(); } catch (_) { return jsonResponse(400, { error: "Body must be JSON." }); }
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(body.data || ""));
+    if (!m) return jsonResponse(400, { error: "data must be a base64 image data URL" });
+    if (m[2].length > 1.2 * 1024 * 1024) return jsonResponse(400, { error: "image larger than 900 KB; shrink it first" });
+    const doc = await store.load();
+    const f = doc.state.features.find(x => x.id === body.feature);
+    if (!f) return jsonResponse(400, { error: "unknown feature" });
+    await env.DB.prepare("INSERT INTO shots (feature, mime, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(feature) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at")
+      .bind(f.id, m[1], m[2], new Date().toISOString()).run();
+    const url = "/api/shots/" + f.id + "?v=" + Date.now();
+    f.image = url; f.updated = Date.now();
+    await store.save(doc.state, doc.version);
+    return jsonResponse(200, { feature: f.id, image: url });
+  }
+  if (request.method === "DELETE" && id) {
+    await env.DB.prepare("DELETE FROM shots WHERE feature = ?").bind(id).run();
+    const doc = await store.load();
+    const f = doc.state.features.find(x => x.id === id);
+    if (f && f.image) { f.image = ""; f.updated = Date.now(); await store.save(doc.state, doc.version); }
+    return jsonResponse(204, null);
+  }
+  return jsonResponse(404, { error: "unknown endpoint" });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -72,6 +108,10 @@ export default {
 
     const authed = await isAuthed(request, env);
 
+    if (path.startsWith("/api/shots")) {
+      if (!authed) return jsonResponse(401, { error: "Sign in first." });
+      return handleShots(request, env, path);
+    }
     if (path.startsWith("/api/")) {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
       if (!env.DB) return jsonResponse(500, { error: "D1 binding DB is not configured." });

@@ -4,7 +4,10 @@
     {
       "name": "alie-product-manager",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["server/server.js"],
+      "runtimeArgs": [
+        "--max-http-header-size=16000000",
+        "server/server.js"
+      ],
       "port": 4177
     }
   ]

@@ -4,3 +4,10 @@ CREATE TABLE IF NOT EXISTS documents (
   state TEXT NOT NULL,
   updated_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS shots (
+  feature TEXT PRIMARY KEY,
+  mime TEXT NOT NULL,
+  data TEXT NOT NULL,
+  updated_at TEXT
+);

@@ -1293,9 +1293,49 @@
   }
   function thumbEl(f, cls) {
     var d = el("div", "thumb " + stateClass(f.state) + (cls ? " " + cls : ""));
+    if (f.image) {
+      d.classList.add("shot");
+      var img = document.createElement("img");
+      img.src = f.image; img.alt = ""; img.loading = "lazy";
+      img.onerror = function () { d.classList.remove("shot"); img.remove(); };
+      d.appendChild(img);
+      return d;
+    }
     d.innerHTML = '<svg viewBox="0 0 160 104" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (THUMB_SVG[thumbKind(f)] || THUMB_SVG.spark) + "</svg>";
     return d;
   }
+  function uploadShot(f, file) {
+    if (!file || !/^image\//.test(file.type)) { toast("Pick an image file.", true); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var src = new Image();
+      src.onload = function () {
+        // Shrink to at most 1600px wide and re-encode as JPEG so it stays small on every device.
+        var scale = Math.min(1, 1600 / src.width);
+        var c = document.createElement("canvas");
+        c.width = Math.round(src.width * scale); c.height = Math.round(src.height * scale);
+        c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+        var data = c.toDataURL("image/jpeg", 0.82);
+        fetch("/api/shots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feature: f.id, data: data }) })
+          .then(function (r) { return r.json().then(function (b) { if (!r.ok) throw new Error(b.error || "Upload failed"); return b; }); })
+          .then(function (b) { f.image = b.image; VERSION += 1; refreshIfStaleNow(); toast("Screenshot saved."); })
+          .catch(function (e) { toast(e.message, true); });
+      };
+      src.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  function removeShot(f) {
+    fetch("/api/shots/" + f.id, { method: "DELETE" }).then(function () { f.image = ""; refreshIfStaleNow(); toast("Screenshot removed."); });
+  }
+  /* After the server changed the document on our behalf, take its copy so versions line up. */
+  function refreshIfStaleNow() {
+    fetch("/api/state", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (doc) {
+      if (dirty || saving) { render(); return; }
+      S = doc.state; VERSION = doc.version; render();
+    }).catch(function () { render(); });
+  }
+
   function thumbPicker(f, onPick) {
     var row = el("div", "thumbs");
     THUMBS.forEach(function (t) {
@@ -1350,6 +1390,13 @@
     if (ui.fmode === "all") return renderAllFeatures(host);
     host.appendChild(header("FEATURES", p.name + " features", [newBtn("NEW FEATURE", function () { create(); })]));
     var pad = el("div", "pad");
+    var sbox = el("div", "fsearch");
+    var sin = el("input");
+    sin.placeholder = "Search a feature by name or description…";
+    sin.setAttribute("aria-label", "Search features");
+    sin.oninput = function () { ui.query = sin.value; document.getElementById("find").value = sin.value; renderView(); };
+    sbox.appendChild(sin);
+    pad.appendChild(sbox);
     var cards = el("div", "spacecards");
     S.spaces.forEach(function (sp) {
       var mains = mainsIn(sp);
@@ -1513,19 +1560,29 @@
     /* sub-menu */
     var nav = el("nav", "subnav");
     nav.setAttribute("aria-label", sp + " features");
-    var lab = el("div", "sublab", mains.length + " main features");
+    var q = (ui.subq || "").trim().toLowerCase();
+    function hit(f) { return !q || (f.name + " " + (f.note || "")).toLowerCase().indexOf(q) !== -1; }
+    var fin = el("input", "subfind");
+    fin.placeholder = "Filter " + sp + " features…";
+    fin.value = ui.subq || "";
+    fin.setAttribute("aria-label", "Filter features");
+    fin.oninput = function () { ui.subq = fin.value; renderView(); var again = document.querySelector(".subfind"); if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); } };
+    nav.appendChild(fin);
+    var shown = mains.filter(function (m) { return hit(m) || subsOf(m).some(hit); });
+    var lab = el("div", "sublab", q ? shown.length + " of " + mains.length + " main features" : mains.length + " main features");
     lab.style.margin = "0 0 8px";
     nav.appendChild(lab);
     var list2 = el("div", "subnav-list");
-    mains.forEach(function (m) {
-      var kids = subsOf(m);
+    if (q && !shown.length) list2.appendChild(el("div", "note", "No match in " + sp + "."));
+    shown.forEach(function (m) {
+      var kids = q ? subsOf(m).filter(function (k) { return hit(k) || hit(m); }) : subsOf(m);
       var item = el("button", "sn" + (m.id === selMain.id ? " on" : ""));
       item.appendChild(el("i", "sd " + stateClass(m.state)));
       item.appendChild(el("span", "nm", m.name));
       if (kids.length) item.appendChild(el("span", "ct", String(kids.length)));
       item.onclick = function () { ui.spaceSel = m.id; renderView(); };
       list2.appendChild(item);
-      if (m.id === selMain.id && kids.length) {
+      if ((m.id === selMain.id || q) && kids.length) {
         var sub = el("div", "snsub");
         kids.forEach(function (k) {
           var b = el("button", "sn kid" + (k.id === sel.id ? " on" : ""));
@@ -2912,9 +2969,28 @@
     }
     right.appendChild(pr);
 
+    var pimg = el("div", "panel");
+    pimg.style.marginTop = "18px";
+    pimg.appendChild(el("h3", null, "Screenshot"));
+    if (f.image) {
+      var big = thumbEl(f, "page");
+      pimg.appendChild(big);
+    } else pimg.appendChild(el("div", "note", "No screenshot yet. Add one of the real screen so the card shows what it looks like."));
+    var upRow = el("div", "acts");
+    upRow.style.marginTop = "10px";
+    var fileIn = document.createElement("input");
+    fileIn.type = "file"; fileIn.accept = "image/*"; fileIn.style.display = "none";
+    fileIn.onchange = function () { if (fileIn.files && fileIn.files[0]) uploadShot(f, fileIn.files[0]); };
+    var up = el("button", "btn ghost", f.image ? "Replace" : "Add screenshot");
+    up.onclick = function () { fileIn.click(); };
+    upRow.appendChild(up); upRow.appendChild(fileIn);
+    if (f.image) { var rm = el("button", "btn ghost", "Remove"); rm.onclick = function () { removeShot(f); }; upRow.appendChild(rm); }
+    pimg.appendChild(upRow);
+    right.appendChild(pimg);
+
     var pt = el("div", "panel");
     pt.style.marginTop = "18px";
-    pt.appendChild(el("h3", null, "Thumbnail"));
+    pt.appendChild(el("h3", null, "Thumbnail" + (f.image ? " (used when there is no screenshot)" : "")));
     pt.appendChild(thumbPicker(f, function (v) { f.thumb = v; touch(f); save(); }));
     right.appendChild(pt);
 
@@ -3065,7 +3141,10 @@
     hits.forEach(function (f) {
       var r = featureRow(f, null, f.period ? laneOfPeriod(f, keys()) : "none");
       var pr = S.projects.filter(function (p) { return p.id === f.project; })[0];
-      if (pr && pr.id !== S.current) r.querySelector(".body").appendChild(el("span", "meta", "In " + pr.name));
+      var where = (pr && pr.id !== S.current ? "In " + pr.name + " · " : "") + ((f.spaces || []).join(", ") || "no space");
+      var pf = parentOf(f);
+      if (pf) where += " · part of " + pf.name;
+      r.querySelector(".body").appendChild(el("span", "meta", where));
       rows.appendChild(r);
     });
     pad.appendChild(rows);
@@ -3109,7 +3188,7 @@
     document.getElementById("app").dataset.nav = "closed";
     document.getElementById("scrim").style.display = "none";
   };
-  document.getElementById("find").oninput = function (e) { ui.query = e.target.value; renderView(); };
+  document.getElementById("find").oninput = function (e) { ui.query = e.target.value; renderView(); var fs = document.querySelector(".fsearch input"); if (fs) fs.value = e.target.value; };
   document.addEventListener("keydown", function (e) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); document.getElementById("find").focus(); document.getElementById("find").select(); }
     if (e.key === "Escape") {
