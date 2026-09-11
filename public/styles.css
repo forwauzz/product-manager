@@ -846,3 +846,57 @@
     .namein { font-size:22px; }
     .lbtitle h3 { font-size:20px; }
   }
+
+  /* ---------- roadmap: quarters grid ---------- */
+  .qframe { border:1px solid var(--line); border-radius:var(--r-lg); background:#fff; overflow-x:auto; box-shadow:var(--lift); }
+  .qrow { display:grid; grid-template-columns:200px minmax(720px, 1fr); border-top:1px solid var(--line); }
+  .qrow:first-child { border-top:none; }
+  .qrow.qhead { position:sticky; top:0; z-index:3; background:#fff; }
+  .qteam { padding:22px 22px; border-right:1px solid var(--line); display:flex; flex-direction:column; justify-content:center; gap:4px; position:sticky; left:0; background:#fff; z-index:2; }
+  .qhead .qteam { font-size:15px; color:var(--slate); letter-spacing:.02em; font-weight:500; }
+  .qteam b { font-size:19px; font-weight:700; letter-spacing:-.014em; line-height:1.25; }
+  .qteam .qn { font-size:13px; color:var(--slate); }
+  .qlanes { display:grid; position:relative; padding:12px 0; align-items:center; }
+  .qhead .qlanes { padding:0; }
+  .qcol { padding:18px 20px; font-size:17px; color:var(--ink); display:flex; align-items:baseline; gap:8px; border-left:1px solid var(--line); }
+  .qcol b { font-weight:700; font-size:19px; }
+  .qcol span { color:var(--slate); font-size:14px; }
+  .qcol.later { color:var(--slate); }
+  .qcell { border-left:1px solid var(--hair); align-self:stretch; margin:-12px 0; min-height:70px; }
+  .qcell.qb { border-left-color:var(--line); }
+  .qcell.nowm { background:rgba(184,150,62,.05); }
+  .qcell.over { background:rgba(184,150,62,.16); }
+  .qpill { position:relative; z-index:1; display:inline-flex; align-items:center; gap:9px; margin:4px 8px; padding:0 16px; height:38px; border-radius:var(--r-pill); font-size:14.5px; font-weight:500; color:var(--ink); background:#dbeafe; min-width:0; cursor:grab; text-align:left; box-shadow:0 1px 2px rgba(15,23,42,.06); transition:transform .12s, box-shadow .12s; }
+  .qpill:hover { transform:translateY(-1px); box-shadow:0 6px 16px rgba(15,23,42,.10); }
+  .qpill.dragging { opacity:.4; }
+  .qpill .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .qpill .mo { font-family:var(--mono); font-size:11.5px; color:var(--slate); flex:none; }
+  .qpill .sd { width:9px; height:9px; border-radius:50%; flex:none; background:var(--slate); }
+  .qpill .sd.st-research { background:var(--c-research); } .qpill .sd.st-planned { background:var(--c-planned); } .qpill .sd.st-building { background:var(--c-building); }
+  .qpill .sd.st-live { background:var(--c-live); } .qpill .sd.st-needs-work { background:var(--c-needs); } .qpill .sd.st-feature-flag { background:var(--c-flag); }
+  .qrow.tone-0 .qpill { background:#dbeafe; }
+  .qrow.tone-0 .qpill:nth-of-type(odd) { background:#bfdbfe; }
+  .qrow.tone-1 .qpill { background:#f3e8c8; }
+  .qrow.tone-1 .qpill:nth-of-type(odd) { background:#ecdca9; }
+  .qrow.tone-2 .qpill { background:#e7e0f6; }
+  .qrow.tone-2 .qpill:nth-of-type(odd) { background:#d9cdf0; }
+  .qrow.tone-3 .qpill { background:#d7f0e3; }
+  .qrow.tone-3 .qpill:nth-of-type(odd) { background:#bfe6d1; }
+  .qpill.ghost { background:var(--bone); border:1px dashed var(--line); margin:0; }
+  .qfoot { display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin:16px 4px 0; }
+  .qfoot .legend { margin:0; }
+  .qpending { margin-top:26px; border:1px solid var(--line); border-radius:var(--r-lg); background:var(--bone); padding:20px 24px; }
+  .qph { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:12px; }
+  .qph b { font-size:17px; }
+  .qchips { display:flex; flex-wrap:wrap; gap:10px; }
+  .qchips .qpill { max-width:100%; }
+  @media (max-width:860px) {
+    .qrow { grid-template-columns:150px minmax(640px, 1fr); }
+    .qteam { padding:14px 14px; }
+    .qteam b { font-size:16px; }
+    .qcol { padding:12px 12px; font-size:15px; }
+    .qcol b { font-size:16px; }
+    .qpill { height:34px; font-size:13.5px; padding:0 12px; margin:3px 5px; }
+    .qpill .mo { display:none; }
+  }
+  @media print { .qframe { box-shadow:none; overflow:visible; } .qpending, .qfoot .note { display:none; } }
