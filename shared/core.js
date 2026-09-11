@@ -149,6 +149,14 @@ export function normalize(state) {
       tag: ["Quick win", "Big bet", "Later", "Blocked"].indexOf(d.tag) !== -1 ? d.tag : "",
       features: Array.isArray(d.features) ? d.features.filter(x => typeof x === "string") : []
     })),
+    requests: (Array.isArray(p.requests) ? p.requests : []).filter(r => r && typeof r === "object").map(r => ({
+      id: String(r.id || uid()), title: String(r.title || "Untitled request"),
+      bottleneck: String(r.bottleneck || ""), need: String(r.need || ""), solution: String(r.solution || ""),
+      fit: ["Core to ALIE", "Adjacent", "Out of scope"].indexOf(r.fit) !== -1 ? r.fit : "",
+      decision: ["Undecided", "Build", "Integrate or partner", "Later", "Declined"].indexOf(r.decision) !== -1 ? r.decision : "Undecided",
+      reason: String(r.reason || ""), source: String(r.source || ""), feature: String(r.feature || ""),
+      created: Number(r.created) || Date.now(), updated: Number(r.updated) || Date.now()
+    })),
     created: Number(p.created) || Date.now(), updated: Number(p.updated) || Date.now()
   }));
   if (!Array.isArray(s.log)) s.log = [];
@@ -204,6 +212,7 @@ export function normalize(state) {
   s.pilots.forEach(p => {
     p.wants = p.wants.filter(id => featIds.has(id)); p.needs = p.needs.filter(id => featIds.has(id));
     p.deliverables.forEach(d => { d.features = d.features.filter(id => featIds.has(id)); });
+    p.requests.forEach(r => { if (r.feature && !featIds.has(r.feature)) r.feature = ""; });
   });
   return s;
 }

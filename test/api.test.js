@@ -231,3 +231,21 @@ test("pilots are kept in the document and their feature lists only keep real fea
   assert.deepEqual(p.wants, [f.id], "unknown feature ids are dropped");
   assert.equal(p.status, "Piloting");
 });
+
+test("pilot requests are stored with their decision and a promoted feature link is validated", async () => {
+  const st = await api("GET", "/api/state");
+  const s = st.body.state;
+  const f = s.features[0];
+  s.pilots = [{ id: "p2", name: "Hugo", status: "Piloting", requests: [
+    { id: "r1", title: "Automated appointment scheduling", bottleneck: "<p>Secretary books by phone.</p>", need: "<p>Two hours a day.</p>", solution: "<p>Integrate with their calendar.</p>", fit: "Out of scope", decision: "Integrate or partner", reason: "Not our product", feature: "ghost" },
+    { id: "r2", title: "Body-part search", decision: "Build", feature: f.id }
+  ] }];
+  const put = await api("PUT", "/api/state", { version: st.body.version, state: s, who: "Uzziel" });
+  assert.equal(put.status, 200);
+  const rq = put.body.state.pilots[0].requests;
+  assert.equal(rq.length, 2);
+  assert.equal(rq[0].decision, "Integrate or partner");
+  assert.equal(rq[0].feature, "", "unknown feature link is cleared");
+  assert.equal(rq[1].feature, f.id);
+  assert.equal(rq[1].fit, "");
+});

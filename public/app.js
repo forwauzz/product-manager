@@ -1994,7 +1994,7 @@
   function newPilot() {
     askText("New pilot", { placeholder: "Firm, clinic or insurer", ok: "Create" }).then(function (n) {
       if (!n) return;
-      var p = { id: uid(), name: n, status: "Prospect", contact: "", icp: "", since: mKey(new Date()), notes: "", link: "", wants: [], needs: [], deliverables: [], created: Date.now(), updated: Date.now() };
+      var p = { id: uid(), name: n, status: "Prospect", contact: "", icp: "", since: mKey(new Date()), notes: "", link: "", wants: [], needs: [], deliverables: [], requests: [], created: Date.now(), updated: Date.now() };
       S.pilots = pilots().concat([p]);
       ui.pilot = p.id; ui.view = "pilots"; render(); save();
     });
@@ -2080,7 +2080,8 @@
       tx.appendChild(nm);
       var w = pilotFeats(p, "wants").length, l = pilotLive(p).length, n = pilotFeats(p, "needs").length;
       var dn = (p.deliverables || []).length;
-      tx.appendChild(el("span", null, (w ? w + " asked for · " + l + " of those live" : "Nothing asked for yet") + (n ? " · " + n + " we think they need" : "") + (dn ? " · " + dn + (dn === 1 ? " deliverable" : " deliverables") : "") + (p.contact ? " · " + p.contact : "")));
+      var rq = (p.requests || []).length, rqU = (p.requests || []).filter(function (r) { return r.decision === "Undecided"; }).length;
+      tx.appendChild(el("span", null, (w ? w + " asked for · " + l + " of those live" : "Nothing asked for yet") + (n ? " · " + n + " we think they need" : "") + (dn ? " · " + dn + (dn === 1 ? " deliverable" : " deliverables") : "") + (rq ? " · " + rq + (rq === 1 ? " request" : " requests") + (rqU ? " (" + rqU + " to decide)" : "") : "") + (p.contact ? " · " + p.contact : "")));
       t.appendChild(tx);
       var nn = el("div", "n");
       nn.appendChild(el("b", null, w ? Math.round(100 * l / w) + "%" : "—"));
@@ -2090,6 +2091,8 @@
       tiles.appendChild(t);
     });
     dir.appendChild(tiles);
+    var across = requestsAcrossPilots();
+    if (across) dir.appendChild(across);
     pad.appendChild(dir);
     host.appendChild(pad);
   }
@@ -2130,6 +2133,7 @@
     host.appendChild(header("PILOT", p.name, [back, more]));
     host.appendChild(pilotTabs(p));
     if (ui.pilotTab === "deliverables") return renderPilotDeliverables(host, p);
+    if (ui.pilotTab === "requests") return renderPilotRequests(host, p);
     var pad = el("div", "pad");
     var grid = el("div", "grid2 pilotgrid");
     var left = el("div"), right = el("div");
@@ -2208,9 +2212,17 @@
   function pilotsPanel(f) {
     var list = pilotsFor(f);
     var dl = pilotDeliverablesFor(f);
+    var rq = requestsFor(f);
     var p = el("div", "panel");
     p.style.marginTop = "18px";
     p.appendChild(el("h3", null, "Pilots"));
+    rq.forEach(function (x) {
+      var r0 = el("div", "fl");
+      var b0 = el("button", null, x.pilot.name + " · from their request “" + x.r.title + "”");
+      b0.onclick = function () { ui.view = "pilots"; ui.pilot = x.pilot.id; ui.pilotTab = "requests"; ui.feature = null; render(); };
+      r0.appendChild(b0);
+      p.appendChild(r0);
+    });
     dl.forEach(function (x) {
       var r = el("div", "fl");
       var b = el("button", null, x.pilot.name + " · delivers “" + x.d.title + "”");
@@ -2219,7 +2231,7 @@
       if (x.d.tag) r.appendChild(pill(x.d.tag, DELIV_TAG_CLASS[x.d.tag]));
       p.appendChild(r);
     });
-    if (!list.length && !dl.length) { p.appendChild(el("div", "note", "No pilot has asked for this yet.")); return p; }
+    if (!list.length && !dl.length && !rq.length) { p.appendChild(el("div", "note", "No pilot has asked for this yet.")); return p; }
     list.forEach(function (pl) {
       var r = el("div", "fl");
       var b = el("button", null, pl.name + ((pl.wants || []).indexOf(f.id) !== -1 ? " · asked for it" : " · we think they need it"));
@@ -2251,7 +2263,7 @@
   function pilotTabs(p) {
     var bar = el("div", "bar modebar");
     var seg = el("div", "seg");
-    [["Overview", "overview"], ["Deliverables" + ((p.deliverables || []).length ? " · " + p.deliverables.length : ""), "deliverables"]].forEach(function (m) {
+    [["Overview", "overview"], ["Requests" + ((p.requests || []).length ? " · " + p.requests.length : ""), "requests"], ["Deliverables" + ((p.deliverables || []).length ? " · " + p.deliverables.length : ""), "deliverables"]].forEach(function (m) {
       var b = el("button", null, m[0]);
       b.setAttribute("aria-pressed", String((ui.pilotTab || "overview") === m[1]));
       b.onclick = function () { ui.pilotTab = m[1]; renderView(); };
@@ -2389,6 +2401,166 @@
     }
     pad.appendChild(dir);
     host.appendChild(pad);
+  }
+
+  /* --- requests: what a pilot asked for, in their words, before it is (or is not) a feature --- */
+  var REQ_FIT = ["", "Core to ALIE", "Adjacent", "Out of scope"];
+  var REQ_DECISION = ["Undecided", "Build", "Integrate or partner", "Later", "Declined"];
+  var REQ_DECISION_CLASS = { "Undecided": "", "Build": "st-live", "Integrate or partner": "st-building", "Later": "st-planned", "Declined": "st-needs-work" };
+  function reqKey(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9àâçéèêëîïôûùüÿœ ]+/g, " ").replace(/\s+/g, " ").trim(); }
+  function allRequests() {
+    var out = [];
+    pilots().forEach(function (p) { (p.requests || []).forEach(function (r) { out.push({ pilot: p, r: r }); }); });
+    return out;
+  }
+  function requestsFor(f) { return allRequests().filter(function (x) { return x.r.feature === f.id; }); }
+
+  function renderPilotRequests(host, p) {
+    var pad = el("div", "pad");
+    var dir = el("div", "dir");
+    var list = p.requests || [];
+    var undecided = list.filter(function (r) { return r.decision === "Undecided"; }).length;
+    var intro = el("div", "dsum");
+    intro.appendChild(el("b", null, list.length ? list.length + (list.length === 1 ? " request" : " requests") + (undecided ? " · " + undecided + " to decide" : " · all decided") : "No requests yet"));
+    intro.appendChild(el("span", "note", "Anything they raised, whether or not it fits ALIE. Write the bottleneck, the business need and a possible solution; decide with the team; promote to a feature only what we build."));
+    dir.appendChild(intro);
+
+    var wrap = el("div", "delivs");
+    if (!list.length) wrap.appendChild(el("div", "empty", "Add the first request: the title in their words, then what slows them down today, why it matters to the business, and what could solve it."));
+    list.forEach(function (r, i) {
+      var card = el("div", "deliv req");
+      var head = el("div", "dhead");
+      head.appendChild(el("span", "dnum", String(i + 1)));
+      var title = el("input", "dtitle");
+      title.value = r.title; title.placeholder = "What they asked for, in their words";
+      title.setAttribute("aria-label", "Request title");
+      title.onchange = function () { r.title = title.value.trim() || "Untitled request"; r.updated = Date.now(); touchPilot(p); save(); };
+      head.appendChild(title);
+      var decSel = selectOf(REQ_DECISION.map(function (d) { return [d, d]; }), r.decision || "Undecided", function (v) {
+        r.decision = v; r.updated = Date.now(); touchPilot(p);
+        if (v === "Undecided") { render(); save(); return; }
+        askText("Why " + v.toLowerCase() + "?", { value: r.reason || "", placeholder: "One line the team will understand in six months.", ok: "Save" }).then(function (t) { if (t !== null) r.reason = t; render(); save(); });
+      }, "Decision");
+      decSel.classList.add("dtag"); if (REQ_DECISION_CLASS[r.decision]) decSel.classList.add(REQ_DECISION_CLASS[r.decision]);
+      head.appendChild(decSel);
+      var del = el("button", "dmove del", "×"); del.title = "Delete request";
+      del.onclick = function () {
+        askConfirm("Delete “" + r.title + "”?", "The record of this request goes away.", { danger: true, ok: "Delete" }).then(function (yes) {
+          if (!yes) return;
+          p.requests = list.filter(function (x) { return x.id !== r.id; }); touchPilot(p); render(); save();
+        });
+      };
+      head.appendChild(del);
+      card.appendChild(head);
+
+      var meta = el("div", "reqmeta");
+      var fitRow = el("span", "reqfit");
+      fitRow.appendChild(el("label", null, "Fit"));
+      fitRow.appendChild(selectOf(REQ_FIT.map(function (x) { return [x, x || "Not assessed"]; }), r.fit || "", function (v) { r.fit = v; r.updated = Date.now(); touchPilot(p); save(); }, "Fit"));
+      meta.appendChild(fitRow);
+      var src = el("span", "reqsrc");
+      src.appendChild(el("label", null, "Source"));
+      var sin = el("input"); sin.value = r.source || ""; sin.placeholder = "Who said it, when · Drive link";
+      sin.setAttribute("aria-label", "Source");
+      sin.onchange = function () { r.source = sin.value.trim(); r.updated = Date.now(); touchPilot(p); save(); };
+      src.appendChild(sin);
+      if (/^https?:\/\//.test(r.source || "")) { var go = el("a", "chip", "Open"); go.href = r.source; go.target = "_blank"; go.rel = "noopener"; src.appendChild(go); }
+      meta.appendChild(src);
+      if (r.decision !== "Undecided" && r.reason) meta.appendChild(el("span", "reqwhy", "Why: " + r.reason));
+      card.appendChild(meta);
+
+      var secs = el("div", "reqsecs");
+      [["bottleneck", "Current bottleneck", "What happens today, who does it, how often, how long it takes."],
+       ["need", "Business need", "Why it matters to them: what it costs, what it blocks, what changes if it is solved."],
+       ["solution", "Possible solution", "Build, integrate with what they use, partner, or nothing. First take, not a commitment."]].forEach(function (s) {
+        var sec = el("div", "reqsec");
+        sec.appendChild(el("div", "lab", s[1]));
+        sec.appendChild(richEditor(r[s[0]], function (h) { r[s[0]] = h; r.updated = Date.now(); touchPilot(p); save(); }, s[2], "small dnote"));
+        secs.appendChild(sec);
+      });
+      card.appendChild(secs);
+
+      var foot = el("div", "dfeats");
+      var lf = r.feature ? feature(r.feature) : null;
+      if (lf) {
+        var chip = el("span", "dchip " + stateClass(lf.state));
+        var b = el("button", null, "Feature: " + lf.name); b.onclick = function () { open(lf.id); };
+        chip.appendChild(el("i", "sd " + stateClass(lf.state))); chip.appendChild(b);
+        chip.appendChild(pill(lf.state, "st " + stateClass(lf.state)));
+        foot.appendChild(chip);
+      } else {
+        var promote = el("button", "chip", "↑ Promote to a Proposed feature");
+        promote.onclick = function () {
+          askConfirm("Promote “" + r.title + "” to a feature?", "It starts as Proposed, carries the bottleneck, need and solution as its description, and joins this pilot's asks. Nothing is agreed until you move it to Planned.", { ok: "Promote" }).then(function (yes) {
+            if (!yes) return;
+            var note = "<p><b>From " + escapeHtml(p.name) + "'s request.</b></p>" +
+              (r.bottleneck ? "<h4>Current bottleneck</h4>" + richHtml(r.bottleneck) : "") +
+              (r.need ? "<h4>Business need</h4>" + richHtml(r.need) : "") +
+              (r.solution ? "<h4>Possible solution</h4>" + richHtml(r.solution) : "");
+            var f = create([], { name: r.title, state: "Proposed", note: note }, true);
+            r.feature = f.id; if (r.decision === "Undecided") r.decision = "Build";
+            if ((p.wants || []).indexOf(f.id) === -1) p.wants = (p.wants || []).concat([f.id]);
+            r.updated = Date.now(); touchPilot(p); save();
+            toast(r.title + " is now a Proposed feature. Give it a space and a division.");
+            open(f.id);
+          });
+        };
+        foot.appendChild(promote);
+      }
+      card.appendChild(foot);
+      wrap.appendChild(card);
+    });
+    dir.appendChild(wrap);
+
+    var addR = el("button", "btn ghost rowbtn", "+ Add a request");
+    addR.style.marginTop = "14px";
+    addR.onclick = function () {
+      askText("New request", { placeholder: "For example: automated retainer and power of attorney prepopulation", ok: "Add" }).then(function (t) {
+        if (!t) return;
+        p.requests = (p.requests || []).concat([{ id: uid(), title: t, bottleneck: "", need: "", solution: "", fit: "", decision: "Undecided", reason: "", source: "", feature: "", created: Date.now(), updated: Date.now() }]);
+        touchPilot(p); render(); save();
+      });
+    };
+    dir.appendChild(addR);
+    pad.appendChild(dir);
+    host.appendChild(pad);
+  }
+
+  /* pilots list: the same ask coming from several pilots is the signal */
+  function requestsAcrossPilots() {
+    var all = allRequests();
+    if (!all.length) return null;
+    var groups = {}, order = [];
+    all.forEach(function (x) { var k = reqKey(x.r.title); if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(x); });
+    order.sort(function (a, b) { return groups[b].length - groups[a].length; });
+    var sec = el("div", "dirsec");
+    sec.style.marginTop = "36px";
+    var h = el("h2", null, "Requests across pilots");
+    h.appendChild(el("em", null, all.length + (all.length === 1 ? " request" : " requests")));
+    sec.appendChild(h);
+    sec.appendChild(el("div", "note", "Everything pilots raised, most-shared first. The same ask from several pilots is the product-market-fit signal."));
+    var rows = el("div", "pilotrows");
+    order.forEach(function (k) {
+      var xs = groups[k];
+      var r = el("div", "dirrow prow reqrow");
+      var n = el("span", "dnum small" + (xs.length > 1 ? " hot" : ""), String(xs.length));
+      r.appendChild(n);
+      var t = el("div", "t");
+      t.appendChild(el("b", null, xs[0].r.title));
+      var d = el("span", "d");
+      xs.forEach(function (x) {
+        var b = el("button", "chip", x.pilot.name + (x.r.decision !== "Undecided" ? " · " + x.r.decision : ""));
+        b.onclick = function () { ui.pilot = x.pilot.id; ui.pilotTab = "requests"; renderView(); };
+        d.appendChild(b);
+      });
+      var fits = xs.map(function (x) { return x.r.fit; }).filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; });
+      fits.forEach(function (fv) { d.appendChild(pill(fv, fv === "Core to ALIE" ? "st-live" : fv === "Adjacent" ? "st-planned" : "st-needs-work")); });
+      t.appendChild(d);
+      r.appendChild(t);
+      rows.appendChild(r);
+    });
+    sec.appendChild(rows);
+    return sec;
   }
 
   /* --- directory style: square icon, name, one-line description, like a plugin marketplace --- */
