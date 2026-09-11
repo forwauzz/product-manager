@@ -2099,6 +2099,26 @@
     host.appendChild(pad);
   }
 
+  /* collapsible cards and panels: remembered per item on this device; cards start closed, panels open */
+  var folds = {};
+  try { folds = JSON.parse(localStorage.getItem("alie.fold") || "{}") || {}; } catch (e) { folds = {}; }
+  function foldOpen(key, dflt) { return folds[key] === undefined ? dflt : !!folds[key]; }
+  function foldSet(key, open) { folds[key] = open; try { localStorage.setItem("alie.fold", JSON.stringify(folds)); } catch (e) {} }
+  function foldable(node, key, dflt, headSel) {
+    node.classList.add("fold");
+    if (foldOpen(key, dflt)) node.classList.add("open");
+    var head = node.querySelector(headSel);
+    if (!head) return node;
+    var chev = el("button", "fchev", "›");
+    chev.type = "button"; chev.title = "Collapse or expand"; chev.setAttribute("aria-label", "Collapse or expand");
+    chev.onclick = function (e) { e.stopPropagation(); var open = !node.classList.contains("open"); node.classList.toggle("open", open); foldSet(key, open); };
+    head.insertBefore(chev, head.firstChild);
+    head.addEventListener("click", function (e) {
+      if (e.target.closest("input, select, button, a, .rte, .pill")) return;
+      var open = !node.classList.contains("open"); node.classList.toggle("open", open); foldSet(key, open);
+    });
+    return node;
+  }
   function pilotListMode() { try { return localStorage.getItem("alie.pilotlist") === "grid" ? "grid" : "list"; } catch (e) { return "list"; } }
   function setPilotListMode(m) { try { localStorage.setItem("alie.pilotlist", m); } catch (e) {} }
   function pilotFeatureRow(f, onRemove) {
@@ -2169,12 +2189,14 @@
     lrow.appendChild(lin);
     if (p.link) { var go = el("a", "btn ghost", "Open"); go.href = p.link; go.target = "_blank"; go.rel = "noopener"; lrow.appendChild(go); }
     pf.appendChild(lrow);
+    foldable(pf, "p:" + p.id + ":about", true, "h3");
     left.appendChild(pf);
 
     var pn = el("div", "panel");
     pn.style.marginTop = "18px";
     pn.appendChild(el("h3", null, "Notebook"));
     pn.appendChild(richEditor(p.notes, function (h) { p.notes = h; p.updated = Date.now(); save(); }, "What they do, what hurts, what they said, next steps, dates.", "writer"));
+    foldable(pn, "p:" + p.id + ":notes", true, "h3");
     left.appendChild(pn);
 
     /* right: the three lists */
@@ -2191,11 +2213,12 @@
     right.appendChild(modeRow);
     function listPanel(title, hint, key, derived) {
       var pnl = el("div", "panel plist");
+      var items = derived ? pilotLive(p) : pilotFeats(p, key);
       var h = el("h3", null, title);
+      h.appendChild(el("em", "hcount", String(items.length)));
       pnl.appendChild(h);
       pnl.appendChild(el("div", "note", hint));
       var rows = el("div", "pilotrows" + (listMode === "grid" ? " grid" : ""));
-      var items = derived ? pilotLive(p) : pilotFeats(p, key);
       if (!items.length) rows.appendChild(el("div", "note empty2", derived ? "Nothing they asked for is live yet." : "Nothing here yet."));
       items.forEach(function (f) {
         rows.appendChild(pilotFeatureRow(f, derived ? null : function (x) { p[key] = (p[key] || []).filter(function (id) { return id !== x.id; }); p.updated = Date.now(); render(); save(); }));
@@ -2211,10 +2234,11 @@
         };
         pnl.appendChild(add);
       }
+      foldable(pnl, "p:" + p.id + ":" + key + (derived ? ":live" : ""), true, "h3");
       return pnl;
     }
     right.appendChild(listPanel("They asked for", "Features this client requested. Their state shows how far along each one is.", "wants", false));
-    var lv = listPanel("Live for them", "Derived: what they asked for that is already shipped.", "wants", true);
+    var lv = listPanel("Requested features shipped", "Derived: what they asked for that is already live. Shipped is not the same as validated by the client.", "wants", true);
     lv.style.marginTop = "18px"; right.appendChild(lv);
     var nd = listPanel("We think they will need", "Our own view of what will matter to them, before they ask.", "needs", false);
     nd.style.marginTop = "18px"; right.appendChild(nd);
@@ -2375,6 +2399,7 @@
       };
       fl.appendChild(addF);
       card.appendChild(fl);
+      foldable(card, "d:" + d.id, false, ".dhead");
       wrap.appendChild(card);
     });
     dir.appendChild(wrap);
@@ -2524,6 +2549,7 @@
         foot.appendChild(promote);
       }
       card.appendChild(foot);
+      foldable(card, "r:" + r.id, false, ".dhead");
       wrap.appendChild(card);
     });
     dir.appendChild(wrap);
@@ -2609,6 +2635,7 @@
         title.setAttribute("aria-label", "Name");
         title.onchange = function () { x.name = title.value.trim() || "Untitled"; x.updated = Date.now(); touchPilot(p); save(); };
         head.appendChild(title);
+        if (x.category) head.appendChild(el("span", "fsum", x.category));
         var del = el("button", "dmove del", "×"); del.title = "Remove";
         del.onclick = function () {
           askConfirm("Remove “" + x.name + "”?", "", { danger: true, ok: "Remove" }).then(function (yes) {
@@ -2636,6 +2663,7 @@
         use.appendChild(el("div", "lab", kind === "Software" ? "How they use it" : "What they do for them"));
         use.appendChild(richEditor(x.usage, function (h) { x.usage = h; x.updated = Date.now(); touchPilot(p); save(); }, kind === "Software" ? "Who uses it, for what, how often, what it costs, what they like and hate about it." : "Scope, cadence, cost, who the contact is, how happy they are.", "small dnote"));
         card.appendChild(use);
+        foldable(card, "s:" + x.id, false, ".dhead");
         grid.appendChild(card);
       });
       sec.appendChild(grid);
