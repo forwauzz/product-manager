@@ -108,6 +108,9 @@ export default {
       }
       return jsonResponse(200, { ok: true }, { "Set-Cookie": setCookie(await sessionToken(env.APP_PASSCODE), COOKIE_DAYS * 86400) });
     }
+    if (path === "/api/version" && request.method === "GET") {
+      return jsonResponse(200, { build: buildId(env) });
+    }
     if (path === "/api/logout" && request.method === "POST") {
       return jsonResponse(204, null, { "Set-Cookie": setCookie("", 0) });
     }
@@ -188,8 +191,27 @@ export default {
     if (res.status === 404 && request.method === "GET" && !/\.[a-z0-9]+$/i.test(path)) {
       // Client-side routes fall back to the shell.
       if (!authed) return Response.redirect(url.origin + "/login.html", 302);
-      return env.ASSETS.fetch(new Request(url.origin + "/index.html", request));
+      return stampHtml(await env.ASSETS.fetch(new Request(url.origin + "/index.html", request)), env);
     }
+    if (path === "/" || path === "/index.html" || path === "/login.html") return stampHtml(res, env);
     return res;
   }
 };
+
+/* Every deploy gets a new version id; the page carries it so app.js and styles.css are fetched fresh
+   after a deploy, and the app can tell when a newer build is live. */
+function buildId(env) {
+  const meta = env.CF_VERSION_METADATA;
+  return meta && meta.id ? String(meta.id).slice(0, 8) : "dev";
+}
+async function stampHtml(res, env) {
+  if (!res.ok || !/text\/html/.test(res.headers.get("Content-Type") || "")) return res;
+  const v = buildId(env);
+  const html = (await res.text())
+    .replace('<link rel="stylesheet" href="/styles.css">', '<link rel="stylesheet" href="/styles.css?v=' + v + '">')
+    .replace('<script src="/app.js"></script>', '<meta name="build" content="' + v + '"><script src="/app.js?v=' + v + '"></script>');
+  const h = new Headers(res.headers);
+  h.set("Cache-Control", "no-cache");
+  h.delete("Content-Length");
+  return new Response(html, { status: res.status, headers: h });
+}

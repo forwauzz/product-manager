@@ -416,6 +416,23 @@
 
   /* ---------- toasts & dialogs ---------- */
 
+  /* the server stamps the build into the page; when a newer one is live, offer a reload rather than running stale code */
+  var buildId = (document.querySelector('meta[name="build"]') || {}).content || "";
+  var lastBuildCheck = 0;
+  function checkBuild() {
+    if (!buildId || Date.now() - lastBuildCheck < 120000) return;
+    lastBuildCheck = Date.now();
+    fetch("/api/version", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (!j || !j.build || j.build === buildId || document.getElementById("newbuild")) return;
+      var bar = el("div", "newbuild"); bar.id = "newbuild";
+      bar.appendChild(el("span", null, "A newer version of the app is live."));
+      var b = el("button", "btn small", "Reload"); b.onclick = function () { location.reload(); };
+      bar.appendChild(b);
+      document.body.appendChild(bar);
+    }).catch(function () {});
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) checkBuild(); });
+  setTimeout(checkBuild, 15000);
   function toast(msg, isErr) {
     var host = document.getElementById("toasts");
     var t = el("div", "toast" + (isErr ? " err" : ""), msg);
@@ -1287,7 +1304,7 @@
     var pending = list.filter(function (f) { return !f.parent && !f.period && f.state !== "Live"; });
     var shipped = list.filter(function (f) { return !f.period && f.state === "Live"; }).length;
     var hasLater = scheduled.some(function (f) { return M.posOf(f) === -1; });
-    var cols = "repeat(" + total + ", minmax(" + (mode === "months" ? 42 : 56) + "px, 1fr))" + (hasLater ? " minmax(120px, .8fr)" : "");
+    var cols = "repeat(" + total + ", minmax(" + (mode === "months" ? 68 : 96) + "px, 1fr))" + (hasLater ? " minmax(120px, .8fr)" : "");
     var rowsSp = ui.spaceFilter ? [ui.spaceFilter] : S.spaces.slice();
 
     var pad = el("div", "pad");
@@ -1325,16 +1342,32 @@
 
     rowsSp.forEach(function (sp) {
       var items = scheduled.filter(function (f) { return (f.spaces || []).indexOf(sp) !== -1; });
-      items.sort(function (a, b) { return a.period < b.period ? -1 : a.period > b.period ? 1 : 0; });
+      /* where and how long each pill is, then pack them into as few rows as possible, earliest first */
+      var placed = items.map(function (f) {
+        var pos = M.posOf(f);
+        var days = effortDays(f), slotDays = mode === "months" ? 7 : 30, est = days > 0;
+        var span = est ? Math.max(1, Math.round(days / slotDays)) : (mode === "months" ? 2 : 1);
+        if (pos === -1) { pos = total; span = 1; }
+        if (pos + span > total && pos < total) span = total - pos;
+        return { f: f, pos: pos, span: span, est: est };
+      });
+      placed.sort(function (a, b) { return a.pos - b.pos || b.span - a.span || a.f.name.localeCompare(b.f.name); });
+      var rowEnds = [];
+      placed.forEach(function (it) {
+        var r = 0;
+        while (r < rowEnds.length && rowEnds[r] > it.pos) r++;
+        rowEnds[r] = it.pos + it.span;
+        it.row = r;
+      });
       var row = el("div", "qrow tone-" + (S.spaces.indexOf(sp) % 4));
       var name = el("div", "qteam");
       name.appendChild(el("b", null, sp));
       name.appendChild(el("span", "qn", items.length ? items.length + (items.length === 1 ? " feature" : " features") : "Nothing scheduled"));
       row.appendChild(name);
       var lanes = el("div", "qlanes");
-      var n = Math.max(items.length, 1);
+      var n = Math.max(rowEnds.length, 1);
       lanes.style.gridTemplateColumns = cols;
-      lanes.style.gridTemplateRows = "repeat(" + n + ", 46px)";
+      lanes.style.gridTemplateRows = "repeat(" + n + ", 54px)";
       M.slots.forEach(function (k, si) {
         var cell = el("div", "qcell" + (si % M.per === 0 ? " qb" : "") + (k === M.nowSlot ? " nowm" : ""));
         cell.style.gridColumn = String(si + 1);
@@ -1349,18 +1382,12 @@
         dropCell(lc, M.laterKey, sp);
         lanes.appendChild(lc);
       }
-      items.forEach(function (f, idx) {
-        var pos = M.posOf(f), span = M.span;
-        var days = effortDays(f);
-        var slotDays = mode === "months" ? 7 : 30;
-        var est = days > 0;
-        span = est ? Math.max(1, Math.round(days / slotDays)) : 2;
-        if (pos === -1) { pos = total; span = 1; }
-        if (pos + span > total && pos < total) span = total - pos;
-        var shortPill = span <= 2;
-        var pill = el("button", "qpill " + stateClass(f.state) + (est ? "" : " noest") + (shortPill ? " short" : ""));
+      placed.forEach(function (it) {
+        var f = it.f, pos = it.pos, span = it.span, est = it.est;
+        var wide = mode === "months" ? span >= 3 : span >= 2;
+        var pill = el("button", "qpill " + stateClass(f.state) + (est ? "" : " noest"));
         pill.style.gridColumn = (pos + 1) + " / span " + span;
-        pill.style.gridRow = String(idx + 1);
+        pill.style.gridRow = String(it.row + 1);
         pill.draggable = true;
         var par = f.parent ? feature(f.parent) : null;
         pill.title = (par ? par.name + " › " : "") + f.name + " · " + laneLabelOf(f) + " · " + f.state + " · " + f.owner;
@@ -1372,8 +1399,8 @@
         var over = overrunDays(f);
         if (over) pill.classList.add("over");
         var tag = [M.pillTag(f), effortLabel(f), over ? over + "d over" : ""].filter(Boolean).join(" · ");
-        if (tag && shortPill) nmEl.appendChild(el("span", "mo2" + (over ? " overtag" : ""), " · " + tag));
-        else if (tag) pill.appendChild(el("span", "mo" + (over ? " overtag" : ""), tag));
+        if (tag) pill.title += " · " + tag;
+        if (tag && wide) pill.appendChild(el("span", "mo" + (over ? " overtag" : ""), tag));
         if (over) pill.title += " · running " + over + " days over";
         if (!est) pill.title += " · no estimate yet";
         var x = el("span", "x", "×");
@@ -1395,7 +1422,7 @@
     var lg = el("div", "legend");
     STATES.forEach(function (st) { var s = el("span", "lg " + stateClass(st)); s.appendChild(el("i")); s.appendChild(document.createTextNode(st)); lg.appendChild(s); });
     foot.appendChild(lg);
-    foot.appendChild(el("span", "note", (mode === "months" ? "Each month is split into weeks. " : "") + "Pill length is the estimate; dashed pills have none yet. Drag to move, × to take off the roadmap, click for details." + (shipped ? " " + shipped + " live features without a date are not shown." : "")));
+    foot.appendChild(el("span", "note", (mode === "months" ? "Each month is split into weeks. " : "") + "Pill length is the estimate; dashed pills have none yet. Hover for dates. Drag to move, × to take off the roadmap, click for details." + (shipped ? " " + shipped + " live features without a date are not shown." : "")));
     pad.appendChild(foot);
 
     if (pending.length) {
@@ -2863,6 +2890,44 @@
     var again = document.querySelector(".dirsearch input");
     if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
   }
+  /* sub-functionality card, directory style: icon, name, two-line description, state badge at the right */
+  var SHIPPED_GLYPH = { "Live": 1, "Needs work": 1, "Feature flag": 1 };
+  function subCard(k, o) {
+    o = o || {};
+    var c = el("div", "subcard " + stateClass(k.state));
+    c.id = "card-" + k.id;
+    c.setAttribute("role", "button");
+    c.tabIndex = 0;
+    var ic = dirIcon(k);
+    if (k.image && o.lightbox) { ic.classList.add("clickable"); ic.title = "Preview"; ic.onclick = function (e) { e.stopPropagation(); lightbox(k, o.siblings || [k]); }; }
+    c.appendChild(ic);
+    var t = el("div", "t");
+    var b = el("b", null, k.name);
+    if (k.owner && k.owner !== "Unassigned") b.appendChild(el("span", "own", k.owner));
+    t.appendChild(b);
+    t.appendChild(el("span", "d", plain(k.note) || "No description yet."));
+    c.appendChild(t);
+    var right = el("div", "right");
+    var g = el("span", "subst" + (SHIPPED_GLYPH[k.state] ? " done" : ""));
+    if (SHIPPED_GLYPH[k.state]) g.textContent = "✓"; else g.appendChild(el("i", "sd " + stateClass(k.state)));
+    g.title = k.state;
+    right.appendChild(g);
+    right.appendChild(el("small", null, k.state));
+    c.appendChild(right);
+    if (o.trash) { var tr = el("span", "trash"); tr.appendChild(trashBtn(k)); c.appendChild(tr); }
+    c.title = k.name + " · " + k.state + (k.period ? " · " + periodShort(k) : "");
+    c.onclick = function () { (o.onOpen || open)(k); };
+    c.onkeydown = function (e) { if (e.key === "Enter") { (o.onOpen || open)(k); } };
+    if (o.drag) { c.draggable = true; c.dataset.id = k.id; wireDrag(c, k, null); }
+    return c;
+  }
+  function subAddCard(parentF, label) {
+    var a = el("button", "subcard add");
+    a.appendChild(el("span", null, label || "+ Add a sub-functionality"));
+    a.onclick = function () { create(parentF.spaces.slice(), { parent: parentF.id, name: "New sub-feature", sections: parentF.sections ? JSON.parse(JSON.stringify(parentF.sections)) : {} }); };
+    return a;
+  }
+
   /* one row: icon, name with state dot, description, chevron; sub-features as a "See …" line */
   function dirRow(f, onOpen, showSubs) {
     var r = el("button", "dirrow");
@@ -3493,45 +3558,11 @@
         });
         box.appendChild(jump);
       }
-      var cards = el("div", "bigcards");
-      kids.forEach(function (k, i) {
-        var c = el("div", "bigcard " + stateClass(k.state));
-        c.id = "card-" + k.id;
-        c.setAttribute("role", "group");
-        c.draggable = true;
-        c.dataset.id = k.id;
-        var th = thumbEl(k);
-        th.classList.add("clickable");
-        th.setAttribute("role", "button");
-        th.tabIndex = 0;
-        th.setAttribute("aria-label", "Preview " + k.name);
-        th.appendChild(el("span", "zoomhint", "Preview"));
-        th.onclick = function (e) { e.stopPropagation(); lightbox(k, kids); };
-        th.onkeydown = function (e) { if (e.key === "Enter") lightbox(k, kids); };
-        c.appendChild(th);
-        var ch = el("div", "bch");
-        var tt = el("button", "cardtitle");
-        tt.appendChild(el("span", "num", String(i + 1)));
-        tt.appendChild(el("h3", null, k.name));
-        tt.onclick = function () { ui.spaceSel = k.id; renderView(); };
-        ch.appendChild(tt);
-        ch.appendChild(statePill(k));
-        ch.appendChild(trashBtn(k));
-        c.appendChild(ch);
-        c.appendChild(el("p", null, plain(k.note) || "No description yet."));
-        var extra = el("div", "bcf");
-        if (k.spaces.some(function (s) { return s !== sp; })) extra.appendChild(domainBadges(k));
-        if (k.owner && k.owner !== "Unassigned") extra.appendChild(pill(k.owner));
-        if (k.period) extra.appendChild(pill(periodShort(k)));
-        c.appendChild(extra);
-        wireDrag(c, k, null);
-        cards.appendChild(c);
+      var cards = el("div", "subgrid");
+      kids.forEach(function (k) {
+        cards.appendChild(subCard(k, { lightbox: true, siblings: kids, trash: true, drag: true, onOpen: function (x) { ui.spaceSel = x.id; renderView(); } }));
       });
-      var add = el("button", "bigcard add");
-      add.appendChild(el("h3", null, "+ Add a sub-functionality"));
-      add.appendChild(el("p", null, "It shows up here and in the sub-menu."));
-      add.onclick = function () { create(f.spaces.slice(), { parent: f.id, name: "New sub-feature", sections: f.sections ? JSON.parse(JSON.stringify(f.sections)) : {} }); };
-      cards.appendChild(add);
+      cards.appendChild(subAddCard(f));
       box.appendChild(cards);
     } else {
       var sibs = subsOf(par).filter(function (x) { return x.id !== f.id; });
@@ -5232,15 +5263,8 @@
     prow.appendChild(psel);
     ps.appendChild(prow);
     if (kids.length) {
-      var kl = el("div", "featlist");
-      kids.forEach(function (k) {
-        var row = el("div", "fl");
-        var b = el("button", null, k.name);
-        b.onclick = function () { open(k.id); };
-        row.appendChild(b);
-        row.appendChild(statePill(k));
-        kl.appendChild(row);
-      });
+      var kl = el("div", "subgrid one");
+      kids.forEach(function (k) { kl.appendChild(subCard(k, { onOpen: function (x) { open(x.id); } })); });
       ps.appendChild(kl);
     }
     if (!f.parent) {
