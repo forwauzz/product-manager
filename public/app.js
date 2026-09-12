@@ -841,6 +841,53 @@
     return b;
   }
 
+  function barGroup(label) { var g = el("div", "bgroup"); g.appendChild(el("label", null, label)); return g; }
+
+  /* the morning check: what is late, what was built without agreement, what pilots are waiting on */
+  function daysSince(t) { return Math.max(0, Math.floor((Date.now() - (Number(t) || 0)) / 86400000)); }
+  function stalePilots() { return pilots().filter(function (p) { return p.status !== "Paused" && daysSince(p.updated) >= 14; }); }
+  function undecidedRequests() { return allRequests().filter(function (x) { return x.r.decision === "Undecided"; }); }
+  function needsYouStrip() {
+    var over = overrunList(), drift = driftList(), rq = undecidedRequests(), stale = stalePilots();
+    var total = over.length + drift.length + rq.length + stale.length;
+    var wrap = el("div", "needs" + (total ? "" : " calm"));
+    var row = el("div", "needsrow");
+    row.appendChild(el("b", null, total ? "Needs you" : "Nothing needs you"));
+    var detail = el("div", "needsdetail"); detail.hidden = true;
+    var openKey = null;
+    function toggle(key, build, btn) {
+      var same = openKey === key;
+      openKey = same ? null : key;
+      detail.innerHTML = "";
+      Array.prototype.forEach.call(row.querySelectorAll(".needchip"), function (b) { b.setAttribute("aria-pressed", "false"); });
+      if (same) { detail.hidden = true; return; }
+      var node = build(); if (node) detail.appendChild(node);
+      detail.hidden = false; btn.setAttribute("aria-pressed", "true");
+    }
+    function item(n, one, many, cls, onClick) {
+      var b = el("button", "needchip" + (n ? " " + cls : " zero"));
+      b.appendChild(el("strong", null, String(n)));
+      b.appendChild(document.createTextNode(" " + (n === 1 ? one : many)));
+      b.setAttribute("aria-pressed", "false");
+      if (n) b.onclick = function () { onClick(b); }; else b.disabled = true;
+      row.appendChild(b);
+    }
+    item(over.length, "feature over its estimate", "features over their estimates", "warn", function (b) { toggle("over", overrunPanel, b); });
+    item(drift.length, "feature built without agreement", "features built without agreement", "warn", function (b) { toggle("drift", driftPanel, b); });
+    item(rq.length, "request to decide", "requests to decide", "info", function () {
+      var counts = {}; rq.forEach(function (x) { counts[x.pilot.id] = (counts[x.pilot.id] || 0) + 1; });
+      var top = rq.slice().sort(function (a, b) { return counts[b.pilot.id] - counts[a.pilot.id]; })[0];
+      ui.view = "pilots"; ui.pilot = top.pilot.id; ui.pilotTab = "requests"; ui.feature = null; render();
+    });
+    item(stale.length, "pilot untouched for two weeks", "pilots untouched for two weeks", "info", function () {
+      ui.view = "pilots"; ui.pilot = stale.length === 1 ? stale[0].id : null; ui.pilotTab = "overview"; ui.feature = null; render();
+    });
+    if (!total) row.appendChild(el("span", "note", "No overruns, no drift, no requests waiting, every pilot touched this fortnight."));
+    wrap.appendChild(row);
+    wrap.appendChild(detail);
+    return wrap;
+  }
+
   function spaceChips(bar) {
     S.spaces.forEach(function (sp) {
       var c = el("button", "chip", sp);
@@ -919,10 +966,14 @@
       });
       bar.appendChild(g);
     }
-    spaceChips(bar);
-    bar.appendChild(ownerSelect(renderView));
-    if (S.icps.length) bar.appendChild(icpSelect(renderView));
+    var vg = barGroup("View"); Array.prototype.slice.call(bar.children).forEach(function (c) { vg.appendChild(c); }); bar.appendChild(vg);
+    var fg = barGroup("Filter");
+    spaceChips(fg);
+    fg.appendChild(ownerSelect(renderView));
+    if (S.icps.length) fg.appendChild(icpSelect(renderView));
+    bar.appendChild(fg);
     host.appendChild(bar);
+    host.appendChild(needsYouStrip());
 
     if (ui.rmode === "quarters" || ui.rmode === "months") return renderPeriodGrid(host, ui.rmode);
     if (ui.rmode === "gantt") return renderGantt(host);
@@ -1242,7 +1293,7 @@
     var pad = el("div", "pad");
     var frame = el("div", "qframe");
     var head = el("div", "qrow qhead");
-    head.appendChild(el("div", "qteam", "Teams"));
+    head.appendChild(el("div", "qteam", "Spaces"));
     var hl = el("div", "qlanes");
     hl.style.gridTemplateColumns = cols;
     M.groups.forEach(function (g, gi) {
@@ -1847,14 +1898,20 @@
   /* Drift: exists in the product (Building or beyond) without ever having been Planned, and not marked agreed.
      Features with no history at all were inventoried from the live apps and are left alone. */
   function driftList() {
-    var byF = {};
-    (S.log || []).forEach(function (e) { (byF[e.fid] = byF[e.fid] || []).push(e); });
+    var byF = {}, batch = {};
+    (S.log || []).forEach(function (e) {
+      (byF[e.fid] = byF[e.fid] || []).push(e);
+      if (e.field === "created") { var k = e.who + ":" + Math.floor(e.t / 60000); batch[k] = (batch[k] || 0) + 1; }
+    });
+    /* ten or more features created in the same minute by the same hand is an import, not someone building unagreed work */
+    function imported(e) { return batch[e.who + ":" + Math.floor(e.t / 60000)] >= 10; }
     return feats().filter(function (f) {
       if (f.agreed || BUILT_STATES.indexOf(f.state) === -1) return false;
       var es = byF[f.id];
       if (!es || !es.length) return false;
       if (es.some(function (e) { return e.field === "state" && e.to === "Planned"; })) return false;
       var born = es.filter(function (e) { return e.field === "created"; })[0];
+      if (born && imported(born)) return false;
       if (born && BUILT_STATES.indexOf(born.from) !== -1) return true;
       return es.some(function (e) { return e.field === "state" && BUILT_STATES.indexOf(e.to) !== -1 && ["Proposed", "Research", ""].indexOf(e.from) !== -1; });
     });
@@ -2170,14 +2227,23 @@
       var tx = el("div", "tx");
       var nm = el("b"); nm.appendChild(document.createTextNode(p.name + " ")); nm.appendChild(pilotStatusPill(p));
       tx.appendChild(nm);
-      var w = pilotFeats(p, "wants").length, l = pilotLive(p).length, n = pilotFeats(p, "needs").length;
-      var dn = (p.deliverables || []).length;
-      var rq = (p.requests || []).length, rqU = (p.requests || []).filter(function (r) { return r.decision === "Undecided"; }).length;
-      tx.appendChild(el("span", null, (w ? w + " asked for · " + l + " of those live" : "Nothing asked for yet") + (n ? " · " + n + " we think they need" : "") + (dn ? " · " + dn + (dn === 1 ? " deliverable" : " deliverables") : "") + (rq ? " · " + rq + (rq === 1 ? " request" : " requests") + (rqU ? " (" + rqU + " to decide)" : "") : "") + (p.contact ? " · " + p.contact : "")));
+      var w = pilotFeats(p, "wants").length, l = pilotLive(p).length;
+      var dl = p.deliverables || [];
+      var next = dl.filter(function (d) { var pr = delivProgress(d); return d.tag !== "Blocked" && !(pr && pr.live === pr.total); })[0];
+      var blocked = dl.filter(function (d) { return d.tag === "Blocked"; }).length;
+      var rqU = (p.requests || []).filter(function (r) { return r.decision === "Undecided"; }).length;
+      var since = daysSince(p.updated);
+      tx.appendChild(el("span", null, next ? "Next: " + next.title : dl.length ? "Every deliverable is shipped" : "No deliverables outlined yet"));
+      var l2 = [];
+      if (rqU) l2.push(rqU + (rqU === 1 ? " request to decide" : " requests to decide"));
+      if (blocked) l2.push(blocked + " blocked");
+      l2.push(w ? l + " of " + w + " asks live" : "Nothing asked for yet");
+      if (p.contact) l2.push(p.contact);
+      tx.appendChild(el("span", "sub", l2.join(" · ")));
       t.appendChild(tx);
-      var nn = el("div", "n");
-      nn.appendChild(el("b", null, w ? Math.round(100 * l / w) + "%" : "—"));
-      nn.appendChild(el("span", null, "of asks live"));
+      var nn = el("div", "n" + (since >= 14 ? " stale" : ""));
+      nn.appendChild(el("b", null, since === 0 ? "Today" : since + "d"));
+      nn.appendChild(el("span", null, since === 0 ? "last touched" : "since last touch"));
       t.appendChild(nn);
       t.onclick = function () { ui.pilot = p.id; ui.pilotTab = "overview"; renderView(); };
       tiles.appendChild(t);
@@ -2187,26 +2253,46 @@
     host.appendChild(pad);
   }
 
-  /* collapsible cards and panels: remembered per item on this device; cards start closed, panels open */
+  /* collapsible cards and panels: remembered per item on this device; everything starts open */
   var folds = {};
-  try { folds = JSON.parse(localStorage.getItem("alie.fold") || "{}") || {}; } catch (e) { folds = {}; }
+  var FOLD_KEY = "alie.fold.v2";
+  try { folds = JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {}; } catch (e) { folds = {}; }
   function foldOpen(key, dflt) { return folds[key] === undefined ? dflt : !!folds[key]; }
-  function foldSet(key, open) { folds[key] = open; try { localStorage.setItem("alie.fold", JSON.stringify(folds)); } catch (e) {} }
-  function foldable(node, key, dflt, headSel) {
+  function foldSet(key, open) { folds[key] = open; try { localStorage.setItem(FOLD_KEY, JSON.stringify(folds)); } catch (e) {} }
+  function setFold(node, open) { node.classList.toggle("open", open); foldSet(node.dataset.fold, open); }
+  /* peek: one line shown while the card is closed, so folding never hides what the card is about */
+  function foldable(node, key, dflt, headSel, peek) {
     node.classList.add("fold");
+    node.dataset.fold = key;
     if (foldOpen(key, dflt)) node.classList.add("open");
     var head = node.querySelector(headSel);
     if (!head) return node;
     var chev = el("button", "fchev", "›");
     chev.type = "button"; chev.title = "Collapse or expand"; chev.setAttribute("aria-label", "Collapse or expand");
-    chev.onclick = function (e) { e.stopPropagation(); var open = !node.classList.contains("open"); node.classList.toggle("open", open); foldSet(key, open); };
+    chev.onclick = function (e) { e.stopPropagation(); setFold(node, !node.classList.contains("open")); };
     head.insertBefore(chev, head.firstChild);
     head.addEventListener("click", function (e) {
       if (e.target.closest("input, select, button, a, .rte, .pill")) return;
-      var open = !node.classList.contains("open"); node.classList.toggle("open", open); foldSet(key, open);
+      setFold(node, !node.classList.contains("open"));
     });
+    if (peek) {
+      var pk = el("div", "fpeek", peek);
+      pk.title = "Open";
+      pk.onclick = function () { setFold(node, true); };
+      head.insertAdjacentElement("afterend", pk);
+    }
     return node;
   }
+  function foldAllButtons(scope) {
+    var w = el("div", "foldall");
+    [["Expand all", true], ["Collapse all", false]].forEach(function (m) {
+      var b = el("button", "chip", m[0]);
+      b.onclick = function () { Array.prototype.forEach.call(scope.querySelectorAll(".fold"), function (n) { setFold(n, m[1]); }); };
+      w.appendChild(b);
+    });
+    return w;
+  }
+  function peekText(html, fallback) { var t = plain(isHtml(html) ? html : "<p>" + String(html || "") + "</p>"); return t ? (t.length > 180 ? t.slice(0, 177) + "…" : t) : fallback; }
   function pilotListMode() { try { return localStorage.getItem("alie.pilotlist") === "grid" ? "grid" : "list"; } catch (e) { return "list"; } }
   function setPilotListMode(m) { try { localStorage.setItem("alie.pilotlist", m); } catch (e) {} }
   function pilotFeatureRow(f, onRemove) {
@@ -2300,6 +2386,7 @@
       mseg.appendChild(b);
     });
     modeRow.appendChild(mseg);
+    modeRow.insertBefore(foldAllButtons(pad), modeRow.firstChild);
     right.appendChild(modeRow);
     function listPanel(title, hint, key, derived) {
       var pnl = el("div", "panel plist");
@@ -2414,6 +2501,7 @@
     var intro = el("div", "dsum");
     intro.appendChild(el("b", null, list.length ? list.length + (list.length === 1 ? " deliverable" : " deliverables") + " · " + allF.length + " features involved · " + liveN + " live" : "No deliverables yet"));
     intro.appendChild(el("span", "note", "Each deliverable is something the client gets. Tag the features that provide it, label quick wins, and drag the order to say what we build first."));
+    intro.appendChild(foldAllButtons(pad));
     dir.appendChild(intro);
 
     var wrap = el("div", "delivs");
@@ -2489,7 +2577,8 @@
       };
       fl.appendChild(addF);
       card.appendChild(fl);
-      foldable(card, "d:" + d.id, false, ".dhead");
+      var dpr = delivProgress(d);
+      foldable(card, "d:" + d.id, true, ".dhead", [d.tag, dpr ? dpr.live + " of " + dpr.total + " features live" : (d.features || []).length ? "" : "no features tagged", peekText(d.note, "")].filter(Boolean).join(" · ") || "No note yet");
       wrap.appendChild(card);
     });
     dir.appendChild(wrap);
@@ -2553,6 +2642,7 @@
     var intro = el("div", "dsum");
     intro.appendChild(el("b", null, list.length ? list.length + (list.length === 1 ? " request" : " requests") + (undecided ? " · " + undecided + " to decide" : " · all decided") : "No requests yet"));
     intro.appendChild(el("span", "note", "Anything they raised, whether or not it fits ALIE. Write the bottleneck, the business need and a possible solution; decide with the team; promote to a feature only what we build."));
+    intro.appendChild(foldAllButtons(pad));
     dir.appendChild(intro);
 
     var wrap = el("div", "delivs");
@@ -2638,7 +2728,7 @@
         foot.appendChild(promote);
       }
       card.appendChild(foot);
-      foldable(card, "r:" + r.id, false, ".dhead");
+      foldable(card, "r:" + r.id, true, ".dhead", [r.fit, peekText(r.bottleneck || r.need || r.solution, "No details yet")].filter(Boolean).join(" · "));
       wrap.appendChild(card);
     });
     dir.appendChild(wrap);
@@ -2668,6 +2758,7 @@
     var intro = el("div", "dsum");
     intro.appendChild(el("b", null, list.length ? sw + (sw === 1 ? " software" : " softwares") + " · " + pt + (pt === 1 ? " partner" : " partners") : "Nothing documented yet"));
     intro.appendChild(el("span", "note", "What they use today and who they work with: case management, email, accounting, dictation, and the marketing, IT or accounting firms around them. How they use each one is the part worth writing."));
+    intro.appendChild(foldAllButtons(pad));
     dir.appendChild(intro);
 
     function section(kind, title, hint) {
@@ -2715,7 +2806,7 @@
         use.appendChild(el("div", "lab", kind === "Software" ? "How they use it" : "What they do for them"));
         use.appendChild(richEditor(x.usage, function (h) { x.usage = h; x.updated = Date.now(); touchPilot(p); save(); }, kind === "Software" ? "Who uses it, for what, how often, what it costs, what they like and hate about it." : "Scope, cadence, cost, who the contact is, how happy they are.", "small dnote"));
         card.appendChild(use);
-        foldable(card, "s:" + x.id, false, ".dhead");
+        foldable(card, "s:" + x.id, true, ".dhead", [x.category, peekText(x.usage, kind === "Software" ? "How they use it is not written yet" : "What they do for them is not written yet")].filter(Boolean).join(" · "));
         grid.appendChild(card);
       });
       sec.appendChild(grid);
@@ -3792,8 +3883,9 @@
       b.onclick = function () { ui.rgroup = m[1]; renderView(); };
       seg.appendChild(b);
     });
-    bar.appendChild(seg);
-    spaceChips(bar);
+    var vg = barGroup("View"); vg.appendChild(seg); bar.appendChild(vg);
+    var fg = barGroup("Filter"); bar.appendChild(fg);
+    spaceChips(fg);
     var ss = el("select", "selbox");
     ss.setAttribute("aria-label", "Student filter");
     [["", "Any student"], ["__none", "Unassigned"]].concat(S.students.map(function (s) { return [s, s]; })).forEach(function (o) {
@@ -3802,7 +3894,7 @@
       ss.appendChild(e);
     });
     ss.onchange = function () { ui.studentFilter = ss.value; renderView(); };
-    bar.appendChild(ss);
+    fg.appendChild(ss);
     host.appendChild(bar);
 
     var pad = el("div", "pad");

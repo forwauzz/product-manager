@@ -1193,3 +1193,37 @@
   .drivesync .note.bad { color:var(--c-needs); }
   .modal ol.steps { margin:6px 0 12px; padding-left:22px; font-size:15px; line-height:1.55; }
   .modal ol.steps li { margin-bottom:8px; }
+
+  /* ---------- fold previews, expand all ---------- */
+  .fpeek { display:none; margin:6px 0 0 34px; color:var(--slate); font-size:15px; line-height:1.45; cursor:pointer; overflow:hidden; }
+  .fold:not(.open) > .fpeek { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+  .fold:not(.open) > .fpeek:hover { color:var(--ink); }
+  .foldall { display:inline-flex; gap:6px; margin-left:auto; }
+  .listmode { display:flex; align-items:center; gap:10px; }
+  .listmode .foldall { margin-left:0; margin-right:auto; }
+
+  /* ---------- bar groups: view vs filter ---------- */
+  .bgroup { display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .bgroup > label { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); margin-right:4px; }
+  .bgroup + .bgroup { margin-left:10px; padding-left:18px; border-left:1px solid var(--line); }
+  @media (max-width:900px) { .bgroup + .bgroup { margin-left:0; padding-left:0; border-left:0; } }
+
+  /* ---------- needs you ---------- */
+  .needs { margin:18px 40px 0; border:1px solid var(--line); border-radius:var(--r-md); background:#fff; padding:12px 18px; }
+  .needs.calm { background:transparent; border-style:dashed; }
+  .needsrow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .needsrow > b { font-size:15px; letter-spacing:.02em; margin-right:6px; }
+  .needsrow .note { font-size:14px; }
+  .needchip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:var(--r-pill); padding:6px 14px; font-size:14px; color:var(--ink); background:var(--bone); }
+  .needchip strong { font-family:var(--mono); font-size:14px; }
+  .needchip.warn { border-color:rgba(179,84,30,.5); background:rgba(179,84,30,.07); }
+  .needchip.warn strong { color:var(--c-needs); }
+  .needchip.info { border-color:rgba(64,88,120,.35); }
+  .needchip.zero { opacity:.45; }
+  .needchip[aria-pressed="true"] { background:var(--ink); color:var(--bone); border-color:var(--ink); }
+  .needchip[aria-pressed="true"] strong { color:var(--gold); }
+  .needsdetail { margin-top:14px; }
+  .needsdetail .drift { margin-bottom:0; max-width:none; }
+  .cattile .tx span.sub { font-size:13px; }
+  .cattile .n.stale b { color:var(--c-needs); }
+  @media print { .needs, .foldall { display:none; } }
