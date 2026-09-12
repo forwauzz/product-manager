@@ -2183,8 +2183,6 @@
       tiles.appendChild(t);
     });
     dir.appendChild(tiles);
-    var across = requestsAcrossPilots();
-    if (across) dir.appendChild(across);
     pad.appendChild(dir);
     host.appendChild(pad);
   }
@@ -2540,7 +2538,6 @@
   var REQ_FIT = ["", "Core to ALIE", "Adjacent", "Out of scope"];
   var REQ_DECISION = ["Undecided", "Build", "Integrate or partner", "Later", "Declined"];
   var REQ_DECISION_CLASS = { "Undecided": "", "Build": "st-live", "Integrate or partner": "st-building", "Later": "st-planned", "Declined": "st-needs-work" };
-  function reqKey(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9àâçéèêëîïôûùüÿœ ]+/g, " ").replace(/\s+/g, " ").trim(); }
   function allRequests() {
     var out = [];
     pilots().forEach(function (p) { (p.requests || []).forEach(function (r) { out.push({ pilot: p, r: r }); }); });
@@ -2658,43 +2655,6 @@
     dir.appendChild(addR);
     pad.appendChild(dir);
     host.appendChild(pad);
-  }
-
-  /* pilots list: the same ask coming from several pilots is the signal */
-  function requestsAcrossPilots() {
-    var all = allRequests();
-    if (!all.length) return null;
-    var groups = {}, order = [];
-    all.forEach(function (x) { var k = reqKey(x.r.title); if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(x); });
-    order.sort(function (a, b) { return groups[b].length - groups[a].length; });
-    var sec = el("div", "dirsec");
-    sec.style.marginTop = "36px";
-    var h = el("h2", null, "Requests across pilots");
-    h.appendChild(el("em", null, all.length + (all.length === 1 ? " request" : " requests")));
-    sec.appendChild(h);
-    sec.appendChild(el("div", "note", "Everything pilots raised, most-shared first. The same ask from several pilots is the product-market-fit signal."));
-    var rows = el("div", "pilotrows");
-    order.forEach(function (k) {
-      var xs = groups[k];
-      var r = el("div", "dirrow prow reqrow");
-      var n = el("span", "dnum small" + (xs.length > 1 ? " hot" : ""), String(xs.length));
-      r.appendChild(n);
-      var t = el("div", "t");
-      t.appendChild(el("b", null, xs[0].r.title));
-      var d = el("span", "d");
-      xs.forEach(function (x) {
-        var b = el("button", "chip", x.pilot.name + (x.r.decision !== "Undecided" ? " · " + x.r.decision : ""));
-        b.onclick = function () { ui.pilot = x.pilot.id; ui.pilotTab = "requests"; renderView(); };
-        d.appendChild(b);
-      });
-      var fits = xs.map(function (x) { return x.r.fit; }).filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; });
-      fits.forEach(function (fv) { d.appendChild(pill(fv, fv === "Core to ALIE" ? "st-live" : fv === "Adjacent" ? "st-planned" : "st-needs-work")); });
-      t.appendChild(d);
-      r.appendChild(t);
-      rows.appendChild(r);
-    });
-    sec.appendChild(rows);
-    return sec;
   }
 
   /* --- software and partners: what the pilot uses today and who they work with --- */
