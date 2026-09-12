@@ -266,3 +266,22 @@ test("pilot software and partners are stored with kind, category and usage", asy
   assert.equal(stack[1].kind, "Partner");
   assert.equal(stack[2].kind, "Software", "unknown kinds fall back to Software");
 });
+
+test("research items keep an experiment plan and the document keeps the R&D folder", async () => {
+  const st = await api("GET", "/api/state");
+  const s = st.body.state;
+  s.rndFolder = "https://drive.google.com/drive/folders/1cWoQyIRKCA23LCkehvIzLTdoCVL1wmHE";
+  const f = s.features.find(x => x.rnd);
+  f.rndPlan = "<h2>Hypothesis</h2><p>Undated events can be placed by context.</p><table><tr><th>Step</th><th>Owner</th></tr><tr><td>Label 50 files</td><td>Student A</td></tr></table>";
+  const put = await api("PUT", "/api/state", { version: st.body.version, state: s, who: "Uzziel" });
+  assert.equal(put.status, 200);
+  assert.equal(put.body.state.rndFolder, s.rndFolder);
+  const saved = put.body.state.features.find(x => x.id === f.id);
+  assert.match(saved.rndPlan, /Hypothesis/);
+  assert.equal(saved.driveDoc, "");
+  const log = put.body.state.log.filter(e => e.fid === f.id && e.field === "rndPlan");
+  assert.equal(log.length, 1, "the plan change is in the change log");
+  const patch = await api("PATCH", "/api/features/" + f.id, { rndPlan: "<p>Shorter.</p>", who: "Uzziel" });
+  assert.equal(patch.status, 200);
+  assert.equal(patch.body.rndPlan, "<p>Shorter.</p>");
+});

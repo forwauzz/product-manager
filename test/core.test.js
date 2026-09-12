@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { handleApi, MemoryStore, ConflictError, normalize, seed, STATES, RND_STAGES } from "../shared/core.js";
+import { markdownText, rndMarkdown } from "../shared/exports.js";
 
 test("seed is well formed and normalize is idempotent", () => {
   const s = normalize(seed());
@@ -165,4 +166,20 @@ test("exports: pilot record, sheets and folder ids come out of the state", () =>
   assert.equal(logCsv(S).split("\n")[0], "When,Who,Feature,Change,From,To,Why");
   assert.equal(driveFolderId("https://drive.google.com/drive/folders/1OEmlNW5m-gZGqbZK0H5EYkRk5D20qyRa"), "1OEmlNW5m-gZGqbZK0H5EYkRk5D20qyRa");
   assert.equal(driveFolderId("https://example.com"), "");
+});
+
+test("markdownText keeps headings, code and tables; rndMarkdown has the plan", () => {
+  const md = markdownText("<h2>Plan</h2><p>Use <code>x</code>.</p><pre><code>a &lt; b</code></pre><table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table><hr>");
+  assert.match(md, /## Plan/);
+  assert.match(md, /`x`/);
+  assert.match(md, /```\na < b\n```/);
+  assert.match(md, /\| A \| B \|\n\| --- \| --- \|\n\| 1 \| 2 \|/);
+  assert.match(md, /---/);
+  const s = normalize(seed());
+  const f = s.features.find(x => x.rnd);
+  f.rndPlan = "<h2>Hypothesis</h2><p>It works.</p>";
+  const doc = rndMarkdown(s, f, new Date("2026-09-12T00:00:00Z"));
+  assert.match(doc, new RegExp("^# ALIE R&D — " + f.name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")));
+  assert.match(doc, /## Experiment plan\n\n## Hypothesis\nIt works\./);
+  assert.match(doc, /- Stage: Assigned/);
 });

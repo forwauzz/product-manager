@@ -5,8 +5,27 @@ export function plain(html) {
   return String(html || "").replace(/<li>/g, "• ").replace(/<\/(p|li|h3|h4|blockquote)>/g, " ").replace(/<br\s*\/?>/g, " ")
     .replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 }
+function tablesToMd(html) {
+  return String(html || "").replace(/<table[^>]*>([\s\S]*?)<\/table>/g, (_, body) => {
+    const rows = [];
+    body.replace(/<tr[^>]*>([\s\S]*?)<\/tr>/g, (__, tr) => {
+      const cells = [];
+      tr.replace(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g, (___, c) => { cells.push(c.replace(/<[^>]+>/g, "").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim()); });
+      rows.push(cells);
+    });
+    if (!rows.length) return "";
+    const w = Math.max(...rows.map(r => r.length));
+    const line = r => "| " + Array.from({ length: w }, (_, i) => r[i] || "").join(" | ") + " |";
+    return "\n\n" + line(rows[0]) + "\n" + "| " + Array.from({ length: w }, () => "---").join(" | ") + " |\n" + rows.slice(1).map(line).join("\n") + "\n\n";
+  });
+}
 export function markdownText(html) {
-  return String(html || "")
+  return tablesToMd(html)
+    .replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/g, (_, c) => "\n\n```\n" + c.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">") + "\n```\n\n")
+    .replace(/<pre[^>]*>([\s\S]*?)<\/pre>/g, (_, c) => "\n\n```\n" + c.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">") + "\n```\n\n")
+    .replace(/<code>(.*?)<\/code>/g, "`$1`")
+    .replace(/<hr\s*\/?>/g, "\n\n---\n\n")
+    .replace(/<h2[^>]*>/g, "\n## ").replace(/<\/h2>/g, "\n")
     .replace(/<h[34][^>]*>/g, "\n### ").replace(/<\/h[34]>/g, "\n")
     .replace(/<li>/g, "- ").replace(/<\/li>/g, "\n").replace(/<\/(p|blockquote)>/g, "\n\n").replace(/<br\s*\/?>/g, "\n")
     .replace(/<b>|<strong>/g, "**").replace(/<\/b>|<\/strong>/g, "**").replace(/<i>|<em>/g, "_").replace(/<\/i>|<\/em>/g, "_")
@@ -73,6 +92,25 @@ export function pilotMarkdown(S, p, when) {
     md += "\n";
   });
   if (!st.length) md += "- none yet\n\n";
+  return md;
+}
+
+/* One Google Doc per research item, kept in the R&D folder. */
+export function rndMarkdown(S, f, when) {
+  const byId = Object.fromEntries(S.features.map(x => [x.id, x]));
+  const stamp = (when || new Date()).toISOString().slice(0, 16).replace("T", " ");
+  const kids = S.features.filter(x => x.parent === f.id);
+  let md = `# ALIE R&D — ${f.name}\n\nUpdated ${stamp} UTC from the ALIE Product Manager. The app is the source of truth for this record; this copy is kept in the R&D folder for the team.\n\n`;
+  md += `## Overview\n\n- Stage: ${f.rndStage}\n- Student: ${f.student || "nobody yet"}\n- Product state: ${f.state}\n- Owner: ${f.owner || "Unassigned"}\n- Spaces: ${(f.spaces || []).join(", ") || "—"}\n`;
+  if (f.parent && byId[f.parent]) md += `- Part of: ${byId[f.parent].name}\n`;
+  if (f.link) md += `- Link: ${f.link}\n`;
+  if (effortText(f)) md += `- Estimate: ${effortText(f)}\n`;
+  md += "\n";
+  md += `## Research question\n\n${f.rndQuestion ? markdownText(f.rndQuestion) : "_Not written yet._"}\n\n`;
+  md += `## Experiment plan\n\n${f.rndPlan ? markdownText(f.rndPlan) : "_No plan yet._"}\n\n`;
+  md += `## Findings\n\n${f.rndFindings ? markdownText(f.rndFindings) : "_Nothing recorded yet._"}\n\n`;
+  if (f.note) md += `## Description\n\n${markdownText(f.note)}\n\n`;
+  if (kids.length) md += `## Sub-features (${kids.length})\n\n${kids.map(k => `- ${k.name} — ${k.state}`).join("\n")}\n\n`;
   return md;
 }
 

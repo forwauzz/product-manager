@@ -1893,7 +1893,7 @@
   }
 
   /* --- change log: every edit is recorded by the server; here we show it --- */
-  var LOG_FIELDS = { created: "Created", deleted: "Deleted", name: "Name", state: "State", owner: "Owner", period: "Date", effort: "Estimate", agreed: "Agreed",
+  var LOG_FIELDS = { created: "Created", deleted: "Deleted", name: "Name", state: "State", owner: "Owner", period: "Date", effort: "Estimate", agreed: "Agreed", rndPlan: "R&D plan", rndFindings: "Findings",
     spaces: "Spaces", parent: "Parent", rnd: "R&D", rndStage: "R&D stage", student: "Student", link: "Drive link", note: "Description", image: "Screenshot" };
   /* Drift: exists in the product (Building or beyond) without ever having been Planned, and not marked agreed.
      Features with no history at all were inventoried from the live apps and are left alone. */
@@ -3869,8 +3869,22 @@
     var acts = [newBtn("NEW RESEARCH ITEM", function () {
       create(ui.spaceFilter ? [ui.spaceFilter] : [], { rnd: true, state: "Research", name: "New research item" });
     })];
+    var imp = el("button", "btn ghost", "Import a plan (.md)");
+    imp.onclick = function () {
+      askMarkdown("New research item from a Markdown plan", { text: "The first # heading becomes the item's name; everything under it becomes the experiment plan.", ok: "Create" }).then(function (md) {
+        if (!md) return;
+        var sp = splitMdTitle(md);
+        var f = create(ui.spaceFilter ? [ui.spaceFilter] : [], { rnd: true, state: "Research", name: sp.title || "New research item", rndPlan: mdToHtml(sp.body || md) }, true);
+        save(); open(f.id);
+        toast("Research item created from the plan.");
+      });
+    };
+    acts.unshift(imp);
     acts.push(menu("More", [
       ["Manage students", function () { managePeople("students"); }],
+      [S.rndFolder ? "Change the R&D folder in Drive" : "Set the R&D folder in Drive", function () {
+        askText("R&D folder in Drive", { value: S.rndFolder || "", placeholder: "https://drive.google.com/drive/folders/…", ok: "Save", text: "Every research item is written there as a Google Doc, one per item, updated on every change." }).then(function (v) { if (v !== null) { S.rndFolder = v; save(); render(); } });
+      }],
       ["Print board", function () { window.print(); }]
     ]));
     host.appendChild(header("RESEARCH & DEVELOPMENT", p.name + " research pipeline", acts));
@@ -3898,6 +3912,11 @@
     host.appendChild(bar);
 
     var pad = el("div", "pad");
+    var drow = el("div", "driverow");
+    drow.appendChild(driveStatusLine());
+    if (S.rndFolder) { var fo = el("a", "chip", "R&D folder in Drive ↗"); fo.href = S.rndFolder; fo.target = "_blank"; fo.rel = "noopener"; drow.appendChild(fo); }
+    else { var setF = el("button", "chip", "Set the R&D folder"); setF.onclick = function () { askText("R&D folder in Drive", { placeholder: "https://drive.google.com/drive/folders/…", ok: "Save" }).then(function (v) { if (v) { S.rndFolder = v; save(); render(); } }); }; drow.appendChild(setF); }
+    pad.appendChild(drow);
 
     var stats = el("div", "rndhead");
     [["In R&D", all.length],
@@ -4003,6 +4022,7 @@
     tags.appendChild(statePill(f));
     tags.appendChild(pill(f.owner));
     (f.spaces || []).forEach(function (sp) { tags.appendChild(pill(sp)); });
+    if (f.rndPlan) tags.appendChild(pill("plan", "gold"));
     if (f.rndFindings) tags.appendChild(pill("findings", "gold"));
     if (f.link) tags.appendChild(pill("Drive"));
     c.appendChild(tags);
@@ -4034,7 +4054,7 @@
 
   /* --- rich text: a small editor for notes and descriptions, with safe rendering --- */
 
-  var RICH_TAGS = { P: 1, BR: 1, B: 1, STRONG: 1, I: 1, EM: 1, U: 1, S: 1, UL: 1, OL: 1, LI: 1, H3: 1, H4: 1, A: 1, BLOCKQUOTE: 1, CODE: 1 };
+  var RICH_TAGS = { P: 1, BR: 1, B: 1, STRONG: 1, I: 1, EM: 1, U: 1, S: 1, UL: 1, OL: 1, LI: 1, H2: 1, H3: 1, H4: 1, A: 1, BLOCKQUOTE: 1, CODE: 1, PRE: 1, HR: 1, TABLE: 1, THEAD: 1, TBODY: 1, TR: 1, TH: 1, TD: 1 };
   function isHtml(s) { return /<\/?[a-z][\s\S]*>/i.test(String(s || "")); }
   function escapeHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
   /* Plain text with newlines becomes paragraphs; lines starting with "- " or "* " become bullets. */
@@ -4080,7 +4100,7 @@
     });
     // block elements never sit inside a paragraph
     Array.prototype.slice.call(root.querySelectorAll("p")).forEach(function (pEl) {
-      if (pEl.querySelector("ul, ol, h3, h4, blockquote, p")) { while (pEl.firstChild) pEl.parentNode.insertBefore(pEl.firstChild, pEl); pEl.remove(); }
+      if (pEl.querySelector("ul, ol, h2, h3, h4, blockquote, p, pre, table, hr")) { while (pEl.firstChild) pEl.parentNode.insertBefore(pEl.firstChild, pEl); pEl.remove(); }
     });
     return root.innerHTML.replace(/<p>(\s|&nbsp;|<br>)*<\/p>/g, "").trim();
   }
@@ -4093,6 +4113,93 @@
     Array.prototype.forEach.call(doc.querySelectorAll("p, h3, h4, br, blockquote"), function (b) { b.appendChild(doc.createTextNode(" ")); });
     return (doc.body.textContent || "").replace(/\s+/g, " ").trim();
   }
+  /* Markdown to the HTML the rich editor understands. Headings, lists, task lists, tables, fenced code, quotes, rules, links, emphasis. */
+  function mdInline(t) {
+    var codes = [];
+    t = escapeHtml(t).replace(/`([^`]+)`/g, function (_, c) { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+    t = t.replace(/\[([^\]]+)\]\((https?:[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2">$1</a>');
+    t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2">$2</a>');
+    t = t.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/__([^_]+)__/g, "<b>$1</b>");
+    t = t.replace(/(^|[^*\w])\*([^*\n]+)\*/g, "$1<i>$2</i>").replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, "$1<i>$2</i>");
+    t = t.replace(/~~([^~]+)~~/g, "<s>$1</s>");
+    return t.replace(/\u0000(\d+)\u0000/g, function (_, i) { return "<code>" + codes[Number(i)] + "</code>"; });
+  }
+  function mdToHtml(md) {
+    var lines = String(md || "").replace(/\r\n?/g, "\n").split("\n"), out = [], i = 0, para = [];
+    function flushPara() { if (para.length) { out.push("<p>" + para.map(function (l) { return mdInline(l.replace(/\s{2,}$/, "")); }).join("<br>") + "</p>"); para = []; } }
+    function listAt(start, indent, ordered) {
+      var html = ordered ? "<ol>" : "<ul>", j = start;
+      while (j < lines.length) {
+        var m = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(lines[j]);
+        if (!m) { if (lines[j].trim() === "" && j + 1 < lines.length && /^\s+([-*+]|\d+[.)])\s+/.test(lines[j + 1]) && lines[j + 1].match(/^\s*/)[0].length > indent) { j++; continue; } break; }
+        var ind = m[1].length;
+        if (ind < indent) break;
+        if (ind > indent) { var sub = listAt(j, ind, /\d/.test(m[2])); html = html.replace(/<\/li>$/, "") + sub.html + "</li>"; j = sub.next; continue; }
+        var txt = m[3].replace(/^\[( |x|X)\]\s+/, function (_, c) { return c === " " ? "☐ " : "☑ "; });
+        html += "<li>" + mdInline(txt) + "</li>"; j++;
+      }
+      return { html: html + (ordered ? "</ol>" : "</ul>"), next: j };
+    }
+    while (i < lines.length) {
+      var line = lines[i];
+      var fence = /^\s*```/.exec(line);
+      if (fence) { flushPara(); var code = []; i++; while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]); i++; out.push("<pre><code>" + escapeHtml(code.join("\n")) + "</code></pre>"); continue; }
+      var h = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+      if (h) { flushPara(); var lvl = h[1].length; out.push("<h" + (lvl === 1 ? 2 : lvl === 2 ? 3 : 4) + ">" + mdInline(h[2]) + "</h" + (lvl === 1 ? 2 : lvl === 2 ? 3 : 4) + ">"); i++; continue; }
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flushPara(); out.push("<hr>"); i++; continue; }
+      if (/^\s*>/.test(line)) { flushPara(); var q = []; while (i < lines.length && /^\s*>/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/, "")); out.push("<blockquote>" + mdToHtml(q.join("\n")) + "</blockquote>"); continue; }
+      if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+        flushPara();
+        var cells = function (l) { return l.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map(function (c) { return mdInline(c.replace(/\\\|/g, "|").trim()); }); };
+        var html = "<table><thead><tr>" + cells(line).map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr></thead><tbody>";
+        i += 2;
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { html += "<tr>" + cells(lines[i]).map(function (c) { return "<td>" + c + "</td>"; }).join("") + "</tr>"; i++; }
+        out.push(html + "</tbody></table>"); continue;
+      }
+      var lm = /^(\s*)([-*+]|\d+[.)])\s+/.exec(line);
+      if (lm) { flushPara(); var r = listAt(i, lm[1].length, /\d/.test(lm[2])); out.push(r.html); i = r.next; continue; }
+      if (line.trim() === "") { flushPara(); i++; continue; }
+      para.push(line); i++;
+    }
+    flushPara();
+    return sanitizeHtml(out.join(""));
+  }
+  function looksLikeMarkdown(t) { return /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|```|>\s|\|.*\|)/m.test(String(t || "")) || /\*\*[^*]+\*\*|\[[^\]]+\]\(https?:/.test(String(t || "")); }
+
+  /* Paste or upload a Markdown document; resolves with the text, or null. */
+  function askMarkdown(title, o) {
+    o = o || {};
+    return dialog(function (box, close) {
+      box.classList.add("wide");
+      box.appendChild(el("h2", null, title));
+      box.appendChild(el("p", null, o.text || "Paste the Markdown here, or pick a .md file. Headings, lists, tables, code and links come through."));
+      var ta = el("textarea", "mdbox");
+      ta.placeholder = "# Experiment: …\n\n## Hypothesis\n…\n\n## Method\n1. …";
+      ta.setAttribute("aria-label", "Markdown");
+      box.appendChild(ta);
+      var row = el("div", "acts");
+      var file = document.createElement("input"); file.type = "file"; file.accept = ".md,.markdown,.txt,text/markdown,text/plain"; file.style.display = "none";
+      file.onchange = function () {
+        var fl = file.files && file.files[0]; if (!fl) return;
+        var rd = new FileReader();
+        rd.onload = function () { ta.value = String(rd.result || ""); ta.focus(); };
+        rd.readAsText(fl);
+      };
+      var up = el("button", "btn ghost", "Upload a .md file"); up.onclick = function () { file.click(); };
+      var cancel = el("button", "btn ghost", "Cancel"); cancel.onclick = function () { close(null); };
+      var ok = el("button", "btn", o.ok || "Import");
+      ok.onclick = function () { var v = ta.value.trim(); if (!v) { ta.focus(); return; } close(v); };
+      row.appendChild(up); row.appendChild(file); row.appendChild(cancel); row.appendChild(ok);
+      box.appendChild(row);
+      setTimeout(function () { ta.focus(); if (o.pick) file.click(); }, 0);
+    });
+  }
+  /* First "# Title" line becomes the name; the rest is the body. */
+  function splitMdTitle(md) {
+    var m = /^\s*#\s+(.+?)\s*#*\s*\n/.exec(md);
+    return m ? { title: m[1].trim(), body: md.slice(m[0].length) } : { title: "", body: md };
+  }
+
   function richView(s, cls) {
     var d = el("div", "rich" + (cls ? " " + cls : ""));
     d.innerHTML = richHtml(s);
@@ -4109,6 +4216,14 @@
     body.setAttribute("aria-multiline", "true");
     body.dataset.placeholder = placeholder || "";
     body.innerHTML = richHtml(value);
+    body.addEventListener("paste", function (e) {
+      var cd = e.clipboardData; if (!cd) return;
+      var html = cd.getData("text/html"), txt = cd.getData("text/plain");
+      if (html || !txt || !looksLikeMarkdown(txt)) return;
+      e.preventDefault();
+      document.execCommand("insertHTML", false, mdToHtml(txt));
+      emit();
+    });
     function cmd(name, arg) { body.focus(); document.execCommand(name, false, arg || null); emit(); }
     function emit() { onChange(sanitizeHtml(body.innerHTML)); }
     [["B", "bold", "Bold"], ["I", "italic", "Italic"], ["U", "underline", "Underline"],
@@ -4990,6 +5105,27 @@
       left.appendChild(el("div", "sublab", "Research question"));
       left.appendChild(richEditor(f.rndQuestion, function (h) { f.rndQuestion = h; touch(f); save(); }, "The question the student should answer. What would a good result look like?", "small"));
 
+      var planLab = el("div", "sublab planlab");
+      planLab.appendChild(document.createTextNode("Experiment plan"));
+      var planActs = el("span", "planacts");
+      function importPlan(pick) {
+        askMarkdown("Import the experiment plan", { pick: pick, ok: f.rndPlan ? "Replace the plan" : "Import" }).then(function (md) {
+          if (!md) return;
+          var sp = splitMdTitle(md);
+          f.rndPlan = mdToHtml(sp.body || md);
+          if (sp.title && (!f.name || /^New research item$|^New feature$|^Untitled$/.test(f.name))) f.name = sp.title;
+          touch(f); save(); render();
+          toast("Plan imported. It reaches the R&D folder in Drive on the next sync.");
+        });
+      }
+      var pasteB = el("button", "chip", "Paste Markdown"); pasteB.onclick = function () { importPlan(false); };
+      var upB = el("button", "chip", "Upload .md"); upB.onclick = function () { importPlan(true); };
+      planActs.appendChild(pasteB); planActs.appendChild(upB);
+      if (f.driveDoc) { var dd = el("a", "chip", "Open in Drive ↗"); dd.href = "https://docs.google.com/document/d/" + f.driveDoc + "/edit"; dd.target = "_blank"; dd.rel = "noopener"; planActs.appendChild(dd); }
+      planLab.appendChild(planActs);
+      left.appendChild(planLab);
+      left.appendChild(richEditor(f.rndPlan, function (h) { f.rndPlan = h; touch(f); save(); }, "Hypothesis, method, data, success criteria, timeline. Paste Markdown straight in; it is converted.", "writer plan"));
+
       left.appendChild(el("div", "sublab", "Findings"));
       left.appendChild(richEditor(f.rndFindings, function (h) { f.rndFindings = h; touch(f); save(); }, "What was learned, what was tried, and the recommendation for the product.", "small"));
     }
@@ -5263,7 +5399,7 @@
   function create(spaces, extra, silent) {
     var f = { id: uid(), project: S.current, name: "New feature", state: "Proposed", agreed: false, owner: "Unassigned",
               spaces: spaces || [], period: null, effort: 0, effortUnit: "weeks", note: "", link: "", rnd: false, rndStage: "Backlog",
-              student: "", rndQuestion: "", rndFindings: "", parent: null, thumb: "", image: "", sections: {}, created: Date.now(), updated: Date.now() };
+              student: "", rndQuestion: "", rndPlan: "", rndFindings: "", driveDoc: "", parent: null, thumb: "", image: "", sections: {}, created: Date.now(), updated: Date.now() };
     if (extra) Object.keys(extra).forEach(function (k) { f[k] = extra[k]; });
     S.features.push(f);
     if (!silent) { open(f.id); save(); }

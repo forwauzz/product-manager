@@ -18,7 +18,7 @@ export function seed() {
     F.push(Object.assign({
       id: uid(), project: pr, name, state: st, owner, spaces,
       period: off === null ? null : mAdd(mKey(new Date()), off),
-      note: note || "", link: "", rnd: false, rndStage: "Backlog", student: "", rndQuestion: "", rndFindings: "", parent: null,
+      note: note || "", link: "", rnd: false, rndStage: "Backlog", student: "", rndQuestion: "", rndPlan: "", rndFindings: "", driveDoc: "", parent: null,
       created: now, updated: now
     }, extra || {}));
   }
@@ -135,6 +135,7 @@ export function normalize(state) {
   const regimeIds = new Set(s.icps.filter(x => x.kind === "Regime").map(x => x.id));
   s.icps.forEach(x => { x.regimes = x.kind === "Regime" ? [] : x.regimes.filter(r => regimeIds.has(r)); });
   if (typeof s.driveFolder !== "string") s.driveFolder = "";
+  if (typeof s.rndFolder !== "string") s.rndFolder = "";
   if (!Array.isArray(s.pilots)) s.pilots = [];
   const PILOT_STATUS = ["Prospect", "Piloting", "Live client", "Paused"];
   s.pilots = s.pilots.filter(p => p && typeof p === "object").map(p => ({
@@ -194,7 +195,9 @@ export function normalize(state) {
     if (RND_STAGES.indexOf(f.rndStage) === -1) f.rndStage = "Backlog";
     if (typeof f.student !== "string") f.student = "";
     if (typeof f.rndQuestion !== "string") f.rndQuestion = "";
+    if (typeof f.rndPlan !== "string") f.rndPlan = "";
     if (typeof f.rndFindings !== "string") f.rndFindings = "";
+    if (typeof f.driveDoc !== "string") f.driveDoc = "";
     if (!Array.isArray(f.icps)) f.icps = [];
     f.icps = f.icps.filter(x => typeof x === "string" && icpIds.has(x));
     if (typeof f.parent !== "string" || !f.parent) f.parent = null;
@@ -246,7 +249,7 @@ function trackedValues(f, byId) {
     name: f.name, state: f.state, owner: f.owner, period: f.period || "", effort: effortText(f), agreed: f.agreed ? "yes" : "no",
     spaces: (f.spaces || []).slice().sort().join(", "), parent, rnd: f.rnd ? "yes" : "no",
     rndStage: f.rnd ? f.rndStage : "", student: f.student || "", link: f.link || "",
-    note: f.note || "", image: f.image ? "set" : ""
+    note: f.note || "", rndPlan: f.rndPlan || "", rndFindings: f.rndFindings || "", image: f.image ? "set" : ""
   };
 }
 /* Keep every entry ever written (a client can never drop them), let a client fill in a reason, then add what changed now. */
@@ -308,7 +311,7 @@ async function mutate(store, fn, who) {
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
 const EFFORT_UNITS = ["days", "weeks", "months"];
-const EDITABLE = ["name", "state", "owner", "spaces", "period", "effort", "effortUnit", "agreed", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections"];
+const EDITABLE = ["name", "state", "owner", "spaces", "period", "effort", "effortUnit", "agreed", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndPlan", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections"];
 
 /* Handle one API request. `req` = { method, path, query, body } where `path` is relative to /api
    (for example "/features/abc") and `query` is a plain object. Returns { status, body, headers }. */
@@ -415,7 +418,7 @@ export async function handleApi(req, store) {
         effortUnit: EFFORT_UNITS.indexOf(body.effortUnit) !== -1 ? body.effortUnit : "weeks",
         note: String(body.note || ""), link: String(body.link || ""), rnd: !!body.rnd,
         rndStage: RND_STAGES.indexOf(body.rndStage) !== -1 ? body.rndStage : "Backlog",
-        student: String(body.student || ""), rndQuestion: String(body.rndQuestion || ""), rndFindings: String(body.rndFindings || ""),
+        student: String(body.student || ""), rndQuestion: String(body.rndQuestion || ""), rndPlan: String(body.rndPlan || ""), rndFindings: String(body.rndFindings || ""), driveDoc: "",
         icps: Array.isArray(body.icps) ? body.icps.filter(x => typeof x === "string") : [],
         parent: typeof body.parent === "string" && body.parent ? body.parent : null,
         thumb: typeof body.thumb === "string" ? body.thumb : "",

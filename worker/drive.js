@@ -1,7 +1,7 @@
 /* Google Drive sync from the Worker. Needs a service-account JSON key in the GOOGLE_SA_KEY secret
    and the target folders shared with that account. Never logs the key. */
 import { D1Store } from "./store-d1.js";
-import { pilotMarkdown, featuresCsv, logCsv, driveFolderId } from "../shared/exports.js";
+import { pilotMarkdown, rndMarkdown, featuresCsv, logCsv, driveFolderId } from "../shared/exports.js";
 
 const SCOPE = "https://www.googleapis.com/auth/drive";
 const MARK = "drive-sync";
@@ -133,7 +133,7 @@ export async function status(env) {
     version: doc.version, syncedVersion: mark.version || 0, at: mark.at || null, ok: mark.ok !== false, error: mark.error || "", files: mark.files || [], pending: (mark.version || 0) !== doc.version };
 }
 
-/* Sync everything that has a Drive home: one Google Doc per pilot with a folder, plus the two sheets. */
+/* Sync everything that has a Drive home: one Google Doc per pilot with a folder, one per research item in the R&D folder, plus the two sheets. */
 export async function syncAll(env, opts) {
   opts = opts || {};
   if (!configured(env)) return { ok: false, error: "Drive sync is not set up yet." };
@@ -162,6 +162,22 @@ export async function syncAll(env, opts) {
         files.push({ pilot: p.name, id: made.id, action: "created" });
       }
     } catch (e) { errors.push(p.name + ": " + e.message); }
+  }
+  const rndFolder = driveFolderId(doc.state.rndFolder) || env.RND_FOLDER_ID || "";
+  if (rndFolder) {
+    for (const f of doc.state.features.filter(x => x.rnd)) {
+      const md = rndMarkdown(doc.state, f, now);
+      try {
+        if (f.driveDoc) {
+          await updateMedia(token, f.driveDoc, "text/markdown", md);
+          files.push({ rnd: f.name, id: f.driveDoc, action: "updated" });
+        } else {
+          const made = await createDoc(token, rndFolder, "ALIE R&D — " + f.name, md);
+          f.driveDoc = made.id; changedDocIds = true;
+          files.push({ rnd: f.name, id: made.id, action: "created" });
+        }
+      } catch (e) { errors.push("R&D " + f.name + ": " + e.message); }
+    }
   }
   if (env.FEATURES_SHEET_ID) { try { await updateMedia(token, env.FEATURES_SHEET_ID, "text/csv", featuresCsv(doc.state)); files.push({ sheet: "features", id: env.FEATURES_SHEET_ID, action: "updated" }); } catch (e) { errors.push("features sheet: " + e.message); } }
   if (env.LOG_SHEET_ID) { try { await updateMedia(token, env.LOG_SHEET_ID, "text/csv", logCsv(doc.state)); files.push({ sheet: "change log", id: env.LOG_SHEET_ID, action: "updated" }); } catch (e) { errors.push("change log sheet: " + e.message); } }

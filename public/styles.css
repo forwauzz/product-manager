@@ -1227,3 +1227,21 @@
   .cattile .tx span.sub { font-size:13px; }
   .cattile .n.stale b { color:var(--c-needs); }
   @media print { .needs, .foldall { display:none; } }
+
+  /* ---------- markdown-rich content: headings, code, tables, rules ---------- */
+  .rich h2, .rtebody h2 { margin:1.1em 0 .4em; font-family:var(--serif); font-size:1.35em; font-weight:500; letter-spacing:-.01em; }
+  .rich code, .rtebody code { font-family:var(--mono); font-size:.9em; background:var(--tint); padding:1px 5px; border-radius:4px; }
+  .rich pre, .rtebody pre { margin:.6em 0 1em; padding:12px 16px; background:var(--tint); border-radius:var(--r-sm); overflow-x:auto; font-family:var(--mono); font-size:.88em; line-height:1.5; white-space:pre; }
+  .rich pre code, .rtebody pre code { background:transparent; padding:0; }
+  .rich hr, .rtebody hr { border:0; border-top:1px solid var(--line); margin:1.2em 0; }
+  .rich table, .rtebody table { border-collapse:collapse; margin:.6em 0 1em; width:100%; font-size:.95em; display:block; overflow-x:auto; }
+  .rich th, .rtebody th, .rich td, .rtebody td { border:1px solid var(--line); padding:6px 10px; text-align:left; vertical-align:top; }
+  .rich th, .rtebody th { background:var(--tint); font-weight:600; }
+  .rich s, .rtebody s { color:var(--slate); }
+  .rte.plan .rtebody { min-height:220px; }
+  .sublab.planlab { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .planacts { display:inline-flex; gap:6px; margin-left:auto; text-transform:none; letter-spacing:0; }
+  .modal textarea.mdbox { min-height:320px; font-family:var(--mono); font-size:13.5px; line-height:1.5; white-space:pre; overflow:auto; }
+  .rndhead { margin-top:14px; }
+  .driverow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+  .driverow .drivesync { margin:0; }
