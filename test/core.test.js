@@ -183,3 +183,11 @@ test("markdownText keeps headings, code and tables; rndMarkdown has the plan", (
   assert.match(doc, /## Experiment plan\n\n## Hypothesis\nIt works\./);
   assert.match(doc, /- Stage: Assigned/);
 });
+
+test("normalize drops a division for a space the feature is not in", () => {
+  const s = normalize(seed());
+  const f = s.features.find(x => !x.parent);
+  f.spaces = ["Health"]; f.sections = { Health: "Cases", Legal: "Cases" };
+  const n = normalize(JSON.parse(JSON.stringify(s)));
+  assert.deepEqual(n.features.find(x => x.id === f.id).sections, { Health: "Cases" });
+});

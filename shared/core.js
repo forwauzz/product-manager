@@ -205,6 +205,8 @@ export function normalize(state) {
     if (typeof f.image !== "string") f.image = "";
     if (!f.sections || typeof f.sections !== "object" || Array.isArray(f.sections)) f.sections = {};
     Object.keys(f.sections).forEach(k => { if (typeof f.sections[k] !== "string" || !f.sections[k]) delete f.sections[k]; });
+    // a division only means something in a space the feature is in; leftovers from a move would resurface if the space came back
+    Object.keys(f.sections).forEach(k => { if (f.spaces.indexOf(k) === -1) delete f.sections[k]; });
     if (!f.created) f.created = f.updated || Date.now();
     if (!f.updated) f.updated = Date.now();
   });
