@@ -193,7 +193,7 @@ export default {
       if (!authed) return Response.redirect(url.origin + "/login.html", 302);
       return stampHtml(await env.ASSETS.fetch(new Request(url.origin + "/index.html", request)), env);
     }
-    if (path === "/" || path === "/index.html" || path === "/login.html") return stampHtml(res, env);
+    if (path === "/" || path === "/index.html" || path === "/login.html" || path === "/login") return stampHtml(res, env);
     return res;
   }
 };
