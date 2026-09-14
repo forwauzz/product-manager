@@ -3,3 +3,4 @@ data/db.json
 data/*.tmp
 data/backups/
 data/exports/
+data/shots/
