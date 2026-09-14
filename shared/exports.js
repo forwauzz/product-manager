@@ -96,9 +96,16 @@ export function pilotMarkdown(S, p, when) {
     md += `## Sessions (${sessions.length})\n\n`;
     sessions.forEach(s2 => {
       md += `### ${s2.date || "undated"} · ${s2.title || s2.purpose || "Session"}${s2.draft ? " · DRAFT, to confirm" : ""}\n\n`;
+      md += `- Stage: ${s2.stage || "Recorded"}\n`;
       if (s2.participants) md += `- Participants: ${s2.participants}\n`;
       if (s2.purpose) md += `- Purpose: ${plainText(s2.purpose)}\n`;
+      if (s2.agenda) md += `- Agenda: ${plainText(s2.agenda).replace(/\n+/g, " · ")}\n`;
+      const dl2 = s2.drive || {};
+      [["Recording", dl2.recording], ["Transcript", dl2.transcript], ["Raw notes", dl2.rawNotes], ["Summary", dl2.summary], ["Received files", dl2.receivedFiles], ["Session folder", dl2.folder]].forEach(([k, v]) => { if (v) md += `- ${k}: ${v}\n`; });
       if (s2.links) md += `- Notes and artifacts: ${s2.links.split(/\n+/).filter(Boolean).join(" · ")}\n`;
+      (s2.files || []).forEach(f2 => { md += `- File: ${f2.name} (${f2.kind}, ${f2.from === "Client" ? "received from the firm" : "ours"}) · ${f2.loop}${f2.owner ? " · " + f2.owner : ""}${f2.due ? " · due " + f2.due : ""}${f2.link ? " · " + f2.link : ""}\n`; });
+      const sq = (p.questions || []).filter(q => q.session === s2.id);
+      if (sq.length) md += `- Questions: ${sq.map(q => `${q.text} [${q.state || (q.status === "Answered" ? "Confirmed by client" : "Unanswered")}]`).join(" · ")}\n`;
       md += "\n";
       if (s2.summary) md += `**Summary**\n\n${markdownText(s2.summary)}\n\n`;
       if (s2.findings) md += `**Findings**\n\n${markdownText(s2.findings)}\n\n`;
@@ -106,7 +113,7 @@ export function pilotMarkdown(S, p, when) {
   }
   const oq = (p.questions || []).filter(q => q.status !== "Answered"), aq = (p.questions || []).filter(q => q.status === "Answered");
   if ((p.questions || []).length) {
-    md += `## Open questions (${oq.length})\n\n${oq.map(q => `- ${q.text}${q.session ? " · " + sessName(q.session) : ""}`).join("\n") || "- none"}\n\n`;
+    md += `## Open questions (${oq.length})\n\n${oq.map(q => `- ${q.text} [${q.state || "Unanswered"}]${q.candidate && q.candidate.text ? " · candidate: " + q.candidate.text : ""}${q.session ? " · " + sessName(q.session) : ""}`).join("\n") || "- none"}\n\n`;
     if (aq.length) md += `### Answered\n\n${aq.map(q => `- ${q.text} → ${q.answer || "answered"}`).join("\n")}\n\n`;
   }
   const acts = (p.actions || []);
@@ -139,7 +146,9 @@ export function pilotMarkdown(S, p, when) {
   const fitKeys = Object.keys(p.fit || {}).filter(k => byId[k]);
   if (fitKeys.length) md += `## Feature fit (${fitKeys.length})\n\n${fitKeys.map(k => { const v = p.fit[k], f = byId[k]; return `- ${fname(f)} — engineering: ${f.state} · pilot fit: ${v.fit}${v.supports ? " · supports: " + plainText(v.supports) : ""}${v.unknown ? " · unknown: " + plainText(v.unknown) : ""}${v.next ? " · next: " + plainText(v.next) : ""}`; }).join("\n")}\n\n`;
   if ((p.decisions || []).length) md += `## Product decisions (${p.decisions.length})\n\n${p.decisions.map(d => `- ${d.date ? d.date + " · " : ""}**${d.title}** — ${plainText(d.decision)}${d.reason ? " · why: " + plainText(d.reason) : ""}`).join("\n")}\n\n`;
-  if ((p.artifacts || []).length) md += `## Prototypes and artifacts (${p.artifacts.length})\n\n${p.artifacts.map(a => `- ${a.kind}: ${a.title}${a.link ? " · " + a.link : ""}${a.note ? " · " + plainText(a.note) : ""}`).join("\n")}\n\n`;
+  if ((p.artifacts || []).length) md += `## Prototypes and artifacts (${p.artifacts.length})\n\n${p.artifacts.map(a => `- ${a.origin === "Received" ? "Received from the firm" : "Ours"} · ${a.kind}: ${a.title}${a.version ? " v" + a.version : ""} · ${a.status || "Draft"} · ${a.audience || "Internal"} · loop: ${a.loop || "Received"}${a.owner ? " · " + a.owner : ""}${a.link ? " · " + a.link : ""}${a.note ? " · " + plainText(a.note) : ""}`).join("\n")}\n\n`;
+  const pdec = (S.decisions || []).filter(d => d.pilot === p.id);
+  if (pdec.length) md += `## Product decisions (${pdec.length})\n\n${pdec.map(d => `- ${d.date ? d.date + " · " : ""}**${d.title}** — ${d.state} · owner ${d.owner || "Uzziel"} · cofounder alignment: ${d.alignment}${d.state === "Decided" && ["Agreed", "Not required"].indexOf(d.alignment) === -1 ? " · BUILD BLOCKED UNTIL ALIGNED" : ""}${d.rationale ? " · why: " + plainText(d.rationale) : ""}`).join("\n")}\n\n`;
   const val = [].concat(dl.map(d => ({ t: d.title, k: "deliverable", v: d.validation })), rq.map(r => ({ t: r.title, k: "request", v: r.validation }))).filter(x => x.v && x.v.status && x.v.status !== "Not validated");
   if (val.length) md += `## Client validation\n\n${val.map(x => `- ${x.t} (${x.k}): ${x.v.status}${x.v.date ? " · " + x.v.date : ""}${x.v.note ? " · " + plainText(x.v.note) : ""}`).join("\n")}\n\n`;
   const recaps = (p.recaps || []).slice().sort((a, b) => b.week < a.week ? -1 : 1);
@@ -181,6 +190,65 @@ export function rndMarkdown(S, f, when) {
   if (f.note) md += `## Description\n\n${markdownText(f.note)}\n\n`;
   if (kids.length) md += `## Sub-features (${kids.length})\n\n${kids.map(k => `- ${k.name} — ${k.state}`).join("\n")}\n\n`;
   return md;
+}
+
+/* One Google Doc for one record: a session, an artifact, or a product decision. */
+export function recordMarkdown(S, kind, rec, p, when) {
+  const stamp = (when || new Date()).toISOString().slice(0, 16).replace("T", " ");
+  const byId = Object.fromEntries(S.features.map(f => [f.id, f]));
+  const head = t => `# ${t}\n\nUpdated ${stamp} UTC from the ALIE Product Manager. The app is the source of truth; this copy lives in Drive for the team.\n\n`;
+  if (kind === "session") {
+    let md = head(`Session — ${rec.title || rec.purpose || "Session"}${p ? " · " + p.name : ""}`);
+    md += `- Date: ${rec.date || "undated"}${rec.time ? " " + rec.time : ""}\n- Stage: ${rec.stage || "Recorded"}\n- Participants: ${rec.participants || "—"}\n`;
+    if (rec.purpose) md += `- Purpose: ${rec.purpose}\n`;
+    const dl2 = rec.drive || {};
+    [["Recording", dl2.recording], ["Transcript", dl2.transcript], ["Raw notes", dl2.rawNotes], ["Summary", dl2.summary], ["Received files", dl2.receivedFiles], ["Session folder", dl2.folder]].forEach(([k, v]) => { if (v) md += `- ${k}: ${v}\n`; });
+    md += "\n";
+    if (rec.agenda) md += `## Agenda\n\n${rec.agenda}\n\n`;
+    const qs = p ? (p.questions || []).filter(q => q.session === rec.id) : [];
+    if (qs.length) md += `## Questions\n\n${qs.map(q => `- ${q.text} — ${q.state || "Unanswered"}${q.answer ? ": " + q.answer : q.candidate && q.candidate.text ? " (candidate: " + q.candidate.text + ")" : ""}`).join("\n")}\n\n`;
+    if (rec.summary) md += `## Summary\n\n${markdownText(rec.summary)}\n\n`;
+    if (rec.findings) md += `## Findings\n\n${markdownText(rec.findings)}\n\n`;
+    const ev = p ? (p.evidence || []).filter(e => e.session === rec.id) : [];
+    if (ev.length) md += `## Evidence (${ev.length})\n\n${ev.map(e => `- [${e.kind}]${e.draft ? " (draft)" : ""} ${e.kind === "Direct quote" ? "« " + e.text + " »" : e.text}${e.speaker ? " · " + e.speaker : ""}${e.timestamp ? " · " + e.timestamp : ""}${e.source ? " · " + e.source : ""}`).join("\n")}\n\n`;
+    const acts = p ? (p.actions || []).filter(a => a.links && a.links.session === rec.id) : [];
+    if (acts.length) md += `## Actions\n\n${acts.map(a => `- [${a.status === "Done" ? "x" : " "}] ${a.title}${a.owner ? " · " + a.owner : ""} · ${a.side}${a.due ? " · due " + a.due : ""}`).join("\n")}\n\n`;
+    if ((rec.files || []).length) md += `## Files\n\n${rec.files.map(f => `- ${f.name} · ${f.kind} · ${f.from === "Client" ? "received from the firm" : "ours"} · ${f.loop}${f.owner ? " · " + f.owner : ""}${f.due ? " · due " + f.due : ""}${f.link ? " · " + f.link : ""}`).join("\n")}\n\n`;
+    return md;
+  }
+  if (kind === "artifact") {
+    let md = head(`${rec.kind} — ${rec.title}${rec.version ? " v" + rec.version : ""}${p ? " · " + p.name : ""}`);
+    md += `- Origin: ${rec.origin === "Received" ? "received from the firm" : "created by us"}\n- Status: ${rec.status || "Draft"}\n- Audience: ${rec.audience || "Internal"}\n- Owner: ${rec.owner || "—"}\n- Loop: ${rec.loop || "Received"}${rec.loopOwner ? " · " + rec.loopOwner : ""}${rec.loopDue ? " · due " + rec.loopDue : ""}\n`;
+    if (rec.link) md += `- Link: ${rec.link}\n`;
+    if (rec.feature && byId[rec.feature]) md += `- Feature: ${byId[rec.feature].name} (${byId[rec.feature].state})\n`;
+    if (p && rec.request) { const r = (p.requests || []).find(x => x.id === rec.request); if (r) md += `- Request: ${r.title}\n`; }
+    if (p && rec.step) { const st = (p.steps || []).find(x => x.id === rec.step); if (st) md += `- Workflow bottleneck: ${st.title}\n`; }
+    if (p && rec.session) { const s2 = (p.sessions || []).find(x => x.id === rec.session); if (s2) md += `- Session: ${s2.date || "undated"} · ${s2.title || s2.purpose}\n`; }
+    md += "\n";
+    if (rec.note) md += `## Note\n\n${markdownText(rec.note)}\n\n`;
+    const ev = p ? (rec.evidence || []).map(id => (p.evidence || []).find(e => e.id === id)).filter(Boolean) : [];
+    if (ev.length) md += `## Evidence\n\n${ev.map(e => `- [${e.kind}] ${e.text}${e.speaker ? " · " + e.speaker : ""}`).join("\n")}\n\n`;
+    return md;
+  }
+  if (kind === "decision") {
+    let md = head(`Product decision — ${rec.title}`);
+    md += `- State: ${rec.state}\n- Owner: ${rec.owner || "Uzziel"} (CPO)\n- Date: ${rec.date || "—"}\n- Cofounder alignment: ${rec.alignment}\n`;
+    if (rec.state === "Decided" && ["Agreed", "Not required"].indexOf(rec.alignment) === -1) md += `- **Build blocked until aligned**\n`;
+    if (p) md += `- Pilot: ${p.name}\n`;
+    const L = rec.links || {};
+    if (L.feature && byId[L.feature]) md += `- Feature: ${byId[L.feature].name} (${byId[L.feature].state})\n`;
+    if (p && L.request) { const r = (p.requests || []).find(x => x.id === L.request); if (r) md += `- Request: ${r.title}\n`; }
+    if (p && L.step) { const st = (p.steps || []).find(x => x.id === L.step); if (st) md += `- Workflow step: ${st.title}\n`; }
+    if (p && L.artifact) { const a = (p.artifacts || []).find(x => x.id === L.artifact); if (a) md += `- Artifact: ${a.title}\n`; }
+    if (p && L.deliverable) { const d = (p.deliverables || []).find(x => x.id === L.deliverable); if (d) md += `- Deliverable: ${d.title}\n`; }
+    if (rec.pending) md += `- Gated transition: ${rec.pending.kind} → ${rec.pending.to}${rec.applied ? " (applied)" : " (waiting)"}\n`;
+    md += "\n";
+    if (rec.rationale) md += `## Rationale\n\n${rec.rationale}\n\n`;
+    const ev = p ? (rec.evidence || []).map(id => (p.evidence || []).find(e => e.id === id)).filter(Boolean) : [];
+    if (ev.length) md += `## Evidence\n\n${ev.map(e => `- [${e.kind}] ${e.text}${e.speaker ? " · " + e.speaker : ""}`).join("\n")}\n\n`;
+    return md;
+  }
+  return head("Record");
 }
 
 function csv(rows) {

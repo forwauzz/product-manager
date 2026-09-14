@@ -148,6 +148,13 @@ export function normalize(state) {
   const links = v => { const o = {}; if (v && typeof v === "object") ["session", "evidence", "request", "deliverable", "feature", "step", "question"].forEach(k => { if (v[k]) o[k] = str(v[k]); }); return o; };
   const arr = v => Array.isArray(v) ? v.filter(x => x && typeof x === "object") : [];
   const strIds = v => Array.isArray(v) ? v.filter(x => typeof x === "string") : [];
+  const SESSION_STAGES = ["Planned", "Recorded", "Transcript added", "Extracted draft", "Human reviewed", "Follow-ups closed"];
+  const Q_STATES = ["Unanswered", "Candidate answer from transcript", "Confirmed by client", "Superseded"];
+  const LOOP = ["Received", "Needs analysis", "Action/prototype created", "Reviewed with firm", "Validated/Closed"];
+  const FILE_KINDS = ["Recording", "Transcript", "Raw notes", "Summary", "Received file", "Output", "Other"];
+  const ART_STATUS = ["Draft", "Shared", "Reviewed", "Final", "Retired"];
+  const drv = v => ({ fileId: str(v && v.fileId), status: ["Not in Drive", "Linked", "Synced", "Error"].indexOf(v && v.status) !== -1 ? v.status : (v && v.fileId ? "Synced" : "Not in Drive"), syncedAt: str(v && v.syncedAt), error: str(v && v.error) });
+  const oneOf = (list, v, d) => list.indexOf(v) !== -1 ? v : d;
   s.pilots = s.pilots.filter(p => p && typeof p === "object").map(p => ({
     id: String(p.id || uid()), name: String(p.name || "Untitled pilot"),
     status: PILOT_STATUS.indexOf(p.status) !== -1 ? p.status : "Prospect",
@@ -159,7 +166,7 @@ export function normalize(state) {
       id: String(d.id || uid()), title: String(d.title || "Untitled deliverable"), note: String(d.note || ""),
       tag: ["Quick win", "Big bet", "Later", "Blocked"].indexOf(d.tag) !== -1 ? d.tag : "",
       features: Array.isArray(d.features) ? d.features.filter(x => typeof x === "string") : [],
-      status: d.status, validation: d.validation
+      status: d.status, validation: d.validation, decisionRef: d.decisionRef
     })),
     requests: (Array.isArray(p.requests) ? p.requests : []).filter(r => r && typeof r === "object").map(r => ({
       id: String(r.id || uid()), title: String(r.title || "Untitled request"),
@@ -167,7 +174,7 @@ export function normalize(state) {
       fit: ["Core to ALIE", "Adjacent", "Out of scope"].indexOf(r.fit) !== -1 ? r.fit : "",
       decision: ["Undecided", "Build", "Integrate or partner", "Later", "Declined"].indexOf(r.decision) !== -1 ? r.decision : "Undecided",
       reason: String(r.reason || ""), source: String(r.source || ""), feature: String(r.feature || ""),
-      evidence: r.evidence, validation: r.validation,
+      evidence: r.evidence, validation: r.validation, decisionRef: r.decisionRef,
       created: Number(r.created) || Date.now(), updated: Number(r.updated) || Date.now()
     })),
     stack: (Array.isArray(p.stack) ? p.stack : []).filter(x => x && typeof x === "object").map(x => ({
@@ -179,29 +186,53 @@ export function normalize(state) {
     objective: str(p.objective),
     nextTouch: { date: str(p.nextTouch && p.nextTouch.date), note: str(p.nextTouch && p.nextTouch.note) },
     people: arr(p.people).map(x => ({ id: str(x.id || uid()), name: str(x.name || "Unnamed"), role: str(x.role), side: x.side === "Internal" ? "Internal" : "Client", note: str(x.note) })),
-    sessions: arr(p.sessions).map(x => ({ id: str(x.id || uid()), date: str(x.date), title: str(x.title), participants: str(x.participants), purpose: str(x.purpose), links: str(x.links), summary: str(x.summary), findings: str(x.findings), draft: !!x.draft, created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
-    evidence: arr(p.evidence).map(x => ({ id: str(x.id || uid()), text: str(x.text), kind: EV_KINDS.indexOf(x.kind) !== -1 ? x.kind : "Unsorted", session: str(x.session), source: str(x.source), speaker: str(x.speaker), note: str(x.note), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    sessions: arr(p.sessions).map(x => ({ id: str(x.id || uid()), date: str(x.date), time: str(x.time), title: str(x.title), participants: str(x.participants), purpose: str(x.purpose), agenda: str(x.agenda), links: str(x.links), summary: str(x.summary), findings: str(x.findings), draft: !!x.draft,
+      stage: oneOf(SESSION_STAGES, x.stage, x.date && x.date > new Date().toISOString().slice(0, 10) ? "Planned" : "Recorded"),
+      drive: { recording: str(x.drive && x.drive.recording), transcript: str(x.drive && x.drive.transcript), rawNotes: str(x.drive && x.drive.rawNotes), summary: str(x.drive && x.drive.summary), receivedFiles: str(x.drive && x.drive.receivedFiles), folder: str(x.drive && x.drive.folder) },
+      transcript: str(x.transcript), extractedAt: num(x.extractedAt, 0),
+      files: arr(x.files).map(f => ({ id: str(f.id || uid()), name: str(f.name || "File"), link: str(f.link), kind: oneOf(FILE_KINDS, f.kind, "Other"), from: f.from === "Client" ? "Client" : "Us", loop: oneOf(LOOP, f.loop, "Received"), owner: str(f.owner), due: str(f.due), note: str(f.note), drive: drv(f.drive), created: num(f.created, Date.now()), updated: num(f.updated, Date.now()) })),
+      doc: drv(x.doc), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    evidence: arr(p.evidence).map(x => ({ id: str(x.id || uid()), text: str(x.text), kind: EV_KINDS.indexOf(x.kind) !== -1 ? x.kind : "Unsorted", session: str(x.session), source: str(x.source), speaker: str(x.speaker), timestamp: str(x.timestamp), draft: !!x.draft, note: str(x.note), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     steps: arr(p.steps).map((x, i) => ({ id: str(x.id || uid()), order: Number.isFinite(Number(x.order)) ? Number(x.order) : i, title: str(x.title || "Untitled step"), version: x.version === "proposed" ? "proposed" : "current", actor: str(x.actor), trigger: str(x.trigger), action: str(x.action), reasoning: str(x.reasoning), output: str(x.output), next: str(x.next), systems: str(x.systems), evidence: strIds(x.evidence), draft: !!x.draft, created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     workflowVersion: Math.max(1, Math.round(num(p.workflowVersion, 1))),
     workflowHistory: arr(p.workflowHistory).map(h => ({ id: str(h.id || uid()), v: num(h.v, 1), label: str(h.label), at: num(h.at, Date.now()), steps: arr(h.steps) })),
-    questions: arr(p.questions).map(x => ({ id: str(x.id || uid()), text: str(x.text), status: x.status === "Answered" ? "Answered" : "Open", answer: str(x.answer), session: str(x.session), step: str(x.step), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    questions: arr(p.questions).map(x => {
+      const state = oneOf(Q_STATES, x.state, x.status === "Answered" ? "Confirmed by client" : "Unanswered");
+      return { id: str(x.id || uid()), text: str(x.text), state, status: state === "Confirmed by client" || state === "Superseded" ? "Answered" : "Open", answer: str(x.answer), note: str(x.note),
+        candidate: x.candidate && typeof x.candidate === "object" ? { text: str(x.candidate.text), evidence: str(x.candidate.evidence), session: str(x.candidate.session), contradicts: !!x.candidate.contradicts, partial: !!x.candidate.partial } : null,
+        session: str(x.session), step: str(x.step), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) };
+    }),
     actions: arr(p.actions).map(x => ({ id: str(x.id || uid()), title: str(x.title), owner: str(x.owner), due: str(x.due), side: x.side === "Client" ? "Client" : "Internal", status: ["Open", "Done", "Blocked"].indexOf(x.status) !== -1 ? x.status : "Open", note: str(x.note), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     fit: Object.fromEntries(Object.entries(p.fit && typeof p.fit === "object" && !Array.isArray(p.fit) ? p.fit : {}).map(([k, v]) => [str(k), { fit: v && FIT_VALUES.indexOf(v.fit) !== -1 ? v.fit : "Not assessed", supports: str(v && v.supports), evidence: strIds(v && v.evidence), unknown: str(v && v.unknown), next: str(v && v.next), updated: num(v && v.updated, Date.now()) }])),
     recaps: arr(p.recaps).map(x => ({ id: str(x.id || uid()), week: str(x.week), internal: str(x.internal), client: str(x.client), clientReviewed: !!x.clientReviewed, created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
-    artifacts: arr(p.artifacts).map(x => ({ id: str(x.id || uid()), title: str(x.title || "Untitled"), link: str(x.link), kind: ["Prototype", "Document", "Recording", "Other"].indexOf(x.kind) !== -1 ? x.kind : "Other", note: str(x.note), feature: str(x.feature), request: str(x.request), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    artifacts: arr(p.artifacts).map(x => ({ id: str(x.id || uid()), title: str(x.title || "Untitled"), link: str(x.link), kind: ["Prototype", "Document", "Recording", "Other"].indexOf(x.kind) !== -1 ? x.kind : "Other", note: str(x.note), feature: str(x.feature), request: str(x.request),
+      audience: oneOf(["Internal", "Client", "Both"], x.audience, "Internal"), version: str(x.version), status: oneOf(ART_STATUS, x.status, "Draft"), owner: str(x.owner), session: str(x.session), origin: x.origin === "Received" ? "Received" : "Created", step: str(x.step), evidence: strIds(x.evidence), decision: str(x.decision),
+      loop: oneOf(LOOP, x.loop, "Received"), loopOwner: str(x.loopOwner), loopDue: str(x.loopDue), drive: drv(x.drive), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     decisions: arr(p.decisions).map(x => ({ id: str(x.id || uid()), title: str(x.title || "Untitled decision"), decision: str(x.decision), reason: str(x.reason), date: str(x.date), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     created: Number(p.created) || Date.now(), updated: Number(p.updated) || Date.now()
   }));
   s.pilots.forEach(p => {
-    p.deliverables.forEach(d => { d.status = DELIV_STATUS.indexOf(d.status) !== -1 ? d.status : "Proposed"; d.validation = validation(d.validation); });
-    p.requests.forEach(r => { r.evidence = strIds(r.evidence); r.validation = validation(r.validation); });
+    p.deliverables.forEach(d => { d.status = DELIV_STATUS.indexOf(d.status) !== -1 ? d.status : "Proposed"; d.validation = validation(d.validation); d.decisionRef = str(d.decisionRef); });
+    p.requests.forEach(r => { r.evidence = strIds(r.evidence); r.validation = validation(r.validation); r.decisionRef = str(r.decisionRef); });
+    p.artifacts.forEach(a => { if (a.session && !p.sessions.some(s2 => s2.id === a.session)) a.session = ""; a.evidence = a.evidence.filter(id => p.evidence.some(e => e.id === id)); });
     const evIds = new Set(p.evidence.map(e => e.id)), sIds = new Set(p.sessions.map(x => x.id)), stIds = new Set(p.steps.map(x => x.id));
     p.steps.forEach(st => { st.evidence = st.evidence.filter(id => evIds.has(id)); });
     p.requests.forEach(r => { r.evidence = r.evidence.filter(id => evIds.has(id)); });
     Object.values(p.fit).forEach(v => { v.evidence = v.evidence.filter(id => evIds.has(id)); });
     p.evidence.forEach(e => { if (e.session && !sIds.has(e.session)) e.session = ""; if (e.links.step && !stIds.has(e.links.step)) delete e.links.step; });
-    p.questions.forEach(q => { if (q.session && !sIds.has(q.session)) q.session = ""; if (q.step && !stIds.has(q.step)) q.step = ""; });
+    p.questions.forEach(q => { if (q.session && !sIds.has(q.session)) q.session = ""; if (q.step && !stIds.has(q.step)) q.step = ""; if (q.candidate && q.candidate.evidence && !evIds.has(q.candidate.evidence)) q.candidate.evidence = ""; });
   });
+  /* product decisions: the gate through which anything moves toward Building or client testing */
+  const DEC_STATE = ["Proposed", "Decided", "Deferred", "Rejected", "Revisit"];
+  const ALIGN = ["Needs discussion", "Discussed", "Agreed", "Disagreed", "Not required"];
+  const pilotIds = new Set(s.pilots.map(p => p.id));
+  s.decisions = arr(s.decisions).map(d => ({
+    id: str(d.id || uid()), title: str(d.title || "Untitled decision"), state: oneOf(DEC_STATE, d.state, "Proposed"), owner: str(d.owner || "Uzziel"), date: str(d.date),
+    rationale: str(d.rationale), alignment: oneOf(ALIGN, d.alignment, "Needs discussion"), pilot: pilotIds.has(d.pilot) ? d.pilot : "",
+    links: links(d.links), evidence: strIds(d.evidence),
+    pending: d.pending && typeof d.pending === "object" && d.pending.kind ? { kind: str(d.pending.kind), id: str(d.pending.id), to: str(d.pending.to), pilot: str(d.pending.pilot) } : null,
+    applied: !!d.applied, drive: drv(d.drive), created: num(d.created, Date.now()), updated: num(d.updated, Date.now())
+  }));
   if (!Array.isArray(s.log)) s.log = [];
   s.log = s.log.filter(e => e && typeof e === "object" && e.id).map(e => ({
     id: String(e.id), t: Number(e.t) || 0, who: String(e.who || ""), fid: String(e.fid || ""), fname: String(e.fname || ""),
@@ -235,6 +266,7 @@ export function normalize(state) {
     if (typeof f.rndPlan !== "string") f.rndPlan = "";
     if (typeof f.rndFindings !== "string") f.rndFindings = "";
     if (typeof f.driveDoc !== "string") f.driveDoc = "";
+    if (typeof f.decisionRef !== "string") f.decisionRef = "";
     if (!Array.isArray(f.icps)) f.icps = [];
     f.icps = f.icps.filter(x => typeof x === "string" && icpIds.has(x));
     if (typeof f.parent !== "string" || !f.parent) f.parent = null;
@@ -350,7 +382,7 @@ async function mutate(store, fn, who) {
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
 const EFFORT_UNITS = ["days", "weeks", "months"];
-const EDITABLE = ["name", "state", "owner", "spaces", "period", "effort", "effortUnit", "agreed", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndPlan", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections"];
+const EDITABLE = ["name", "state", "owner", "spaces", "period", "effort", "effortUnit", "agreed", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndPlan", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections", "decisionRef"];
 
 /* Handle one API request. `req` = { method, path, query, body } where `path` is relative to /api
    (for example "/features/abc") and `query` is a plain object. Returns { status, body, headers }. */

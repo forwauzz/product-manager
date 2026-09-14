@@ -337,3 +337,38 @@ test("an older pilot record gains empty discovery collections and keeps everythi
   ["sessions", "evidence", "steps", "questions", "actions", "recaps", "artifacts", "decisions", "people"].forEach(k => assert.deepEqual(p[k], [], k));
   assert.deepEqual(p.fit, {});
 });
+
+test("meeting workflow, decision gate records and artifact loop survive a round trip", async () => {
+  const st = await api("GET", "/api/state");
+  const s = st.body.state;
+  const f = s.features[0];
+  s.pilots = [{ id: "p11", name: "Le Cabinet M", status: "Discovery",
+    sessions: [{ id: "s1", date: "2026-09-17", time: "14:00", title: "Onsite with Amélie", stage: "Planned", agenda: "Walk a different case", drive: { recording: "https://drive.google.com/file/d/rec", folder: "https://drive.google.com/drive/folders/abc" }, transcript: "[00:01] Amélie: on relit tout", files: [{ id: "f1", name: "Sommaire", kind: "Received file", from: "Client", loop: "Needs analysis", owner: "Uzziel", due: "2026-09-20" }, { id: "f2", name: "x", kind: "nope", from: "??", loop: "??" }] }, { id: "s2", title: "Old", stage: "bogus", date: "2026-01-01" }],
+    evidence: [{ id: "e1", text: "on relit tout", kind: "Direct quote", session: "s1", speaker: "Amélie", timestamp: "00:01", draft: true }],
+    questions: [{ id: "q1", text: "Why the chronology?", state: "Candidate answer from transcript", candidate: { text: "on relit tout", evidence: "e1", session: "s1", partial: true }, session: "s1" }, { id: "q2", text: "Old style", status: "Answered" }, { id: "q3", text: "Bad state", state: "nope" }],
+    artifacts: [{ id: "a1", title: "Portal prototype", kind: "Prototype", origin: "Received", audience: "Both", version: "2", status: "Shared", owner: "David", session: "s1", evidence: ["e1", "ghost"], loop: "Reviewed with firm", loopOwner: "Uzziel", loopDue: "2026-09-30", drive: { fileId: "doc1", status: "Synced", syncedAt: "2026-09-14T00:00:00Z" } }],
+    deliverables: [{ id: "d1", title: "Clean file", status: "In delivery", decisionRef: "dec1" }],
+    requests: [{ id: "r1", title: "Batch email", decision: "Build", decisionRef: "dec1" }]
+  }];
+  s.decisions = [{ id: "dec1", title: "Build batch email", state: "Decided", owner: "Uzziel", date: "2026-09-14", rationale: "Because", alignment: "Discussed", pilot: "p11", links: { request: "r1", feature: f.id }, evidence: ["e1"], pending: { kind: "request", id: "r1", to: "Build", pilot: "p11" } }, { id: "dec2", title: "Bad", state: "nope", alignment: "nope", pilot: "ghost" }];
+  const put = await api("PUT", "/api/state", { version: st.body.version, state: s, who: "Uzziel" });
+  assert.equal(put.status, 200);
+  const p = put.body.state.pilots[0];
+  assert.equal(p.sessions[0].stage, "Planned");
+  assert.equal(p.sessions[0].drive.recording, "https://drive.google.com/file/d/rec");
+  assert.equal(p.sessions[0].files[0].loop, "Needs analysis");
+  assert.equal(p.sessions[0].files[1].kind, "Other"); assert.equal(p.sessions[0].files[1].from, "Us"); assert.equal(p.sessions[0].files[1].loop, "Received");
+  assert.equal(p.sessions[1].stage, "Recorded", "an unknown stage on a past date is Recorded");
+  assert.equal(p.evidence[0].draft, true); assert.equal(p.evidence[0].timestamp, "00:01");
+  assert.equal(p.questions[0].state, "Candidate answer from transcript"); assert.equal(p.questions[0].status, "Open"); assert.equal(p.questions[0].candidate.partial, true);
+  assert.equal(p.questions[1].state, "Confirmed by client", "old Answered maps to Confirmed by client");
+  assert.equal(p.questions[2].state, "Unanswered");
+  const a = p.artifacts[0];
+  assert.equal(a.origin, "Received"); assert.equal(a.audience, "Both"); assert.equal(a.loop, "Reviewed with firm"); assert.deepEqual(a.evidence, ["e1"]); assert.equal(a.drive.status, "Synced");
+  assert.equal(p.deliverables[0].decisionRef, "dec1"); assert.equal(p.requests[0].decisionRef, "dec1");
+  const dec = put.body.state.decisions;
+  assert.equal(dec.length, 2);
+  assert.equal(dec[0].alignment, "Discussed"); assert.equal(dec[0].pending.to, "Build"); assert.deepEqual(dec[0].evidence, ["e1"]);
+  assert.equal(dec[1].state, "Proposed"); assert.equal(dec[1].alignment, "Needs discussion"); assert.equal(dec[1].pilot, "", "an unknown pilot link is dropped");
+  assert.equal(dec[1].owner, "Uzziel");
+});

@@ -1,7 +1,7 @@
 /* Google Drive sync from the Worker. Needs a service-account JSON key in the GOOGLE_SA_KEY secret
    and the target folders shared with that account. Never logs the key. */
 import { D1Store } from "./store-d1.js";
-import { pilotMarkdown, rndMarkdown, featuresCsv, logCsv, driveFolderId } from "../shared/exports.js";
+import { pilotMarkdown, rndMarkdown, recordMarkdown, featuresCsv, logCsv, driveFolderId } from "../shared/exports.js";
 
 const SCOPE = "https://www.googleapis.com/auth/drive";
 const MARK = "drive-sync";
@@ -133,6 +133,52 @@ export async function status(env) {
     version: doc.version, syncedVersion: mark.version || 0, at: mark.at || null, ok: mark.ok !== false, error: mark.error || "", files: mark.files || [], pending: (mark.version || 0) !== doc.version };
 }
 
+function pushedRecords(state) {
+  const out = [];
+  (state.pilots || []).forEach(p => {
+    (p.sessions || []).forEach(s => { if (s.doc && s.doc.fileId) out.push({ kind: "session", rec: Object.assign(s, { drive: s.doc }), pilot: p, key: "doc" }); });
+    (p.artifacts || []).forEach(a => { if (a.drive && a.drive.fileId) out.push({ kind: "artifact", rec: a, pilot: p }); });
+  });
+  (state.decisions || []).forEach(d => { if (d.drive && d.drive.fileId) out.push({ kind: "decision", rec: d, pilot: (state.pilots || []).find(p => p.id === d.pilot) || null }); });
+  return out;
+}
+function findRecord(state, kind, id, pilotId) {
+  const p = (state.pilots || []).find(x => x.id === pilotId) || null;
+  if (kind === "session") { const s = p && (p.sessions || []).find(x => x.id === id); return s ? { rec: s, pilot: p, folder: driveFolderId(s.drive && s.drive.folder) || driveFolderId(p.link), slot: "doc" } : null; }
+  if (kind === "artifact") { const a = p && (p.artifacts || []).find(x => x.id === id); return a ? { rec: a, pilot: p, folder: driveFolderId(p.link), slot: "drive" } : null; }
+  if (kind === "decision") { const d = (state.decisions || []).find(x => x.id === id); if (!d) return null; const pp = (state.pilots || []).find(x => x.id === d.pilot) || null; return { rec: d, pilot: pp, folder: (pp && driveFolderId(pp.link)) || driveFolderId(state.driveFolder), slot: "drive" }; }
+  return null;
+}
+/* Push one record to Drive now: create its Google Doc the first time, update it afterwards; the outcome is written back on the record. */
+export async function pushRecord(env, body) {
+  if (!configured(env)) return { ok: false, error: "Drive sync is not set up yet." };
+  if (oauthReady(env) && !(await connectedAccount(env))) return { ok: false, error: "Google Drive is not connected yet." };
+  const store = new D1Store(env.DB);
+  const doc = await store.load();
+  const hit = findRecord(doc.state, body.kind, body.id, body.pilot);
+  if (!hit) return { ok: false, error: "Record not found." };
+  const now = new Date();
+  const cur = hit.rec[hit.slot] || {};
+  let result;
+  try {
+    const token = await accessToken(env);
+    const md = recordMarkdown(doc.state, body.kind, hit.rec, hit.pilot, now);
+    if (cur.fileId) { await updateMedia(token, cur.fileId, "text/markdown", md); result = { fileId: cur.fileId, action: "updated" }; }
+    else {
+      if (!hit.folder) throw new Error("No Drive folder: set the pilot's folder link first.");
+      const name = (body.kind === "session" ? "Session — " : body.kind === "artifact" ? "Artifact — " : "Decision — ") + (hit.rec.title || hit.rec.purpose || "Untitled");
+      const made = await createDoc(token, hit.folder, name, md);
+      result = { fileId: made.id, action: "created" };
+    }
+    hit.rec[hit.slot] = { fileId: result.fileId, status: "Synced", syncedAt: now.toISOString(), error: "" };
+  } catch (e) {
+    hit.rec[hit.slot] = { fileId: cur.fileId || "", status: "Error", syncedAt: cur.syncedAt || "", error: String(e.message || e).slice(0, 200) };
+    result = { error: hit.rec[hit.slot].error };
+  }
+  hit.rec.updated = now.getTime();
+  const saved = await store.save(doc.state, doc.version);
+  return { ok: !result.error, error: result.error || "", drive: hit.rec[hit.slot], version: saved.version, fileId: hit.rec[hit.slot].fileId };
+}
 /* Sync everything that has a Drive home: one Google Doc per pilot with a folder, one per research item in the R&D folder, plus the two sheets. */
 export async function syncAll(env, opts) {
   opts = opts || {};
@@ -162,6 +208,15 @@ export async function syncAll(env, opts) {
         files.push({ pilot: p.name, id: made.id, action: "created" });
       }
     } catch (e) { errors.push(p.name + ": " + e.message); }
+  }
+  /* per-record docs that were pushed once are refreshed on every sync */
+  for (const rec of pushedRecords(doc.state)) {
+    if (!rec.rec.drive || !rec.rec.drive.fileId) continue;
+    try {
+      await updateMedia(token, rec.rec.drive.fileId, "text/markdown", recordMarkdown(doc.state, rec.kind, rec.rec, rec.pilot, now));
+      rec.rec.drive = { fileId: rec.rec.drive.fileId, status: "Synced", syncedAt: now.toISOString(), error: "" }; changedDocIds = true;
+      files.push({ record: rec.kind + ": " + (rec.rec.title || rec.rec.name || ""), id: rec.rec.drive.fileId, action: "updated" });
+    } catch (e) { rec.rec.drive = Object.assign({}, rec.rec.drive, { status: "Error", error: String(e.message || e).slice(0, 200) }); changedDocIds = true; errors.push(rec.kind + " " + (rec.rec.title || "") + ": " + e.message); }
   }
   const rndFolder = driveFolderId(doc.state.rndFolder) || env.RND_FOLDER_ID || "";
   if (rndFolder) {

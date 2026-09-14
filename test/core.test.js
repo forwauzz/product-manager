@@ -151,7 +151,7 @@ test("features can nest one level under a parent in the same project", async () 
   assert.equal(orphan.body.parent, null, "deleting a parent releases its children");
 });
 
-import { pilotMarkdown, featuresCsv, logCsv, driveFolderId } from "../shared/exports.js";
+import { pilotMarkdown, recordMarkdown, featuresCsv, logCsv, driveFolderId } from "../shared/exports.js";
 test("exports: pilot record, sheets and folder ids come out of the state", () => {
   const S = normalize(seed());
   const f = S.features[0];
@@ -210,4 +210,25 @@ test("pilotMarkdown carries the discovery record and keeps live and validated ap
   assert.match(md, /## Workflow map \(v1\)[\s\S]*\*\*1\. Chronology\*\*[\s\S]*Open questions: Who uses it next\?/);
   assert.match(md, /- Status: In delivery · Client validation: Not validated/);
   assert.match(md, /Week of 2026-09-08 · not yet reviewed by the client/);
+});
+
+test("recordMarkdown writes a session, an artifact and a decision, and the pilot doc keeps the gate visible", () => {
+  let s = normalize(seed());
+  s.pilots = [{ id: "p", name: "Le Cabinet M", status: "Discovery", link: "https://drive.google.com/drive/folders/abc",
+    sessions: [{ id: "s1", date: "2026-09-17", title: "Onsite with Amélie", stage: "Planned", agenda: "Walk a case\nLook at preclassification", drive: { transcript: "https://drive.google.com/t" }, files: [{ id: "f1", name: "Sommaire", kind: "Received file", from: "Client", loop: "Needs analysis" }] }],
+    questions: [{ id: "q1", text: "Why the chronology?", state: "Unanswered", session: "s1" }],
+    artifacts: [{ id: "a1", title: "Portal", kind: "Prototype", origin: "Received", version: "2", status: "Shared", audience: "Client", loop: "Received" }] }];
+  s.decisions = [{ id: "d1", title: "Build batch email", state: "Decided", alignment: "Needs discussion", pilot: "p", rationale: "Because", links: {} }];
+  s = normalize(s);
+  const p = s.pilots[0];
+  const sm = recordMarkdown(s, "session", p.sessions[0], p, new Date("2026-09-14T00:00:00Z"));
+  assert.match(sm, /^# Session — Onsite with Amélie · Le Cabinet M/);
+  assert.match(sm, /- Stage: Planned/); assert.match(sm, /- Transcript: https:\/\/drive\.google\.com\/t/); assert.match(sm, /## Agenda\n\nWalk a case/); assert.match(sm, /Why the chronology\? — Unanswered/); assert.match(sm, /Sommaire · Received file · received from the firm · Needs analysis/);
+  const am = recordMarkdown(s, "artifact", p.artifacts[0], p);
+  assert.match(am, /^# Prototype — Portal v2/); assert.match(am, /received from the firm/); assert.match(am, /Audience: Client/);
+  const dm = recordMarkdown(s, "decision", s.decisions[0], p);
+  assert.match(dm, /Cofounder alignment: Needs discussion/); assert.match(dm, /\*\*Build blocked until aligned\*\*/);
+  const pm = pilotMarkdown(s, p);
+  assert.match(pm, /## Product decisions \(1\)[\s\S]*BUILD BLOCKED UNTIL ALIGNED/);
+  assert.match(pm, /- Stage: Planned/);
 });

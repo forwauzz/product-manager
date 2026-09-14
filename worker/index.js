@@ -2,7 +2,7 @@
    against D1, and gates everything behind a passcode when APP_PASSCODE is set. */
 import { handleApi } from "../shared/core.js";
 import { D1Store } from "./store-d1.js";
-import { syncAll as driveSyncAll, status as driveStatus, configured as driveConfigured, oauthReady as driveOauthReady, authUrl as driveAuthUrl, finishConnect as driveFinishConnect, disconnect as driveDisconnect, connectedAccount as driveAccount } from "./drive.js";
+import { syncAll as driveSyncAll, status as driveStatus, configured as driveConfigured, oauthReady as driveOauthReady, authUrl as driveAuthUrl, finishConnect as driveFinishConnect, disconnect as driveDisconnect, connectedAccount as driveAccount, pushRecord as drivePush } from "./drive.js";
 
 const COOKIE = "pm_auth";
 const COOKIE_DAYS = 30;
@@ -149,6 +149,13 @@ export default {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
       if (!env.DB) return jsonResponse(500, { error: "D1 binding DB is not configured." });
       try { return jsonResponse(200, await driveStatus(env)); } catch (e) { return jsonResponse(500, { error: e.message }); }
+    }
+    if (path === "/api/drive/push" && request.method === "POST") {
+      if (!authed) return jsonResponse(401, { error: "Sign in first." });
+      let body = {};
+      try { body = await request.json(); } catch (_) { return jsonResponse(400, { ok: false, error: "Body must be JSON." }); }
+      if (!driveConfigured(env)) return jsonResponse(409, { ok: false, error: "Drive sync is not set up yet." });
+      try { return jsonResponse(200, await drivePush(env, body)); } catch (e) { return jsonResponse(500, { ok: false, error: e.message }); }
     }
     if (path === "/api/drive/sync" && request.method === "POST") {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
