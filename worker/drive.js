@@ -138,6 +138,7 @@ function pushedRecords(state) {
   (state.pilots || []).forEach(p => {
     (p.sessions || []).forEach(s => { if (s.doc && s.doc.fileId) out.push({ kind: "session", rec: Object.assign(s, { drive: s.doc }), pilot: p, key: "doc" }); });
     (p.artifacts || []).forEach(a => { if (a.drive && a.drive.fileId) out.push({ kind: "artifact", rec: a, pilot: p }); });
+    (p.problems || []).forEach(a => { if (a.drive && a.drive.fileId) out.push({ kind: "problem", rec: a, pilot: p }); });
   });
   (state.decisions || []).forEach(d => { if (d.drive && d.drive.fileId) out.push({ kind: "decision", rec: d, pilot: (state.pilots || []).find(p => p.id === d.pilot) || null }); });
   return out;
@@ -146,6 +147,7 @@ function findRecord(state, kind, id, pilotId) {
   const p = (state.pilots || []).find(x => x.id === pilotId) || null;
   if (kind === "session") { const s = p && (p.sessions || []).find(x => x.id === id); return s ? { rec: s, pilot: p, folder: driveFolderId(s.drive && s.drive.folder) || driveFolderId(p.link), slot: "doc" } : null; }
   if (kind === "artifact") { const a = p && (p.artifacts || []).find(x => x.id === id); return a ? { rec: a, pilot: p, folder: driveFolderId(p.link), slot: "drive" } : null; }
+  if (kind === "problem") { const a = p && (p.problems || []).find(x => x.id === id); return a ? { rec: a, pilot: p, folder: driveFolderId(p.link), slot: "drive" } : null; }
   if (kind === "decision") { const d = (state.decisions || []).find(x => x.id === id); if (!d) return null; const pp = (state.pilots || []).find(x => x.id === d.pilot) || null; return { rec: d, pilot: pp, folder: (pp && driveFolderId(pp.link)) || driveFolderId(state.driveFolder), slot: "drive" }; }
   return null;
 }
@@ -166,7 +168,7 @@ export async function pushRecord(env, body) {
     if (cur.fileId) { await updateMedia(token, cur.fileId, "text/markdown", md); result = { fileId: cur.fileId, action: "updated" }; }
     else {
       if (!hit.folder) throw new Error("No Drive folder: set the pilot's folder link first.");
-      const name = (body.kind === "session" ? "Session — " : body.kind === "artifact" ? "Artifact — " : "Decision — ") + (hit.rec.title || hit.rec.purpose || "Untitled");
+      const name = (body.kind === "session" ? "Session — " : body.kind === "artifact" ? "Artifact — " : body.kind === "problem" ? "Customer problem — " : "Decision — ") + (hit.rec.title || hit.rec.purpose || "Untitled");
       const made = await createDoc(token, hit.folder, name, md);
       result = { fileId: made.id, action: "created" };
     }

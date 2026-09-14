@@ -145,6 +145,21 @@ export function pilotMarkdown(S, p, when) {
   }
   const fitKeys = Object.keys(p.fit || {}).filter(k => byId[k]);
   if (fitKeys.length) md += `## Feature fit (${fitKeys.length})\n\n${fitKeys.map(k => { const v = p.fit[k], f = byId[k]; return `- ${fname(f)} — engineering: ${f.state} · pilot fit: ${v.fit}${v.supports ? " · supports: " + plainText(v.supports) : ""}${v.unknown ? " · unknown: " + plainText(v.unknown) : ""}${v.next ? " · next: " + plainText(v.next) : ""}`; }).join("\n")}\n\n`;
+  const problems = (p.problems || []);
+  if (problems.length) {
+    md += `## Customer problems (${problems.length})\n\n`;
+    problems.forEach(pr => {
+      const fr = pr.frame || {}, filled = ["trigger", "pain", "role", "workaround", "consequence", "deliverable", "better"].filter(k => (fr[k] || "").trim()).length;
+      md += `### ${pr.title} · ${pr.status}${pr.confidence ? " · confidence " + pr.confidence : ""} · ${filled} of 7 framed\n\n`;
+      [["Trigger", fr.trigger], ["Specific pain", fr.pain], ["Affected role/team", fr.role], ["Current workaround", fr.workaround], ["Business consequence", fr.consequence], ["Decision/deliverable at stake", fr.deliverable], ["Better state", fr.better]].forEach(([k, v], i) => { const kk = ["trigger", "pain", "role", "workaround", "consequence", "deliverable", "better"][i]; const pv = pr.provenance && pr.provenance[kk]; if (v) md += `- ${k}: ${plainText(v)}${pv ? " [" + pv + "]" : ""}\n`; });
+      if (pr.statement) md += `\n**Specific problem${pr.statementDraft ? " (draft synthesis, not client evidence)" : ""}.** ${plainText(pr.statement)}\n`;
+      const evs = (pr.evidence || []).map(id => (p.evidence || []).find(e => e.id === id)).filter(Boolean);
+      if (evs.length) md += `\nEvidence: ${evs.map(e => "[" + e.kind + "] " + e.text.slice(0, 90)).join(" · ")}\n`;
+      const ro = pr.routing || {};
+      if (ro.surface || ro.output || (ro.validation && ro.validation.next)) md += `\nRouting: ${[ro.surface ? "surface " + ro.surface : "", ro.output ? "output " + plainText(ro.output) : "", (ro.capabilities || []).length ? "needs " + ro.capabilities.join(", ") : "", ro.validation && ro.validation.stage ? "validation " + ro.validation.stage : "", ro.validation && ro.validation.next ? "next " + plainText(ro.validation.next) : ""].filter(Boolean).join(" · ")}\n`;
+      md += "\n";
+    });
+  }
   if ((p.decisions || []).length) md += `## Product decisions (${p.decisions.length})\n\n${p.decisions.map(d => `- ${d.date ? d.date + " · " : ""}**${d.title}** — ${plainText(d.decision)}${d.reason ? " · why: " + plainText(d.reason) : ""}`).join("\n")}\n\n`;
   if ((p.artifacts || []).length) md += `## Prototypes and artifacts (${p.artifacts.length})\n\n${p.artifacts.map(a => `- ${a.origin === "Received" ? "Received from the firm" : "Ours"} · ${a.kind}: ${a.title}${a.version ? " v" + a.version : ""} · ${a.status || "Draft"} · ${a.audience || "Internal"} · loop: ${a.loop || "Received"}${a.owner ? " · " + a.owner : ""}${a.link ? " · " + a.link : ""}${a.note ? " · " + plainText(a.note) : ""}`).join("\n")}\n\n`;
   const pdec = (S.decisions || []).filter(d => d.pilot === p.id);
@@ -224,10 +239,31 @@ export function recordMarkdown(S, kind, rec, p, when) {
     if (p && rec.request) { const r = (p.requests || []).find(x => x.id === rec.request); if (r) md += `- Request: ${r.title}\n`; }
     if (p && rec.step) { const st = (p.steps || []).find(x => x.id === rec.step); if (st) md += `- Workflow bottleneck: ${st.title}\n`; }
     if (p && rec.session) { const s2 = (p.sessions || []).find(x => x.id === rec.session); if (s2) md += `- Session: ${s2.date || "undated"} · ${s2.title || s2.purpose}\n`; }
+    if (p && rec.problem) { const pr = (p.problems || []).find(x => x.id === rec.problem); if (pr) md += `- Customer problem: ${pr.title} (${pr.status})\n`; }
     md += "\n";
     if (rec.note) md += `## Note\n\n${markdownText(rec.note)}\n\n`;
     const ev = p ? (rec.evidence || []).map(id => (p.evidence || []).find(e => e.id === id)).filter(Boolean) : [];
     if (ev.length) md += `## Evidence\n\n${ev.map(e => `- [${e.kind}] ${e.text}${e.speaker ? " · " + e.speaker : ""}`).join("\n")}\n\n`;
+    return md;
+  }
+  if (kind === "problem") {
+    const fr = rec.frame || {}, pv = rec.provenance || {};
+    let md = head(`Customer problem — ${rec.title}${p ? " · " + p.name : ""}`);
+    md += `- Status: ${rec.status}${rec.confidence ? " · confidence " + rec.confidence : ""}\n- Owner: ${rec.owner || "—"}\n\n## Framing\n\n`;
+    [["1. Trigger", "trigger"], ["2. Specific pain", "pain"], ["3. Affected role/team", "role"], ["4. Current workaround", "workaround"], ["5. Business consequence", "consequence"], ["6. Decision/deliverable at stake", "deliverable"], ["7. Better state", "better"]].forEach(([k, kk]) => { md += `**${k}**${pv[kk] ? " · " + pv[kk] : ""}\n\n${fr[kk] ? fr[kk] : "_not yet framed_"}\n\n`; });
+    md += `## Specific problem${rec.statementDraft ? " (draft synthesis, not client evidence)" : ""}\n\n${rec.statement || "_not written_"}\n\n`;
+    const evs = p ? (rec.evidence || []).map(id => (p.evidence || []).find(e => e.id === id)).filter(Boolean) : [];
+    if (evs.length) md += `## Evidence\n\n${evs.map(e => `- [${e.kind}] ${e.text}${e.speaker ? " · " + e.speaker : ""}${e.source ? " · " + e.source : ""}`).join("\n")}\n\n`;
+    const linkLines = [];
+    if (p) { (rec.steps || []).forEach(id => { const st = (p.steps || []).find(x => x.id === id); if (st) linkLines.push("Workflow step: " + st.title); }); (rec.requests || []).forEach(id => { const r = (p.requests || []).find(x => x.id === id); if (r) linkLines.push("Request: " + r.title); }); (rec.artifacts || []).forEach(id => { const a = (p.artifacts || []).find(x => x.id === id); if (a) linkLines.push("Artifact: " + a.title); }); if (rec.session) { const s2 = (p.sessions || []).find(x => x.id === rec.session); if (s2) linkLines.push("Session: " + (s2.date || "undated") + " · " + (s2.title || s2.purpose)); } }
+    if (rec.feature && byId[rec.feature]) linkLines.push("Feature: " + byId[rec.feature].name + " (" + byId[rec.feature].state + ")");
+    if (rec.decision) { const d = (S.decisions || []).find(x => x.id === rec.decision); if (d) linkLines.push("Product decision: " + d.title + " (" + d.state + ")"); }
+    if (linkLines.length) md += `## Links\n\n${linkLines.map(l => "- " + l).join("\n")}\n\n`;
+    const ro = rec.routing || {};
+    const rl = [["Workflow today", ro.workflow], ["Desired output", ro.output], ["Primary ALIE surface", ro.surface], ["Required capabilities", (ro.capabilities || []).join(", ")], ["Ownership", ro.ownership]].filter(x => x[1]);
+    const op = ro.operating || {}; [["Data and source boundaries", op.data], ["Permissions", op.permissions], ["Retention", op.retention], ["Human review", op.review], ["Deployment and infrastructure", op.deployment], ["Model choice", op.model], ["Migration", op.migration]].forEach(x => { if (x[1]) rl.push(x); });
+    const va = ro.validation || {}; if (va.stage || va.next || va.evidence) rl.push(["Validation path", [va.stage, va.next, va.evidence ? "evidence needed: " + va.evidence : ""].filter(Boolean).join(" · ")]);
+    if (rl.length) md += `## Solution routing\n\n${rl.map(x => "- " + x[0] + ": " + x[1]).join("\n")}\n\n`;
     return md;
   }
   if (kind === "decision") {
@@ -241,6 +277,7 @@ export function recordMarkdown(S, kind, rec, p, when) {
     if (p && L.step) { const st = (p.steps || []).find(x => x.id === L.step); if (st) md += `- Workflow step: ${st.title}\n`; }
     if (p && L.artifact) { const a = (p.artifacts || []).find(x => x.id === L.artifact); if (a) md += `- Artifact: ${a.title}\n`; }
     if (p && L.deliverable) { const d = (p.deliverables || []).find(x => x.id === L.deliverable); if (d) md += `- Deliverable: ${d.title}\n`; }
+    if (p && L.problem) { const pr = (p.problems || []).find(x => x.id === L.problem); if (pr) md += `- Customer problem: ${pr.title} (${pr.status})\n`; }
     if (rec.pending) md += `- Gated transition: ${rec.pending.kind} → ${rec.pending.to}${rec.applied ? " (applied)" : " (waiting)"}\n`;
     md += "\n";
     if (rec.rationale) md += `## Rationale\n\n${rec.rationale}\n\n`;

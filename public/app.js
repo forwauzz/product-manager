@@ -2388,7 +2388,7 @@
   var SIDES = ["Client", "Internal"];
 
   function ensurePilot(p) {
-    ["people", "sessions", "evidence", "steps", "workflowHistory", "questions", "actions", "recaps", "artifacts", "decisions", "wants", "needs", "deliverables", "requests", "stack"].forEach(function (k) { if (!Array.isArray(p[k])) p[k] = []; });
+    ["people", "sessions", "evidence", "steps", "workflowHistory", "questions", "actions", "recaps", "artifacts", "decisions", "problems", "wants", "needs", "deliverables", "requests", "stack"].forEach(function (k) { if (!Array.isArray(p[k])) p[k] = []; });
     if (!p.fit || typeof p.fit !== "object") p.fit = {};
     if (!p.nextTouch || typeof p.nextTouch !== "object") p.nextTouch = { date: "", note: "" };
     if (typeof p.objective !== "string") p.objective = "";
@@ -2420,7 +2420,7 @@
     closeSideDrawer();
     var sc = el("div", "dscrim"); sc.id = "escrim"; sc.onclick = closeSideDrawer;
     document.body.appendChild(sc);
-    var d = el("div", "drawer edrawer" + (o.wide ? " wide" : "")); d.id = "edrawer";
+    var d = el("div", "drawer edrawer" + (o.wide ? " wide" : "") + (o.cls ? " " + o.cls : "")); d.id = "edrawer";
     d.setAttribute("role", "dialog"); d.setAttribute("aria-label", title);
     var x = el("button", "dclose", "×"); x.setAttribute("aria-label", "Close"); x.onclick = closeSideDrawer;
     d.appendChild(x);
@@ -2553,7 +2553,7 @@
 
   /* ---------- page ---------- */
   var PILOT_LEVELS = [["overview", "Overview"], ["discovery", "Discovery"], ["delivery", "Delivery"]];
-  var PILOT_SUBS = { discovery: [["sessions", "Sessions"], ["workflow", "Workflow"], ["inbox", "Inbox"]],
+  var PILOT_SUBS = { discovery: [["sessions", "Sessions"], ["workflow", "Workflow"], ["problems", "Problems"], ["inbox", "Inbox"]],
                      delivery: [["requests", "Requests"], ["deliverables", "Deliverables"], ["fit", "Feature fit"], ["decisions", "Decisions"], ["artifacts", "Artifacts"], ["validation", "Validation"], ["recaps", "Recaps"]] };
   function renderPilotPage(host, p) {
     ensurePilot(p);
@@ -2628,7 +2628,7 @@
     }
     var body = el("div", "pbody");
     if (ui.pilotTab === "overview") renderOverview(body, p);
-    else if (ui.pilotTab === "discovery") ({ sessions: renderSessions, workflow: renderWorkflow, inbox: renderInbox })[ui.pilotSub](body, p);
+    else if (ui.pilotTab === "discovery") ({ sessions: renderSessions, workflow: renderWorkflow, problems: renderProblems, inbox: renderInbox })[ui.pilotSub](body, p);
     else ({ requests: renderRequestsLevel, deliverables: renderDeliverablesLevel, fit: renderFit, decisions: renderDecisions, artifacts: renderArtifacts, validation: renderValidation, recaps: renderRecaps })[ui.pilotSub](body, p);
     col.appendChild(body);
     host.appendChild(col);
@@ -2639,6 +2639,7 @@
       case "sessions": return p.sessions.length;
       case "workflow": return p.steps.length;
       case "inbox": return unsortedCount(p);
+      case "problems": return (p.problems || []).length;
       case "requests": return p.requests.length;
       case "deliverables": return p.deliverables.length;
       case "fit": return pilotFeatureSet(p).length;
@@ -2978,6 +2979,7 @@
       if (e.kind !== "Product inference" && !(e.links && e.links.request)) acts.appendChild(chipBtn("→ Request", function () { promoteEvidence(p, e); }));
       acts.appendChild(chipBtn("→ Question", function () { editQuestion(p, null, { text: e.text, session: e.session || "" }); }));
       if (p.questions.some(qOpen)) acts.appendChild(chipBtn("→ Answers…", function () { proposeAnswer(p, e); }));
+      acts.appendChild(chipBtn("→ Problem", function () { frameFromEvidence(p, e); }));
       r.appendChild(acts);
     }
     return r;
@@ -3095,7 +3097,10 @@
           if (lf) { det.appendChild(el("div", "lab", "Feature")); var chip = el("button", "chip", lf.name + " · " + lf.state); chip.onclick = function () { open(lf.id); }; det.appendChild(chip); }
           det.appendChild(chainLine(p, r));
           var acts = el("div", "rowacts");
+          var linkedPb = problemsOf(p).filter(function (x) { return (x.requests || []).indexOf(r.id) !== -1; });
+          if (linkedPb.length) { det.appendChild(el("div", "lab", "Customer problems")); linkedPb.forEach(function (x) { det.appendChild(problemChip(p, x.id)); }); }
           acts.appendChild(chipBtn("Edit", function () { editRequest(p, r); }));
+          acts.appendChild(chipBtn("Frame as customer problem", function () { frameFromRequest(p, r); }));
           if (!lf) acts.appendChild(chipBtn("↑ Promote to a Proposed feature", function () { promoteRequest(p, r); }));
           acts.appendChild(chipBtn("+ Action", function () { editAction(p, null, { links: { request: r.id } }); }));
           det.appendChild(acts);
@@ -3355,6 +3360,7 @@
     if (p && L.deliverable) { var dl = p.deliverables.filter(function (x) { return x.id === L.deliverable; })[0]; if (dl) out.push("deliverable: " + dl.title); }
     if (p && L.step) { var st = p.steps.filter(function (x) { return x.id === L.step; })[0]; if (st) out.push("step: " + st.title); }
     if (p && L.artifact) { var a = p.artifacts.filter(function (x) { return x.id === L.artifact; })[0]; if (a) out.push("artifact: " + a.title); }
+    if (p && L.problem) { var pb = problemById(p, L.problem); if (pb) out.push("problem: " + pb.title); }
     return out;
   }
   function editDecision(d0, preset) {
@@ -3397,6 +3403,7 @@
           linksHost.appendChild(fld("Workflow step", selIn([["", "None"]].concat(p.steps.map(function (s) { return [s.id, s.title]; })), d.links.step || "", function (v) { if (v) d.links.step = v; else delete d.links.step; })));
           linksHost.appendChild(fld("Artifact", selIn([["", "None"]].concat(p.artifacts.map(function (a) { return [a.id, a.title]; })), d.links.artifact || "", function (v) { if (v) d.links.artifact = v; else delete d.links.artifact; })));
           linksHost.appendChild(fld("Deliverable", selIn([["", "None"]].concat(p.deliverables.map(function (x) { return [x.id, x.title]; })), d.links.deliverable || "", function (v) { if (v) d.links.deliverable = v; else delete d.links.deliverable; })));
+          linksHost.appendChild(fld("Customer problem", selIn([["", "None"]].concat(problemsOf(p).map(function (x) { return [x.id, x.title + " · " + x.status]; })), d.links.problem || "", function (v) { if (v) d.links.problem = v; else delete d.links.problem; }), "The problem this decision answers. Framing it is Discovery's job; deciding is this record's."));
           var evl = el("div", "fld"); evl.appendChild(el("label", null, "Evidence"));
           var chosen = el("div", "linklist");
           function drawEv() { chosen.innerHTML = ""; d.evidence.forEach(function (id) { var e = p.evidence.filter(function (x) { return x.id === id; })[0]; if (!e) return; var c = el("button", "chip", (e.kind || "") + ": " + e.text.slice(0, 60)); c.title = "Remove"; c.onclick = function () { d.evidence = d.evidence.filter(function (x) { return x !== id; }); drawEv(); }; chosen.appendChild(c); }); }
@@ -3523,6 +3530,8 @@
     var over = waitFirm.concat(waitUs).filter(function (x) { return x.a.due && x.a.due < today(); }).length;
     grid.appendChild(homeCard("Waiting on the firm", String(waitFirm.length), waitFirm.slice(0, 3).map(function (x) { return x.a.title + (x.a.due ? " · due " + stamp(x.a.due) : ""); }), function () { var p = waitFirm[0] ? waitFirm[0].p : pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "overview"; render(); }));
     grid.appendChild(homeCard("Waiting on us", String(waitUs.length) + (over ? " · " + over + " overdue" : ""), waitUs.slice(0, 3).map(function (x) { return x.a.title + (x.a.owner ? " · " + x.a.owner : "") + (x.a.due ? " · due " + stamp(x.a.due) : ""); }), function () { var p = waitUs[0] ? waitUs[0].p : pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "overview"; render(); }, over ? "warn" : ""));
+    var npf = problemsNeedingFraming();
+    grid.appendChild(homeCard("Problems needing framing", String(npf), npf ? ["Customer problems still Draft or with framing gaps."] : ["Every customer problem is framed."], function () { var p = pilots().filter(function (x) { return problemsOf(x).some(function (pr) { return pr.status !== "Superseded" && problemNeedsFraming(pr); }); })[0] || pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "discovery"; ui.pilotSub = "problems"; render(); }, npf ? "info" : ""));
     var since = Date.now() - 7 * 86400000;
     var logN = (S.log || []).filter(function (e) { return e.t > since; }).length;
     var changed = [];
@@ -3878,6 +3887,7 @@
       fb.onclick = function () { pickFeature("Link to a feature", []).then(function (f) { if (f) { d.feature = f.id; fb.textContent = f.name; } }); };
       frow.appendChild(fb); body.appendChild(frow);
       body.appendChild(fld("Product decision", selIn([["", "None"]].concat(decisions().filter(function (x) { return !x.pilot || x.pilot === p.id; }).map(function (x) { return [x.id, x.title + " · " + x.state]; })), d.decision, function (v) { d.decision = v; })));
+      body.appendChild(fld("Customer problem it addresses", selIn([["", "None"]].concat(problemsOf(p).map(function (x) { return [x.id, x.title + " · " + x.status]; })), d.problem || "", function (v) { d.problem = v; })));
       var evl = el("div", "fld"); evl.appendChild(el("label", null, "Evidence"));
       var chosen = el("div", "linklist");
       function drawEv() { chosen.innerHTML = ""; d.evidence.forEach(function (id) { var e = p.evidence.filter(function (x) { return x.id === id; })[0]; if (!e) return; var c = el("button", "chip", (e.kind || "") + ": " + e.text.slice(0, 60)); c.title = "Remove"; c.onclick = function () { d.evidence = d.evidence.filter(function (x) { return x !== id; }); drawEv(); }; chosen.appendChild(c); }); }
@@ -3907,7 +3917,7 @@
       sec.appendChild(xrow({ key: "a:" + a.id, title: titleNode, meta: metaLine([a.kind, a.status, a.audience === "Both" ? "internal + client" : (a.audience || "Internal").toLowerCase(), a.owner, a.session && sessionById(p, a.session) ? sessionLabel(p, a.session) : "", a.loopDue ? "loop due " + stamp(a.loopDue) : "", (a.drive && a.drive.status) || "Not in Drive"]), side: side, details: function (det) {
         if (a.note) { det.appendChild(el("div", "lab", "Note")); det.appendChild(el("p", "readtext", a.note)); }
         var g = el("div", "stepgrid two");
-        [["Feature", a.feature && feature(a.feature) ? feature(a.feature).name + " · " + feature(a.feature).state : ""], ["Request", (function () { var r = p.requests.filter(function (x) { return x.id === a.request; })[0]; return r ? r.title : ""; })()], ["Workflow bottleneck", (function () { var s = p.steps.filter(function (x) { return x.id === a.step; })[0]; return s ? s.title : ""; })()], ["Product decision", (function () { var d = decisionById(a.decision); return d ? d.title + " · " + d.state : ""; })()], ["Loop owner", [a.loopOwner, a.loopDue ? "due " + stamp(a.loopDue) : ""].filter(Boolean).join(" · ")]].forEach(function (x) { if (!x[1]) return; var c = el("div", "stepcell"); c.appendChild(el("div", "lab", x[0])); c.appendChild(el("p", "readtext", x[1])); g.appendChild(c); });
+        [["Customer problem", (function () { var x = problemById(p, a.problem); return x ? x.title + " · " + x.status : ""; })()], ["Feature", a.feature && feature(a.feature) ? feature(a.feature).name + " · " + feature(a.feature).state : ""], ["Request", (function () { var r = p.requests.filter(function (x) { return x.id === a.request; })[0]; return r ? r.title : ""; })()], ["Workflow bottleneck", (function () { var s = p.steps.filter(function (x) { return x.id === a.step; })[0]; return s ? s.title : ""; })()], ["Product decision", (function () { var d = decisionById(a.decision); return d ? d.title + " · " + d.state : ""; })()], ["Loop owner", [a.loopOwner, a.loopDue ? "due " + stamp(a.loopDue) : ""].filter(Boolean).join(" · ")]].forEach(function (x) { if (!x[1]) return; var c = el("div", "stepcell"); c.appendChild(el("div", "lab", x[0])); c.appendChild(el("p", "readtext", x[1])); g.appendChild(c); });
         det.appendChild(g);
         var ev = (a.evidence || []).map(function (id) { return p.evidence.filter(function (e) { return e.id === id; })[0]; }).filter(Boolean);
         if (ev.length) { det.appendChild(el("div", "lab", "Evidence")); ev.forEach(function (e) { det.appendChild(evidenceRow(p, e, true)); }); }
@@ -4082,6 +4092,273 @@
     list.forEach(function (d) { var r = el("div", "fl"); var b = el("button", null, d.title + " · " + d.state + (decisionBlocked(d) ? " · blocked until aligned" : d.state === "Decided" ? " · " + d.alignment : "")); b.onclick = function () { editDecision(d); }; r.appendChild(b); r.appendChild(quietPill(d.state, DEC_CLASS[d.state])); pnl.appendChild(r); });
     var add = el("button", "btn ghost rowbtn", "+ Product decision"); add.onclick = function () { editDecision(null, { title: "Build " + f.name + "?", links: { feature: f.id }, pilot: (pilotsFor(f)[0] || {}).id || "" }); }; pnl.appendChild(add);
     return pnl;
+  }
+  /* =====================================================================
+     Customer problems: evidence-backed, framed in seven steps, neither a request nor a product decision.
+     ===================================================================== */
+  var PB = window.ALIE_PROBLEMS;
+  var PROBLEM_CLASS = { "Draft": "", "Framed": "st-planned", "Validating": "st-building", "Validated": "st-live", "Superseded": "st-feature-flag" };
+  function problemsOf(p) { ensurePilot(p); if (!Array.isArray(p.problems)) p.problems = []; return p.problems; }
+  function problemById(p, id) { return problemsOf(p).filter(function (x) { return x.id === id; })[0]; }
+  function problemNeedsFraming(pr) { return pr.status === "Draft" || !PB.completeness(pr).complete; }
+  function problemsNeedingFraming() { var n = 0; pilots().forEach(function (p) { problemsOf(p).forEach(function (pr) { if (pr.status !== "Superseded" && problemNeedsFraming(pr)) n++; }); }); return n; }
+  function plannedSessions(p) { return p.sessions.filter(function (s) { return s.stage === "Planned" && (!s.date || s.date >= today()); }).sort(function (a, b) { return (a.date || "9") < (b.date || "9") ? -1 : 1; }); }
+  function addGapsToSession(p, pr, sessionId) {
+    var made = PB.mergeGapQuestions(p.questions, pr, sessionId, Date.now(), uid);
+    if (!made.length) { toast("Every gap already has a question."); return 0; }
+    p.questions = p.questions.concat(made); touchPilot(p); save();
+    toast(made.length + (made.length === 1 ? " question added" : " questions added") + " to " + sessionLabel(p, sessionId) + ".");
+    return made.length;
+  }
+  function askGapsSession(p, pr) {
+    var opts = plannedSessions(p);
+    if (!opts.length) { toast("Plan a session first; the gaps become its questions.", true); return; }
+    var pick = opts[0].id;
+    sideDrawer("Add gaps to a session", function (body, close) {
+      var gaps = PB.gapQuestions(pr);
+      body.appendChild(el("p", "note", gaps.length ? gaps.length + " unanswered framing steps become planned questions. Steps that already have a question are skipped." : "Nothing missing: every framing step is filled."));
+      gaps.forEach(function (g) { var r = el("div", "qrow"); var t = el("div", "qtext"); t.appendChild(el("b", null, g.text)); t.appendChild(el("span", null, g.label)); r.appendChild(t); body.appendChild(r); });
+      body.appendChild(fld("Session", selIn(opts.map(function (s) { return [s.id, sessionLabel(p, s.id)]; }), pick, function (v) { pick = v; })));
+      body.appendChild(drawerActs(function () { addGapsToSession(p, pr, pick); close(); render(); }, close));
+    }, { eyebrow: "FRAMING GAPS" });
+  }
+  function problemChain(p, pr) {
+    var line = el("div", "chain");
+    var ev = (pr.evidence || []).length;
+    var req = (pr.requests || []).length, art = (pr.artifacts || []).length;
+    var dec = pr.decision ? decisionById(pr.decision) : null;
+    var f = pr.feature ? feature(pr.feature) : null;
+    var val = "none";
+    (pr.requests || []).forEach(function (id) { var r = p.requests.filter(function (x) { return x.id === id; })[0]; if (r && r.validation && r.validation.status === "Client validated") val = "Client validated"; });
+    [["Evidence", ev ? ev + " linked" : "none", ev ? "on" : ""], ["Problem", pr.status, pr.status !== "Draft" ? "on" : ""], ["Request / artifact", req || art ? [req ? req + " request" + (req > 1 ? "s" : "") : "", art ? art + " artifact" + (art > 1 ? "s" : "") : ""].filter(Boolean).join(", ") : "none", req || art ? "on" : ""], ["Product decision", dec ? dec.state : "none", dec ? "on" : ""], ["Feature / deliverable", f ? f.state : "none", f ? "on" : ""], ["Client validation", val, val === "Client validated" ? "on good" : ""]].forEach(function (x, i) {
+      if (i) line.appendChild(el("i", null, "›"));
+      var c = el("span", "cnode " + x[2]); c.appendChild(el("b", null, x[0])); c.appendChild(el("span", null, x[1])); line.appendChild(c);
+    });
+    return line;
+  }
+  function renderProblems(body, p) {
+    var list = problemsOf(p);
+    var filt = ui.probFilter || "";
+    var shown = list.filter(function (pr) { return !filt || pr.status === filt; });
+    var sec = secHead("Customer problems", list.length || null, "What the firm struggles with, framed from evidence: trigger, pain, who, workaround, consequence, what is at stake, and what better looks like. Not what they asked for (that is Requests) and not what we decide to build (that is Decisions).", [primaryBtn("+ Customer problem", function () { var pr = PB.empty(); pr.id = uid(); pr.created = pr.updated = Date.now(); pr.owner = ME; editProblem(p, pr, true); })]);
+    var chips = el("div", "psubs mini wrap");
+    [["", "All"]].concat(PB.STATUS.map(function (st) { return [st, st]; })).forEach(function (m) {
+      var n = m[0] ? list.filter(function (x) { return x.status === m[0]; }).length : list.length;
+      if (m[0] && !n) return;
+      var b = el("button", null, m[1]); if (n) b.appendChild(el("em", null, String(n)));
+      b.setAttribute("aria-pressed", String(filt === m[0])); b.onclick = function () { ui.probFilter = m[0]; renderView(); }; chips.appendChild(b);
+    });
+    if (list.length) sec.insertBefore(chips, sec.children[1]);
+    if (!list.length) sec.appendChild(emptyNote("No customer problems framed yet. Start from evidence: open an Inbox item or a request and choose “Frame as customer problem”, or add one here and attach the quotes behind it. A problem is what hurts them and what is at stake, in their words, before anyone talks about features."));
+    else if (!shown.length) sec.appendChild(emptyNote("Nothing with that status."));
+    shown.forEach(function (pr) {
+      var c = PB.completeness(pr);
+      var titleNode = el("span"); titleNode.appendChild(document.createTextNode(pr.title || "Untitled problem"));
+      var side = [quietPill(pr.status, PROBLEM_CLASS[pr.status])];
+      sec.appendChild(xrow({ key: "pb:" + pr.id, title: titleNode,
+        meta: metaLine([pr.frame.role ? pr.frame.role : "role not set", pr.frame.consequence ? pr.frame.consequence.slice(0, 70) : "consequence not set", c.done + " of " + c.total + " framed", pr.routing.validation.next ? "next: " + pr.routing.validation.next.slice(0, 50) : "no next validation", pr.confidence ? "confidence " + pr.confidence.toLowerCase() : ""]),
+        side: side,
+        details: function (det) {
+          if (pr.statement) { det.appendChild(el("div", "lab", "Specific problem")); var st = el("p", "readtext", pr.statement); det.appendChild(st); if (pr.statementDraft) det.appendChild(quietPill("draft synthesis · not client evidence", "st-feature-flag")); }
+          if (c.gaps.length) { det.appendChild(el("div", "lab", "Gaps")); det.appendChild(el("p", "readtext muted", c.gaps.map(function (k) { return PB.FRAME.filter(function (s) { return s.key === k; })[0].label; }).join(" · "))); }
+          det.appendChild(el("div", "lab", "Evidence"));
+          var ev = (pr.evidence || []).map(function (id) { return p.evidence.filter(function (e) { return e.id === id; })[0]; }).filter(Boolean);
+          if (!ev.length) det.appendChild(emptyNote("No evidence attached yet. Attach the quotes or observations behind it."));
+          ev.forEach(function (e) { det.appendChild(evidenceRow(p, e, true)); });
+          det.appendChild(problemChain(p, pr));
+          det.appendChild(drivePushRow("problem", pr, p, "drive"));
+          var acts = el("div", "rowacts");
+          acts.appendChild(chipBtn("Open", function () { editProblem(p, pr, false); }));
+          if (c.gaps.length) acts.appendChild(chipBtn("Add gaps to next session", function () { askGapsSession(p, pr); }));
+          det.appendChild(acts);
+        } }));
+    });
+    body.appendChild(sec);
+  }
+
+  /* ---------- the drawer: fields on the left, the framing diagram on the right ---------- */
+  function editProblem(p, pr, isNew) {
+    var d = JSON.parse(JSON.stringify(pr));
+    var dirtyLocal = false;
+    var diagram, gapsBox, stmtBox, stmtDraftPill;
+    function touchD() { dirtyLocal = true; paintDiagram(); paintGaps(); paintDirty(); }
+    var dirtyNote;
+    function paintDirty() { if (dirtyNote) { dirtyNote.textContent = dirtyLocal ? "Unsaved changes" : ""; dirtyNote.hidden = !dirtyLocal; } }
+    sideDrawer(isNew ? "New customer problem" : (d.title || "Customer problem"), function (body, close) {
+      var split = el("div", "pdsplit");
+      var main = el("div", "pdmain"), aside = el("div", "pdside");
+      /* head */
+      var titleIn = txtIn(d.title, "In their words, the complaint as it first came up", function (v) { d.title = v; touchD(); }); titleIn.id = "pf-title";
+      main.appendChild(fld("Broad complaint", titleIn));
+      var r0 = el("div", "fld three");
+      r0.appendChild(fld("Status", selIn(PB.STATUS, d.status, function (v) { d.status = v; touchD(); })));
+      r0.appendChild(fld("Confidence", selIn(PB.CONFIDENCE.map(function (c) { return [c, c || "Not set"]; }), d.confidence, function (v) { d.confidence = v; touchD(); })));
+      r0.appendChild(fld("Owner", txtIn(d.owner, "Uzziel", function (v) { d.owner = v; touchD(); })));
+      main.appendChild(r0);
+      /* framing steps */
+      main.appendChild(el("div", "lab", "Framing"));
+      PB.FRAME.forEach(function (st) {
+        var w = el("div", "pfield"); w.id = "pfw-" + st.key;
+        var lab = el("div", "pflab");
+        lab.appendChild(el("i", "stepn", String(st.n)));
+        lab.appendChild(el("b", null, st.label));
+        var help = el("button", "pfhelp", "?"); help.type = "button"; help.title = "Questions to ask"; help.setAttribute("aria-label", "Questions to ask about " + st.label); help.setAttribute("aria-expanded", "false");
+        lab.appendChild(help);
+        w.appendChild(lab);
+        w.appendChild(el("div", "pfprompt", st.prompt));
+        var qs = el("ul", "pfq"); qs.hidden = true; st.questions.forEach(function (q) { qs.appendChild(el("li", null, q)); }); w.appendChild(qs);
+        help.onclick = function () { qs.hidden = !qs.hidden; help.setAttribute("aria-expanded", String(!qs.hidden)); };
+        var ta = areaIn(d.frame[st.key], "", function (v) { d.frame[st.key] = v; touchD(); }, 2); ta.id = "pf-" + st.key; ta.setAttribute("aria-label", st.label);
+        w.appendChild(ta);
+        var pv = el("div", "pfprov");
+        pv.appendChild(el("span", null, "Provenance"));
+        pv.appendChild(selIn(PB.PROVENANCE.map(function (x) { return [x, x || "Not set"]; }), d.provenance[st.key], function (v) { d.provenance[st.key] = v; touchD(); }));
+        w.appendChild(pv);
+        main.appendChild(w);
+      });
+      /* specific problem */
+      var sp = el("div", "pfield"); sp.id = "pfw-statement";
+      var slab = el("div", "pflab"); slab.appendChild(el("b", null, "Specific problem"));
+      stmtDraftPill = quietPill(d.statementDraft ? "draft synthesis" : "reviewed", d.statementDraft ? "st-feature-flag" : "st-live"); slab.appendChild(stmtDraftPill);
+      sp.appendChild(slab);
+      sp.appendChild(el("div", "pfprompt", "Two or three sentences made only from the fields above. It is a synthesis, not something the client said; it stays Draft until you review it."));
+      stmtBox = areaIn(d.statement, "", function (v) { d.statement = v; touchD(); }, 4); stmtBox.id = "pf-statement"; stmtBox.setAttribute("aria-label", "Specific problem");
+      sp.appendChild(stmtBox);
+      var srow = el("div", "rowacts");
+      srow.appendChild(chipBtn("Generate draft from the fields", function () { var t = PB.synthesize(d); if (!t) { toast("Fill some framing fields first.", true); return; } d.statement = t; d.statementDraft = true; d.statementAt = Date.now(); stmtBox.value = t; stmtDraftPill.textContent = "draft synthesis"; stmtDraftPill.className = "pill quiet st-feature-flag"; touchD(); }));
+      var rev = el("label", "chk"); var cb = el("input"); cb.type = "checkbox"; cb.checked = !d.statementDraft; cb.onchange = function () { d.statementDraft = !cb.checked; stmtDraftPill.textContent = d.statementDraft ? "draft synthesis" : "reviewed"; stmtDraftPill.className = "pill quiet " + (d.statementDraft ? "st-feature-flag" : "st-live"); touchD(); }; rev.appendChild(cb); rev.appendChild(document.createTextNode(" I reviewed this statement"));
+      srow.appendChild(rev);
+      sp.appendChild(srow);
+      main.appendChild(sp);
+      /* gaps */
+      gapsBox = el("div", "pgaps"); main.appendChild(gapsBox);
+      /* links */
+      var linksFold = foldSection("Links", "pb:links:" + d.id, true);
+      linksFold.body.appendChild(fld("Session", selIn([["", "None"]].concat(p.sessions.slice().sort(byDateDesc).map(function (s) { return [s.id, sessionLabel(p, s.id)]; })), d.session, function (v) { d.session = v; touchD(); })));
+      linksFold.body.appendChild(multiLink("Evidence", p.evidence.map(function (e) { return [e.id, (e.kind || "") + ": " + e.text.slice(0, 70)]; }), d.evidence, function () { touchD(); }));
+      linksFold.body.appendChild(multiLink("Workflow steps", p.steps.map(function (s) { return [s.id, s.title]; }), d.steps, function () { touchD(); }));
+      linksFold.body.appendChild(multiLink("Requests (what they explicitly asked for)", p.requests.map(function (r) { return [r.id, r.title]; }), d.requests, function () { touchD(); }));
+      linksFold.body.appendChild(multiLink("Artifacts and prototypes", p.artifacts.map(function (a) { return [a.id, a.title]; }), d.artifacts, function () { touchD(); }));
+      var frow = el("div", "fld"); frow.appendChild(el("label", null, "Feature"));
+      var fb = el("button", "btn ghost small", d.feature && feature(d.feature) ? feature(d.feature).name : "Pick a feature");
+      fb.onclick = function () { pickFeature("Link to a feature", []).then(function (f) { if (f) { d.feature = f.id; fb.textContent = f.name; touchD(); } }); };
+      frow.appendChild(fb);
+      if (d.feature) { var clr = el("button", "chip", "Clear"); clr.onclick = function () { d.feature = ""; fb.textContent = "Pick a feature"; touchD(); }; frow.appendChild(clr); }
+      linksFold.body.appendChild(frow);
+      linksFold.body.appendChild(fld("Product decision", selIn([["", "None"]].concat(decisions().filter(function (x) { return !x.pilot || x.pilot === p.id; }).map(function (x) { return [x.id, x.title + " · " + x.state]; })), d.decision, function (v) { d.decision = v; touchD(); }), "The cofounder-aligned gate. Linking it here does not decide anything."));
+      main.appendChild(linksFold.node);
+      /* routing, behind a fold */
+      var ro = d.routing;
+      var routeFold = foldSection("Solution routing", "pb:route:" + d.id, false, "After the problem is framed. Human-only or no product change is a valid outcome; nothing here is a recommendation.");
+      routeFold.body.appendChild(fld("Workflow: work happening today", areaIn(ro.workflow, "", function (v) { ro.workflow = v; touchD(); }, 2)));
+      routeFold.body.appendChild(fld("Desired output: what ALIE should return, change, complete or deliver", areaIn(ro.output, "", function (v) { ro.output = v; touchD(); }, 2)));
+      routeFold.body.appendChild(fld("Primary ALIE surface", selIn(PB.SURFACES.map(function (x) { return [x, x || "Not set"]; }), ro.surface, function (v) { ro.surface = v; touchD(); })));
+      var capw = el("div", "fld"); capw.appendChild(el("label", null, "Required capabilities"));
+      var caps = el("div", "capgrid");
+      PB.CAPABILITIES.forEach(function (c) { var l = el("label", "chk"); var i = el("input"); i.type = "checkbox"; i.checked = ro.capabilities.indexOf(c) !== -1; i.onchange = function () { if (i.checked) { if (ro.capabilities.indexOf(c) === -1) ro.capabilities.push(c); } else ro.capabilities = ro.capabilities.filter(function (x) { return x !== c; }); touchD(); }; l.appendChild(i); l.appendChild(document.createTextNode(" " + c)); caps.appendChild(l); });
+      capw.appendChild(caps); routeFold.body.appendChild(capw);
+      routeFold.body.appendChild(fld("Ownership", txtIn(ro.ownership, "Who owns the outcome on our side and on theirs", function (v) { ro.ownership = v; touchD(); })));
+      var operFold = foldSection("Operating model", "pb:oper:" + d.id, false);
+      PB.OPERATING.forEach(function (o) { operFold.body.appendChild(fld(o[1], txtIn(ro.operating[o[0]], "", function (v) { ro.operating[o[0]] = v; touchD(); }))); });
+      routeFold.body.appendChild(operFold.node);
+      var valw = el("div", "fld"); valw.appendChild(el("label", null, "Validation path"));
+      valw.appendChild(el("div", "vpath", "Prototype → Review → Test with users → Refine → Confirm fit before scaling"));
+      routeFold.body.appendChild(valw);
+      routeFold.body.appendChild(fld("Stage", selIn(PB.VALIDATION_STAGES.map(function (x) { return [x, x || "Not started"]; }), ro.validation.stage, function (v) { ro.validation.stage = v; touchD(); })));
+      routeFold.body.appendChild(fld("Next test", txtIn(ro.validation.next, "What we show or try next, with whom", function (v) { ro.validation.next = v; touchD(); })));
+      routeFold.body.appendChild(fld("Evidence needed", txtIn(ro.validation.evidence, "What would confirm or refute it", function (v) { ro.validation.evidence = v; touchD(); })));
+      main.appendChild(routeFold.node);
+      if (!isNew) main.appendChild(drivePushRow("problem", pr, p, "drive"));
+      /* actions */
+      dirtyNote = el("span", "note edirty"); dirtyNote.hidden = true;
+      var extra = [dirtyNote];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { askConfirm("Delete this customer problem?", "Evidence, requests and decisions stay.", { danger: true, ok: "Delete" }).then(function (y) { if (!y) return; p.problems = problemsOf(p).filter(function (x) { return x.id !== pr.id; }); p.questions.forEach(function (q) { if (q.problem === pr.id) { q.problem = ""; q.frameField = ""; } }); touchPilot(p); close(); render(); save(); }); }; extra.push(del); }
+      var acts = drawerActs(function () {
+        if (!d.title.trim()) { toast("Give it the broad complaint first.", true); return; }
+        d.title = d.title.trim(); d.updated = Date.now();
+        if (isNew) problemsOf(p).push(d); else Object.assign(pr, d);
+        touchPilot(p); dirtyLocal = false; close(); render(); save();
+      }, function () { if (dirtyLocal) askConfirm("Discard unsaved changes?", "", { danger: true, ok: "Discard" }).then(function (y) { if (y) close(); }); else close(); }, extra);
+      main.appendChild(acts);
+      /* diagram */
+      diagram = el("div", "pdiag");
+      aside.appendChild(el("div", "lab", "Framing map"));
+      aside.appendChild(diagram);
+      aside.appendChild(el("p", "note", "Click a step to jump to its field. Filled steps are solid; gaps are hollow."));
+      split.appendChild(main); split.appendChild(aside);
+      body.appendChild(split);
+      paintDiagram(); paintGaps();
+    }, { eyebrow: "CUSTOMER PROBLEM", wide: true, cls: "pdrawer" });
+    function focusField(key) {
+      var w = document.getElementById("pfw-" + key), ta = document.getElementById("pf-" + key);
+      if (w) w.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (ta) setTimeout(function () { ta.focus(); }, 250);
+    }
+    function paintDiagram() {
+      if (!diagram) return;
+      diagram.innerHTML = "";
+      var c = PB.completeness(d);
+      function node(label, done, key, n, cls) {
+        var b = el("button", "pnode" + (done ? " done" : " gap") + (cls ? " " + cls : "")); b.type = "button";
+        if (n) b.appendChild(el("i", null, String(n)));
+        b.appendChild(el("span", null, label));
+        b.title = done ? "Filled" : "Not yet framed";
+        b.onclick = function () { focusField(key); };
+        diagram.appendChild(b);
+      }
+      node("Broad complaint", !!d.title.trim(), "title", "", "cap");
+      PB.FRAME.forEach(function (st) { diagram.appendChild(el("i", "parrow", "↓")); node(st.label, c.gaps.indexOf(st.key) === -1, st.key, st.n, ""); });
+      diagram.appendChild(el("i", "parrow", "↓"));
+      node("Specific problem", !!d.statement.trim(), "statement", "", "cap" + (d.statement.trim() && !d.statementDraft ? " reviewed" : ""));
+    }
+    function paintGaps() {
+      if (!gapsBox) return;
+      gapsBox.innerHTML = "";
+      var gaps = PB.gapQuestions(d);
+      if (!gaps.length) { gapsBox.appendChild(el("p", "note", "Every step is framed.")); return; }
+      var h = el("div", "lab", "Gaps · " + gaps.length + " to ask"); gapsBox.appendChild(h);
+      gaps.forEach(function (g) { var r = el("button", "gaprow"); r.type = "button"; r.appendChild(el("b", null, g.label)); r.appendChild(el("span", null, g.text)); r.onclick = function () { focusField(g.field); }; gapsBox.appendChild(r); });
+      if (!isNew) { var b = chipBtn("Add gaps to next session", function () { askGapsSession(p, pr); }); b.classList.add("gapbtn"); gapsBox.appendChild(b); }
+      else gapsBox.appendChild(el("p", "note", "Save first to add these gaps to a planned session."));
+    }
+  }
+  function foldSection(title, key, dflt, hint) {
+    var node = el("div", "pfold");
+    node.dataset.fold = key;
+    var head = el("button", "pfoldhead"); head.type = "button";
+    head.appendChild(el("span", "fchev", "›")); head.appendChild(el("b", null, title));
+    head.setAttribute("aria-expanded", String(foldOpen(key, dflt)));
+    node.appendChild(head);
+    var body = el("div", "pfoldbody");
+    if (hint) body.appendChild(el("p", "note", hint));
+    node.appendChild(body);
+    if (foldOpen(key, dflt)) node.classList.add("open");
+    head.onclick = function () { var o = !node.classList.contains("open"); node.classList.toggle("open", o); foldSet(key, o); head.setAttribute("aria-expanded", String(o)); };
+    return { node: node, body: body };
+  }
+  function multiLink(label, options, arr, onChange) {
+    var w = el("div", "fld"); w.appendChild(el("label", null, label));
+    var chosen = el("div", "linklist");
+    var byId = {}; options.forEach(function (o) { byId[o[0]] = o[1]; });
+    function draw() { chosen.innerHTML = ""; arr.forEach(function (id) { if (!byId[id]) return; var c = el("button", "chip", byId[id]); c.type = "button"; c.title = "Remove"; c.onclick = function () { var i = arr.indexOf(id); if (i !== -1) arr.splice(i, 1); draw(); onChange(); }; chosen.appendChild(c); }); }
+    draw(); w.appendChild(chosen);
+    var sel = selIn([["", options.length ? "Attach…" : "Nothing to attach"]].concat(options.filter(function (o) { return arr.indexOf(o[0]) === -1; })), "", function (v) { if (v && arr.indexOf(v) === -1) { arr.push(v); draw(); onChange(); } sel.value = ""; });
+    w.appendChild(sel);
+    return w;
+  }
+  function frameFromEvidence(p, e) {
+    var pr = PB.fromEvidence(e, uid, Date.now()); pr.owner = ME;
+    editProblem(p, pr, true);
+  }
+  function frameFromRequest(p, r) {
+    var pr = PB.fromRequest(r, uid, Date.now()); pr.owner = ME;
+    editProblem(p, pr, true);
+  }
+  function problemChip(p, id) {
+    var pr = problemById(p, id); if (!pr) return null;
+    var b = el("button", "chip", "Problem: " + pr.title.slice(0, 50) + " · " + pr.status); b.type = "button";
+    b.onclick = function () { editProblem(p, pr, false); };
+    return b;
   }
   /* feature page: which pilots care about this feature */
   function pilotsPanel(f) {

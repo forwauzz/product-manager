@@ -145,7 +145,14 @@ export function normalize(state) {
   const str = v => (v === null || v === undefined) ? "" : String(v);
   const num = (v, d) => Number(v) || d;
   const validation = v => ({ status: v && VALIDATION.indexOf(v.status) !== -1 ? v.status : "Not validated", note: str(v && v.note), date: str(v && v.date) });
-  const links = v => { const o = {}; if (v && typeof v === "object") ["session", "evidence", "request", "deliverable", "feature", "step", "question"].forEach(k => { if (v[k]) o[k] = str(v[k]); }); return o; };
+  const links = v => { const o = {}; if (v && typeof v === "object") ["session", "evidence", "request", "deliverable", "feature", "step", "question", "problem", "artifact"].forEach(k => { if (v[k]) o[k] = str(v[k]); }); return o; };
+  const PROBLEM_STATUS = ["Draft", "Framed", "Validating", "Validated", "Superseded"];
+  const PROV = ["", "Client said", "Client paraphrase", "Observed", "Product inference", "Explicit request"];
+  const SURFACES = ["", "Legal case workspace", "Chronology workspace/editor", "Draft/report", "Expert package", "Share/portal", "Admin/evaluation", "Connected firm system", "Human-only/no product change", "Other"];
+  const CAPS = ["Connected applications", "Retrieval", "Actions", "Schedules", "Approvals", "Automation", "Collaboration/delegation", "Other"];
+  const VSTAGES = ["", "Prototype", "Review", "Test with users", "Refine", "Confirm fit"];
+  const FRAME_KEYS = ["trigger", "pain", "role", "workaround", "consequence", "deliverable", "better"];
+  const OPER_KEYS = ["data", "permissions", "retention", "review", "deployment", "model", "migration"];
   const arr = v => Array.isArray(v) ? v.filter(x => x && typeof x === "object") : [];
   const strIds = v => Array.isArray(v) ? v.filter(x => typeof x === "string") : [];
   const SESSION_STAGES = ["Planned", "Recorded", "Transcript added", "Extracted draft", "Human reviewed", "Follow-ups closed"];
@@ -200,21 +207,36 @@ export function normalize(state) {
       const state = oneOf(Q_STATES, x.state, x.status === "Answered" ? "Confirmed by client" : "Unanswered");
       return { id: str(x.id || uid()), text: str(x.text), state, status: state === "Confirmed by client" || state === "Superseded" ? "Answered" : "Open", answer: str(x.answer), note: str(x.note),
         candidate: x.candidate && typeof x.candidate === "object" ? { text: str(x.candidate.text), evidence: str(x.candidate.evidence), session: str(x.candidate.session), contradicts: !!x.candidate.contradicts, partial: !!x.candidate.partial } : null,
-        session: str(x.session), step: str(x.step), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) };
+        session: str(x.session), step: str(x.step), problem: str(x.problem), frameField: FRAME_KEYS.indexOf(x.frameField) !== -1 ? x.frameField : "", created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) };
     }),
     actions: arr(p.actions).map(x => ({ id: str(x.id || uid()), title: str(x.title), owner: str(x.owner), due: str(x.due), side: x.side === "Client" ? "Client" : "Internal", status: ["Open", "Done", "Blocked"].indexOf(x.status) !== -1 ? x.status : "Open", note: str(x.note), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     fit: Object.fromEntries(Object.entries(p.fit && typeof p.fit === "object" && !Array.isArray(p.fit) ? p.fit : {}).map(([k, v]) => [str(k), { fit: v && FIT_VALUES.indexOf(v.fit) !== -1 ? v.fit : "Not assessed", supports: str(v && v.supports), evidence: strIds(v && v.evidence), unknown: str(v && v.unknown), next: str(v && v.next), updated: num(v && v.updated, Date.now()) }])),
     recaps: arr(p.recaps).map(x => ({ id: str(x.id || uid()), week: str(x.week), internal: str(x.internal), client: str(x.client), clientReviewed: !!x.clientReviewed, created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     artifacts: arr(p.artifacts).map(x => ({ id: str(x.id || uid()), title: str(x.title || "Untitled"), link: str(x.link), kind: ["Prototype", "Document", "Recording", "Other"].indexOf(x.kind) !== -1 ? x.kind : "Other", note: str(x.note), feature: str(x.feature), request: str(x.request),
-      audience: oneOf(["Internal", "Client", "Both"], x.audience, "Internal"), version: str(x.version), status: oneOf(ART_STATUS, x.status, "Draft"), owner: str(x.owner), session: str(x.session), origin: x.origin === "Received" ? "Received" : "Created", step: str(x.step), evidence: strIds(x.evidence), decision: str(x.decision),
+      audience: oneOf(["Internal", "Client", "Both"], x.audience, "Internal"), version: str(x.version), status: oneOf(ART_STATUS, x.status, "Draft"), owner: str(x.owner), session: str(x.session), origin: x.origin === "Received" ? "Received" : "Created", step: str(x.step), evidence: strIds(x.evidence), decision: str(x.decision), problem: str(x.problem),
       loop: oneOf(LOOP, x.loop, "Received"), loopOwner: str(x.loopOwner), loopDue: str(x.loopDue), drive: drv(x.drive), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     decisions: arr(p.decisions).map(x => ({ id: str(x.id || uid()), title: str(x.title || "Untitled decision"), decision: str(x.decision), reason: str(x.reason), date: str(x.date), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    /* customer problems: evidence-backed, framed in seven steps; neither a request nor a product decision */
+    problems: arr(p.problems).map(x => {
+      const frame = {}, prov = {}; FRAME_KEYS.forEach(k => { frame[k] = str(x.frame && x.frame[k]); prov[k] = oneOf(PROV, x.provenance && x.provenance[k], ""); });
+      const ro = x.routing && typeof x.routing === "object" ? x.routing : {};
+      const oper = {}; OPER_KEYS.forEach(k => { oper[k] = str(ro.operating && ro.operating[k]); });
+      return { id: str(x.id || uid()), title: str(x.title || "Untitled problem"), status: oneOf(PROBLEM_STATUS, x.status, "Draft"), confidence: oneOf(["", "Low", "Medium", "High"], x.confidence, ""), owner: str(x.owner),
+        frame, provenance: prov, statement: str(x.statement), statementDraft: x.statementDraft === undefined ? true : !!x.statementDraft, statementAt: num(x.statementAt, 0),
+        evidence: strIds(x.evidence), steps: strIds(x.steps), requests: strIds(x.requests), artifacts: strIds(x.artifacts), session: str(x.session), feature: str(x.feature), decision: str(x.decision),
+        routing: { workflow: str(ro.workflow), output: str(ro.output), surface: oneOf(SURFACES, ro.surface, ""), capabilities: strIds(ro.capabilities).filter(c => CAPS.indexOf(c) !== -1), ownership: str(ro.ownership), operating: oper,
+          validation: { stage: oneOf(VSTAGES, ro.validation && ro.validation.stage, ""), next: str(ro.validation && ro.validation.next), evidence: str(ro.validation && ro.validation.evidence) } },
+        drive: drv(x.drive), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) };
+    }),
     created: Number(p.created) || Date.now(), updated: Number(p.updated) || Date.now()
   }));
   s.pilots.forEach(p => {
     p.deliverables.forEach(d => { d.status = DELIV_STATUS.indexOf(d.status) !== -1 ? d.status : "Proposed"; d.validation = validation(d.validation); d.decisionRef = str(d.decisionRef); });
     p.requests.forEach(r => { r.evidence = strIds(r.evidence); r.validation = validation(r.validation); r.decisionRef = str(r.decisionRef); });
-    p.artifacts.forEach(a => { if (a.session && !p.sessions.some(s2 => s2.id === a.session)) a.session = ""; a.evidence = a.evidence.filter(id => p.evidence.some(e => e.id === id)); });
+    p.artifacts.forEach(a => { if (a.session && !p.sessions.some(s2 => s2.id === a.session)) a.session = ""; a.evidence = a.evidence.filter(id => p.evidence.some(e => e.id === id)); if (a.problem && !p.problems.some(x => x.id === a.problem)) a.problem = ""; });
+    const evSet = new Set(p.evidence.map(e => e.id)), stepSet = new Set(p.steps.map(x => x.id)), reqSet = new Set(p.requests.map(x => x.id)), artSet = new Set(p.artifacts.map(x => x.id)), sesSet = new Set(p.sessions.map(x => x.id)), probSet = new Set(p.problems.map(x => x.id));
+    p.problems.forEach(pr => { pr.evidence = pr.evidence.filter(id => evSet.has(id)); pr.steps = pr.steps.filter(id => stepSet.has(id)); pr.requests = pr.requests.filter(id => reqSet.has(id)); pr.artifacts = pr.artifacts.filter(id => artSet.has(id)); if (pr.session && !sesSet.has(pr.session)) pr.session = ""; });
+    p.questions.forEach(q => { if (q.problem && !probSet.has(q.problem)) { q.problem = ""; q.frameField = ""; } });
     const evIds = new Set(p.evidence.map(e => e.id)), sIds = new Set(p.sessions.map(x => x.id)), stIds = new Set(p.steps.map(x => x.id));
     p.steps.forEach(st => { st.evidence = st.evidence.filter(id => evIds.has(id)); });
     p.requests.forEach(r => { r.evidence = r.evidence.filter(id => evIds.has(id)); });
@@ -233,6 +255,7 @@ export function normalize(state) {
     pending: d.pending && typeof d.pending === "object" && d.pending.kind ? { kind: str(d.pending.kind), id: str(d.pending.id), to: str(d.pending.to), pilot: str(d.pending.pilot) } : null,
     applied: !!d.applied, drive: drv(d.drive), created: num(d.created, Date.now()), updated: num(d.updated, Date.now())
   }));
+  s.decisions.forEach(d => { if (d.links.problem) { const pp = s.pilots.find(p => p.id === d.pilot); if (!pp || !pp.problems.some(x => x.id === d.links.problem)) delete d.links.problem; } });
   if (!Array.isArray(s.log)) s.log = [];
   s.log = s.log.filter(e => e && typeof e === "object" && e.id).map(e => ({
     id: String(e.id), t: Number(e.t) || 0, who: String(e.who || ""), fid: String(e.fid || ""), fname: String(e.fname || ""),
