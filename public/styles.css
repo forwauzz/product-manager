@@ -1183,6 +1183,9 @@
   /* ---------- drive sync line ---------- */
   .drivesync { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 18px; }
   .drivesync .note.bad { color:var(--c-needs); }
+  .drivesync .calsync { flex-basis:100%; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .calpill { display:inline-flex; align-items:center; gap:6px; }
+  .calpill .chip { text-decoration:none; }
   .modal ol.steps { margin:6px 0 12px; padding-left:22px; font-size:15px; line-height:1.55; }
   .modal ol.steps li { margin-bottom:8px; }
 

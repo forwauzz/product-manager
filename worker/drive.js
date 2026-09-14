@@ -4,6 +4,7 @@ import { D1Store } from "./store-d1.js";
 import { pilotMarkdown, rndMarkdown, recordMarkdown, featuresCsv, logCsv, driveFolderId } from "../shared/exports.js";
 
 const SCOPE = "https://www.googleapis.com/auth/drive";
+const CAL_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const MARK = "drive-sync";
 const AUTH = "drive-auth";
 
@@ -32,12 +33,17 @@ async function writeAuth(env, auth) {
 export async function connectedAccount(env) {
   if (!oauthReady(env)) return null;
   const a = await readAuth(env);
-  return a && a.refresh_token ? { email: a.email || "", since: a.at || null } : null;
+  return a && a.refresh_token ? { email: a.email || "", since: a.at || null, calendar: /\/auth\/calendar/.test(a.scope || "") } : null;
+}
+/* The Calendar scope arrived with a later grant than Drive: an older refresh token only covers Drive until the user connects again. */
+export async function calendarConnected(env) {
+  const a = await connectedAccount(env);
+  return !!(a && a.calendar);
 }
 export function authUrl(env, origin, state) {
   const q = new URLSearchParams({
     client_id: env.GOOGLE_OAUTH_CLIENT_ID, redirect_uri: origin + "/api/drive/callback", response_type: "code",
-    scope: SCOPE + " https://www.googleapis.com/auth/userinfo.email", access_type: "offline", prompt: "consent", include_granted_scopes: "true", state
+    scope: SCOPE + " " + CAL_SCOPE + " https://www.googleapis.com/auth/userinfo.email", access_type: "offline", prompt: "consent", include_granted_scopes: "true", state
   });
   return "https://accounts.google.com/o/oauth2/v2/auth?" + q.toString();
 }
@@ -50,9 +56,9 @@ export async function finishConnect(env, origin, code) {
   if (!r.ok || !j.refresh_token) throw new Error("Google did not return a refresh token: " + (j.error_description || j.error || r.status));
   let email = "";
   try { const u = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: "Bearer " + j.access_token } }); email = (await u.json()).email || ""; } catch (_) { /* optional */ }
-  await writeAuth(env, { refresh_token: j.refresh_token, email, at: new Date().toISOString() });
+  await writeAuth(env, { refresh_token: j.refresh_token, email, at: new Date().toISOString(), scope: String(j.scope || "") });
   cachedToken = { value: j.access_token, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
-  return { email };
+  return { email, calendar: /\/auth\/calendar/.test(String(j.scope || "")) };
 }
 export async function disconnect(env) {
   const a = await readAuth(env);
@@ -129,7 +135,7 @@ export async function status(env) {
   const doc = await store.load();
   const account = await connectedAccount(env);
   const ready = oauthReady(env) ? !!account : !!env.GOOGLE_SA_KEY;
-  return { configured: ready, canConnect: oauthReady(env) && !account, mode: oauthReady(env) ? "user" : env.GOOGLE_SA_KEY ? "service" : "none", account: account ? account.email : "",
+  return { configured: ready, canConnect: oauthReady(env) && !account, mode: oauthReady(env) ? "user" : env.GOOGLE_SA_KEY ? "service" : "none", account: account ? account.email : "", calendarConnected: !!(account && account.calendar),
     version: doc.version, syncedVersion: mark.version || 0, at: mark.at || null, ok: mark.ok !== false, error: mark.error || "", files: mark.files || [], pending: (mark.version || 0) !== doc.version };
 }
 

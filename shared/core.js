@@ -162,6 +162,7 @@ export function normalize(state) {
   const ART_STATUS = ["Draft", "Shared", "Reviewed", "Final", "Retired"];
   const drv = v => ({ fileId: str(v && v.fileId), status: ["Not in Drive", "Linked", "Synced", "Error"].indexOf(v && v.status) !== -1 ? v.status : (v && v.fileId ? "Synced" : "Not in Drive"), syncedAt: str(v && v.syncedAt), error: str(v && v.error) });
   const oneOf = (list, v, d) => list.indexOf(v) !== -1 ? v : d;
+  const cal = v => ({ eventId: str(v && v.eventId), link: str(v && v.link), status: oneOf(["Not in calendar", "In calendar", "Cancelled in calendar", "Error"], v && v.status, v && v.eventId ? "In calendar" : "Not in calendar"), syncedAt: str(v && v.syncedAt), error: str(v && v.error), origin: v && v.origin === "Calendar" ? "Calendar" : "App", eventUpdated: str(v && v.eventUpdated) });
   s.pilots = s.pilots.filter(p => p && typeof p === "object").map(p => ({
     id: String(p.id || uid()), name: String(p.name || "Untitled pilot"),
     status: PILOT_STATUS.indexOf(p.status) !== -1 ? p.status : "Prospect",
@@ -192,13 +193,13 @@ export function normalize(state) {
     /* discovery */
     objective: str(p.objective),
     nextTouch: { date: str(p.nextTouch && p.nextTouch.date), note: str(p.nextTouch && p.nextTouch.note) },
-    people: arr(p.people).map(x => ({ id: str(x.id || uid()), name: str(x.name || "Unnamed"), role: str(x.role), side: x.side === "Internal" ? "Internal" : "Client", note: str(x.note) })),
+    people: arr(p.people).map(x => ({ id: str(x.id || uid()), name: str(x.name || "Unnamed"), role: str(x.role), side: x.side === "Internal" ? "Internal" : "Client", note: str(x.note), email: str(x.email).trim() })),
     sessions: arr(p.sessions).map(x => ({ id: str(x.id || uid()), date: str(x.date), time: str(x.time), title: str(x.title), participants: str(x.participants), purpose: str(x.purpose), agenda: str(x.agenda), links: str(x.links), summary: str(x.summary), findings: str(x.findings), draft: !!x.draft,
       stage: oneOf(SESSION_STAGES, x.stage, x.date && x.date > new Date().toISOString().slice(0, 10) ? "Planned" : "Recorded"),
       drive: { recording: str(x.drive && x.drive.recording), transcript: str(x.drive && x.drive.transcript), rawNotes: str(x.drive && x.drive.rawNotes), summary: str(x.drive && x.drive.summary), receivedFiles: str(x.drive && x.drive.receivedFiles), folder: str(x.drive && x.drive.folder) },
       transcript: str(x.transcript), extractedAt: num(x.extractedAt, 0),
       files: arr(x.files).map(f => ({ id: str(f.id || uid()), name: str(f.name || "File"), link: str(f.link), kind: oneOf(FILE_KINDS, f.kind, "Other"), from: f.from === "Client" ? "Client" : "Us", loop: oneOf(LOOP, f.loop, "Received"), owner: str(f.owner), due: str(f.due), note: str(f.note), drive: drv(f.drive), created: num(f.created, Date.now()), updated: num(f.updated, Date.now()) })),
-      doc: drv(x.doc), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+      doc: drv(x.doc), calendar: cal(x.calendar), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     evidence: arr(p.evidence).map(x => ({ id: str(x.id || uid()), text: str(x.text), kind: EV_KINDS.indexOf(x.kind) !== -1 ? x.kind : "Unsorted", session: str(x.session), source: str(x.source), speaker: str(x.speaker), timestamp: str(x.timestamp), draft: !!x.draft, note: str(x.note), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     steps: arr(p.steps).map((x, i) => ({ id: str(x.id || uid()), order: Number.isFinite(Number(x.order)) ? Number(x.order) : i, title: str(x.title || "Untitled step"), version: x.version === "proposed" ? "proposed" : "current", actor: str(x.actor), trigger: str(x.trigger), action: str(x.action), reasoning: str(x.reasoning), output: str(x.output), next: str(x.next), systems: str(x.systems), evidence: strIds(x.evidence), draft: !!x.draft, created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     workflowVersion: Math.max(1, Math.round(num(p.workflowVersion, 1))),

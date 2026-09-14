@@ -2205,6 +2205,30 @@
       };
       line.appendChild(now);
       if (driveState.mode === "user") {
+        var cal = el("div", "calsync");
+        var cs = driveState.calendar || {};
+        if (driveState.calendarConnected) {
+          var cwhen = cs.at ? new Date(cs.at) : null, cago = cwhen ? Math.round((Date.now() - cwhen.getTime()) / 60000) : null;
+          var ctxt = cs.ok === false ? "Calendar: last sync failed" + (cs.error ? " (" + cs.error.slice(0, 140) + ")" : "")
+            : cwhen ? "Calendar: in sync · " + (cago < 1 ? "just now" : cago < 90 ? cago + " min ago" : cwhen.toLocaleString()) : "Calendar: connected, first sync pending";
+          ctxt += " · dated sessions from today on go to your calendar; meetings booked with pilot people come back as planned sessions";
+          cal.appendChild(el("span", "note" + (cs.ok === false ? " bad" : ""), ctxt));
+          if ((cs.created || []).length) cal.appendChild(el("span", "note", "New from the calendar: " + cs.created.slice(0, 3).join("; ") + (cs.created.length > 3 ? " and " + (cs.created.length - 3) + " more" : "")));
+          var cnow = el("button", "chip", "Sync calendar");
+          cnow.onclick = function () {
+            cnow.disabled = true; cnow.textContent = "Syncing…";
+            fetch("/api/calendar/sync", { method: "POST" }).then(function (r) { return r.json(); }).then(function (j) {
+              var n = (j.created || []).length, u = (j.updated || []).length, k = (j.pushed || []).length;
+              toast(j.ok ? "Calendar in sync" + (n || u || k ? ": " + [n ? n + " new session" + (n > 1 ? "s" : "") : "", u ? u + " updated" : "", k ? k + " pushed" : ""].filter(Boolean).join(", ") : ", nothing to change") + "." : "Calendar sync failed: " + (j.error || ""), !j.ok);
+              driveState = null; loadDriveStatus(paint); if (n || u || k) load();
+            }).catch(function () { toast("Could not reach the server.", true); cnow.disabled = false; cnow.textContent = "Sync calendar"; });
+          };
+          cal.appendChild(cnow);
+        } else {
+          cal.appendChild(el("span", "note", "Calendar: not connected. Connect once with the same Google account and sessions meet your calendar both ways."));
+          var ccon = el("a", "btn small", "Connect Google Calendar"); ccon.href = "/api/drive/connect"; cal.appendChild(ccon);
+        }
+        line.appendChild(cal);
         var dis = el("button", "chip", "Disconnect");
         dis.onclick = function () {
           askConfirm("Disconnect Google Drive?", "The app stops updating the Drive copies until you connect again.", { danger: true, ok: "Disconnect" }).then(function (yes) {
@@ -2224,7 +2248,7 @@
     var m = /[#&?]drive=(connected|denied|failed)(?:&why=([^&]*))?/.exec(location.hash + location.search);
     if (!m) return;
     setTimeout(function () {
-      if (m[1] === "connected") toast("Google Drive connected. The first sync is running.");
+      if (m[1] === "connected") toast(/calendar=1/.test(location.hash + location.search) ? "Google Drive and Calendar connected. The first sync is running." : "Google Drive connected. The first sync is running.");
       else if (m[1] === "denied") toast("Google Drive was not connected.", true);
       else toast("Google Drive connection failed: " + decodeURIComponent(m[2] || ""), true);
     }, 600);
@@ -2675,6 +2699,7 @@
       body.appendChild(fld("Name", txtIn(d.name, "", function (v) { d.name = v; })));
       body.appendChild(fld("Role", txtIn(d.role, "Lawyer, paralegal, technicienne, our CTO…", function (v) { d.role = v; })));
       body.appendChild(fld("Side", selIn(SIDES, d.side, function (v) { d.side = v; })));
+      body.appendChild(fld("Email", txtIn(d.email || "", "name@firm.ca", function (v) { d.email = v.trim(); }, "email"), "A calendar meeting with this address becomes a planned session here."));
       body.appendChild(fld("Note", areaIn(d.note, "What they care about, how to reach them.", function (v) { d.note = v; }, 3)));
       var extra = [];
       if (!isNew) { var del = el("button", "btn ghost danger", "Remove"); del.onclick = function () { p.people = p.people.filter(function (x) { return x.id !== d.id; }); touchPilot(p); close(); render(); save(); }; extra.push(del); }
@@ -3731,7 +3756,31 @@
   var LOOP = ["Received", "Needs analysis", "Action/prototype created", "Reviewed with firm", "Validated/Closed"];
   var LOOP_CLASS = { "Received": "", "Needs analysis": "st-feature-flag", "Action/prototype created": "st-building", "Reviewed with firm": "st-planned", "Validated/Closed": "st-live" };
   var FILE_KINDS = ["Recording", "Transcript", "Raw notes", "Summary", "Received file", "Output", "Other"];
-  function ensureSession(s) { if (!s.drive || typeof s.drive !== "object") s.drive = { recording: "", transcript: "", rawNotes: "", summary: "", receivedFiles: "", folder: "" }; if (!Array.isArray(s.files)) s.files = []; if (!s.stage) s.stage = "Recorded"; if (!s.doc) s.doc = { fileId: "", status: "Not in Drive", syncedAt: "", error: "" }; return s; }
+  function ensureSession(s) { if (!s.drive || typeof s.drive !== "object") s.drive = { recording: "", transcript: "", rawNotes: "", summary: "", receivedFiles: "", folder: "" }; if (!Array.isArray(s.files)) s.files = []; if (!s.stage) s.stage = "Recorded"; if (!s.doc) s.doc = { fileId: "", status: "Not in Drive", syncedAt: "", error: "" }; if (!s.calendar || typeof s.calendar !== "object") s.calendar = { eventId: "", link: "", status: "Not in calendar", syncedAt: "", error: "", origin: "App", eventUpdated: "" }; return s; }
+  /* the session's place in Google Calendar: a link when it is there, a button when it could be */
+  function calendarPill(p, s) {
+    var c = s.calendar || {};
+    var w = el("span", "calpill");
+    if (c.status === "Cancelled in calendar") { w.appendChild(quietPill("cancelled in calendar", "st-needs-work")); return w; }
+    if (c.eventId) {
+      if (c.origin === "Calendar") w.appendChild(quietPill("from calendar", "st-planned"));
+      var a = el("a", "chip", "In calendar ↗"); a.href = c.link || "https://calendar.google.com/"; a.target = "_blank"; a.rel = "noopener"; a.onclick = function (e) { e.stopPropagation(); }; w.appendChild(a);
+      if (c.error) w.appendChild(el("span", "note bad", c.error));
+      return w;
+    }
+    if (!(driveState && driveState.calendarConnected) || !s.date) return null;
+    var b = el("button", "chip", c.status === "Error" ? "Retry calendar" : "Add to calendar");
+    b.title = c.error || "";
+    b.onclick = function (e) {
+      e.stopPropagation(); b.disabled = true; b.textContent = "Adding…";
+      flush().then(function () { return fetch("/api/calendar/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pilot: p.id, id: s.id }) }); })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j.calendar) s.calendar = j.calendar; if (j.version && !dirty) VERSION = j.version; toast(j.ok ? "Added to your calendar." : "Calendar: " + (j.error || "failed"), !j.ok); render(); })
+        .catch(function () { toast("Could not reach the server.", true); b.disabled = false; b.textContent = "Add to calendar"; });
+    };
+    w.appendChild(b);
+    return w;
+  }
   function editSession(p, s, preset) {
     var isNew = !s;
     var d = s ? JSON.parse(JSON.stringify(ensureSession(s))) : Object.assign({ id: uid(), date: today(), time: "", title: "", participants: "", purpose: "", agenda: "", links: "", summary: "", findings: "", draft: false, stage: "Planned", drive: { recording: "", transcript: "", rawNotes: "", summary: "", receivedFiles: "", folder: "" }, transcript: "", extractedAt: 0, files: [], doc: { fileId: "", status: "Not in Drive", syncedAt: "", error: "" }, created: Date.now(), updated: Date.now() }, preset || {});
@@ -3809,7 +3858,9 @@
       var side = [];
       var sel = el("button", "chip" + (ui.pilotSession === s.id ? " on" : ""), ui.pilotSession === s.id ? "Capturing here" : "Capture here");
       sel.onclick = function (e) { e.stopPropagation(); ui.pilotSession = ui.pilotSession === s.id ? "" : s.id; renderView(); };
-      side.push(quietPill(s.stage, STAGE_CLASS[s.stage]), sel);
+      side.push(quietPill(s.stage, STAGE_CLASS[s.stage]));
+      var cp = calendarPill(p, s); if (cp) side.push(cp);
+      side.push(sel);
       var titleNode = el("span"); titleNode.appendChild(document.createTextNode(s.title || s.purpose || "Session"));
       if (s.draft) titleNode.appendChild(quietPill("draft", "st-feature-flag"));
       var drv = s.drive || {}, nLinks = ["recording", "transcript", "rawNotes", "summary", "receivedFiles", "folder"].filter(function (k) { return drv[k]; }).length;

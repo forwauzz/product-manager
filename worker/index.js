@@ -2,7 +2,8 @@
    against D1, and gates everything behind a passcode when APP_PASSCODE is set. */
 import { handleApi } from "../shared/core.js";
 import { D1Store } from "./store-d1.js";
-import { syncAll as driveSyncAll, status as driveStatus, configured as driveConfigured, oauthReady as driveOauthReady, authUrl as driveAuthUrl, finishConnect as driveFinishConnect, disconnect as driveDisconnect, connectedAccount as driveAccount, pushRecord as drivePush } from "./drive.js";
+import { syncAll as driveSyncAll, status as driveStatus, configured as driveConfigured, oauthReady as driveOauthReady, authUrl as driveAuthUrl, finishConnect as driveFinishConnect, disconnect as driveDisconnect, connectedAccount as driveAccount, pushRecord as drivePush, calendarConnected } from "./drive.js";
+import { syncCalendar, status as calendarStatus, pushSession as calendarPush } from "./calendar.js";
 
 const COOKIE = "pm_auth";
 const COOKIE_DAYS = 30;
@@ -82,10 +83,10 @@ async function handleShots(request, env, path) {
 }
 
 export default {
-  /* Cron: push anything that changed to Drive. */
+  /* Cron: push anything that changed to Drive, then meet the calendar both ways. */
   async scheduled(event, env, ctx) {
     if (!driveConfigured(env)) return;
-    ctx.waitUntil(driveSyncAll(env).catch(() => {}));
+    ctx.waitUntil(driveSyncAll(env).catch(() => {}).then(() => calendarConnected(env)).then(on => on ? syncCalendar(env, { origin: env.APP_ORIGIN || "" }) : null).catch(() => {}));
   },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -134,9 +135,9 @@ export default {
       const okState = state && (timingSafeEqual(state, await sessionToken(env.APP_PASSCODE + ":drive:" + now.toISOString().slice(0, 13))) || timingSafeEqual(state, await sessionToken(env.APP_PASSCODE + ":drive:" + new Date(now.getTime() - 3600000).toISOString().slice(0, 13))));
       if (!code || !okState) return Response.redirect(url.origin + "/#pilots?drive=denied", 302);
       try {
-        await driveFinishConnect(env, url.origin, code);
-        if (ctx) ctx.waitUntil(driveSyncAll(env, { force: true }).catch(() => {}));
-        return Response.redirect(url.origin + "/#pilots?drive=connected", 302);
+        const got = await driveFinishConnect(env, url.origin, code);
+        if (ctx) ctx.waitUntil(driveSyncAll(env, { force: true }).catch(() => {}).then(() => got.calendar ? syncCalendar(env, { origin: url.origin }) : null).catch(() => {}));
+        return Response.redirect(url.origin + "/#pilots?drive=connected" + (got.calendar ? "&calendar=1" : ""), 302);
       } catch (e) {
         return Response.redirect(url.origin + "/#pilots?drive=failed&why=" + encodeURIComponent(String(e.message || "").slice(0, 120)), 302);
       }
@@ -148,7 +149,25 @@ export default {
     if (path === "/api/drive/status" && request.method === "GET") {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
       if (!env.DB) return jsonResponse(500, { error: "D1 binding DB is not configured." });
-      try { return jsonResponse(200, await driveStatus(env)); } catch (e) { return jsonResponse(500, { error: e.message }); }
+      try { const st = await driveStatus(env); st.calendar = await calendarStatus(env); return jsonResponse(200, st); } catch (e) { return jsonResponse(500, { error: e.message }); }
+    }
+    if (path === "/api/calendar/status" && request.method === "GET") {
+      if (!authed) return jsonResponse(401, { error: "Sign in first." });
+      if (!env.DB) return jsonResponse(500, { error: "D1 binding DB is not configured." });
+      try { return jsonResponse(200, await calendarStatus(env)); } catch (e) { return jsonResponse(500, { error: e.message }); }
+    }
+    if (path === "/api/calendar/sync" && request.method === "POST") {
+      if (!authed) return jsonResponse(401, { error: "Sign in first." });
+      if (!driveConfigured(env)) return jsonResponse(409, { ok: false, error: "Google access is not set up yet." });
+      if (!(await calendarConnected(env))) return jsonResponse(409, { ok: false, error: "Connect Google Calendar first: press Connect Google Calendar on the Pilots page." });
+      try { return jsonResponse(200, await syncCalendar(env, { origin: url.origin })); } catch (e) { return jsonResponse(500, { ok: false, error: e.message }); }
+    }
+    if (path === "/api/calendar/push" && request.method === "POST") {
+      if (!authed) return jsonResponse(401, { error: "Sign in first." });
+      let body = {};
+      try { body = await request.json(); } catch (_) { return jsonResponse(400, { ok: false, error: "Body must be JSON." }); }
+      if (!(await calendarConnected(env))) return jsonResponse(409, { ok: false, error: "Connect Google Calendar first." });
+      try { return jsonResponse(200, await calendarPush(env, body, url.origin)); } catch (e) { return jsonResponse(500, { ok: false, error: e.message }); }
     }
     if (path === "/api/drive/push" && request.method === "POST") {
       if (!authed) return jsonResponse(401, { error: "Sign in first." });
@@ -178,7 +197,7 @@ export default {
         const out = await handleApi({ method: request.method, path: path.replace(/^\/api/, ""), query, body }, new D1Store(env.DB));
         // Any successful edit: push to Drive in the background, shortly after the save.
         if (request.method !== "GET" && out.status < 300 && driveConfigured(env) && ctx) {
-          ctx.waitUntil(new Promise(r => setTimeout(r, 20000)).then(() => driveSyncAll(env)).catch(() => {}));
+          ctx.waitUntil(new Promise(r => setTimeout(r, 20000)).then(() => driveSyncAll(env)).catch(() => {}).then(() => calendarConnected(env)).then(on => on ? syncCalendar(env, { origin: url.origin }) : null).catch(() => {}));
         }
         return jsonResponse(out.status, out.body, out.headers);
       } catch (e) {
