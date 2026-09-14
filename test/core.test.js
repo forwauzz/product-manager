@@ -191,3 +191,23 @@ test("normalize drops a division for a space the feature is not in", () => {
   const n = normalize(JSON.parse(JSON.stringify(s)));
   assert.deepEqual(n.features.find(x => x.id === f.id).sections, { Health: "Cases" });
 });
+
+test("pilotMarkdown carries the discovery record and keeps live and validated apart", () => {
+  let s = normalize(seed());
+  s.pilots = [{ id: "p", name: "Le Cabinet M", status: "Discovery", objective: "Learn.", link: "https://drive.google.com/drive/folders/abc",
+    sessions: [{ id: "s1", date: "2026-09-08", title: "Onsite", draft: true }],
+    evidence: [{ id: "e1", text: "trouve-moi", kind: "Direct quote", speaker: "Amélie", session: "s1" }, { id: "e2", text: "ours", kind: "Product inference" }],
+    steps: [{ id: "w1", title: "Chronology", version: "current", actor: "Amélie" }],
+    questions: [{ id: "q1", text: "Who uses it next?", step: "w1" }],
+    deliverables: [{ id: "d1", title: "Clean file", status: "In delivery", validation: { status: "Not validated" } }],
+    recaps: [{ id: "r1", week: "2026-09-08", client: "<p>Progress</p>", clientReviewed: false }] }];
+  s = normalize(s);
+  const md = pilotMarkdown(s, s.pilots[0], new Date("2026-09-14T00:00:00Z"));
+  assert.match(md, /## Discovery\n\n\*\*Objective\.\*\* Learn\./);
+  assert.match(md, /### 2026-09-08 · Onsite · DRAFT, to confirm/);
+  assert.match(md, /### Direct quote \(1\)\n\n- « trouve-moi » · Amélie/);
+  assert.match(md, /### Product inference \(1\)/);
+  assert.match(md, /## Workflow map \(v1\)[\s\S]*\*\*1\. Chronology\*\*[\s\S]*Open questions: Who uses it next\?/);
+  assert.match(md, /- Status: In delivery · Client validation: Not validated/);
+  assert.match(md, /Week of 2026-09-08 · not yet reviewed by the client/);
+});

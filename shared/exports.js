@@ -77,11 +77,80 @@ export function pilotMarkdown(S, p, when) {
   dl.forEach((d, i) => {
     const fs2 = (d.features || []).map(feat).filter(Boolean);
     const liveN = fs2.filter(f => ["Live", "Needs work", "Feature flag"].indexOf(f.state) !== -1).length;
-    md += `### ${i + 1}. ${d.title}${d.tag ? " · " + d.tag : ""}\n\n${fs2.length ? liveN + " of " + fs2.length + " features live" : "no features tagged"}\n\n`;
+    md += `### ${i + 1}. ${d.title}${d.tag ? " · " + d.tag : ""}\n\n- Status: ${d.status || "Proposed"} · Client validation: ${(d.validation && d.validation.status) || "Not validated"}\n- ${fs2.length ? liveN + " of " + fs2.length + " features live" : "no features tagged"}\n\n`;
     if (d.note) md += `${markdownText(d.note)}\n\n`;
     if (fs2.length) md += fs2.map(frow).join("\n") + "\n\n";
   });
   if (!dl.length) md += "- none yet\n\n";
+  /* discovery */
+  const plainText = t => String(t || "").trim();
+  const sessions = (p.sessions || []).slice().sort((a, b) => (b.date || "") < (a.date || "") ? -1 : 1);
+  const sessName = id => { const s2 = sessions.find(x => x.id === id); return s2 ? (s2.date ? s2.date + " " : "") + (s2.title || s2.purpose || "session") : ""; };
+  if (p.objective || (p.people || []).length || (p.nextTouch && (p.nextTouch.date || p.nextTouch.note))) {
+    md += `## Discovery\n\n`;
+    if (p.objective) md += `**Objective.** ${plainText(p.objective)}\n\n`;
+    if (p.nextTouch && (p.nextTouch.date || p.nextTouch.note)) md += `**Next touch.** ${[p.nextTouch.date, p.nextTouch.note].filter(Boolean).join(" · ")}\n\n`;
+    if ((p.people || []).length) md += `**People.**\n\n${p.people.map(x => `- ${x.name}${x.role ? " · " + x.role : ""} · ${x.side}${x.note ? " · " + x.note : ""}`).join("\n")}\n\n`;
+  }
+  if (sessions.length) {
+    md += `## Sessions (${sessions.length})\n\n`;
+    sessions.forEach(s2 => {
+      md += `### ${s2.date || "undated"} · ${s2.title || s2.purpose || "Session"}${s2.draft ? " · DRAFT, to confirm" : ""}\n\n`;
+      if (s2.participants) md += `- Participants: ${s2.participants}\n`;
+      if (s2.purpose) md += `- Purpose: ${plainText(s2.purpose)}\n`;
+      if (s2.links) md += `- Notes and artifacts: ${s2.links.split(/\n+/).filter(Boolean).join(" · ")}\n`;
+      md += "\n";
+      if (s2.summary) md += `**Summary**\n\n${markdownText(s2.summary)}\n\n`;
+      if (s2.findings) md += `**Findings**\n\n${markdownText(s2.findings)}\n\n`;
+    });
+  }
+  const oq = (p.questions || []).filter(q => q.status !== "Answered"), aq = (p.questions || []).filter(q => q.status === "Answered");
+  if ((p.questions || []).length) {
+    md += `## Open questions (${oq.length})\n\n${oq.map(q => `- ${q.text}${q.session ? " · " + sessName(q.session) : ""}`).join("\n") || "- none"}\n\n`;
+    if (aq.length) md += `### Answered\n\n${aq.map(q => `- ${q.text} → ${q.answer || "answered"}`).join("\n")}\n\n`;
+  }
+  const acts = (p.actions || []);
+  if (acts.length) md += `## Next actions (${acts.filter(a => a.status !== "Done").length} open)\n\n${acts.map(a => `- [${a.status === "Done" ? "x" : " "}] ${a.title}${a.owner ? " · " + a.owner : ""} · ${a.side}${a.due ? " · due " + a.due : ""}${a.status === "Blocked" ? " · BLOCKED" : ""}`).join("\n")}\n\n`;
+  const steps = (p.steps || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  if (steps.length) {
+    md += `## Workflow map (v${p.workflowVersion || 1})\n\n`;
+    ["current", "proposed"].forEach(v => {
+      const list = steps.filter(x => (x.version || "current") === v);
+      if (!list.length) return;
+      md += `### ${v === "current" ? "Current: how they work today" : "Proposed: how it could work with ALIE"}\n\n`;
+      list.forEach((x, i) => {
+        md += `**${i + 1}. ${x.title}**${x.draft ? " · DRAFT" : ""}\n\n`;
+        [["Actor", x.actor], ["Trigger or input", x.trigger], ["Action", x.action], ["Reasoning and decisions", x.reasoning], ["Output", x.output], ["Next recipient", x.next], ["Systems", x.systems]].forEach(([k, val]) => { if (val) md += `- ${k}: ${plainText(val)}\n`; });
+        const qs = (p.questions || []).filter(q => q.step === x.id && q.status !== "Answered");
+        if (qs.length) md += `- Open questions: ${qs.map(q => q.text).join(" · ")}\n`;
+        md += "\n";
+      });
+    });
+  }
+  const ev = (p.evidence || []);
+  if (ev.length) {
+    md += `## Evidence (${ev.length})\n\n`;
+    ["Direct quote", "Client paraphrase", "Observed", "Explicit request", "Product inference", "Unsorted"].forEach(k => {
+      const list = ev.filter(e => e.kind === k);
+      if (!list.length) return;
+      md += `### ${k} (${list.length})\n\n${list.map(e => `- ${k === "Direct quote" ? "« " + e.text + " »" : e.text}${e.speaker ? " · " + e.speaker : ""}${e.source ? " · " + e.source : ""}${e.session ? " · " + sessName(e.session) : ""}${e.note ? " · note: " + e.note : ""}`).join("\n")}\n\n`;
+    });
+  }
+  const fitKeys = Object.keys(p.fit || {}).filter(k => byId[k]);
+  if (fitKeys.length) md += `## Feature fit (${fitKeys.length})\n\n${fitKeys.map(k => { const v = p.fit[k], f = byId[k]; return `- ${fname(f)} — engineering: ${f.state} · pilot fit: ${v.fit}${v.supports ? " · supports: " + plainText(v.supports) : ""}${v.unknown ? " · unknown: " + plainText(v.unknown) : ""}${v.next ? " · next: " + plainText(v.next) : ""}`; }).join("\n")}\n\n`;
+  if ((p.decisions || []).length) md += `## Product decisions (${p.decisions.length})\n\n${p.decisions.map(d => `- ${d.date ? d.date + " · " : ""}**${d.title}** — ${plainText(d.decision)}${d.reason ? " · why: " + plainText(d.reason) : ""}`).join("\n")}\n\n`;
+  if ((p.artifacts || []).length) md += `## Prototypes and artifacts (${p.artifacts.length})\n\n${p.artifacts.map(a => `- ${a.kind}: ${a.title}${a.link ? " · " + a.link : ""}${a.note ? " · " + plainText(a.note) : ""}`).join("\n")}\n\n`;
+  const val = [].concat(dl.map(d => ({ t: d.title, k: "deliverable", v: d.validation })), rq.map(r => ({ t: r.title, k: "request", v: r.validation }))).filter(x => x.v && x.v.status && x.v.status !== "Not validated");
+  if (val.length) md += `## Client validation\n\n${val.map(x => `- ${x.t} (${x.k}): ${x.v.status}${x.v.date ? " · " + x.v.date : ""}${x.v.note ? " · " + plainText(x.v.note) : ""}`).join("\n")}\n\n`;
+  const recaps = (p.recaps || []).slice().sort((a, b) => b.week < a.week ? -1 : 1);
+  if (recaps.length) {
+    md += `## Weekly recaps (${recaps.length})\n\n`;
+    recaps.forEach(r => {
+      md += `### Week of ${r.week}${r.clientReviewed ? " · reviewed by the client" : " · not yet reviewed by the client"}\n\n`;
+      if (r.client) md += `**Shared with the client**\n\n${markdownText(r.client)}\n\n`;
+      if (r.internal) md += `**Internal notes**\n\n${markdownText(r.internal)}\n\n`;
+    });
+  }
   const st = p.stack || [];
   md += `## Software and partners (${st.length})\n\n`;
   ["Software", "Partner"].forEach(kind => {

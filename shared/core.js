@@ -137,7 +137,17 @@ export function normalize(state) {
   if (typeof s.driveFolder !== "string") s.driveFolder = "";
   if (typeof s.rndFolder !== "string") s.rndFolder = "";
   if (!Array.isArray(s.pilots)) s.pilots = [];
-  const PILOT_STATUS = ["Prospect", "Piloting", "Live client", "Paused"];
+  const PILOT_STATUS = ["Prospect", "Discovery", "Preparing trial", "Piloting", "Live client", "Paused"];
+  const EV_KINDS = ["Unsorted", "Direct quote", "Client paraphrase", "Observed", "Product inference", "Explicit request"];
+  const FIT_VALUES = ["Not assessed", "Keep", "Simplify", "Rework", "Hide from pilot", "Retire candidate"];
+  const DELIV_STATUS = ["Proposed", "Agreed", "In delivery", "Ready for client testing", "Accepted"];
+  const VALIDATION = ["Not validated", "Client validated", "Rejected"];
+  const str = v => (v === null || v === undefined) ? "" : String(v);
+  const num = (v, d) => Number(v) || d;
+  const validation = v => ({ status: v && VALIDATION.indexOf(v.status) !== -1 ? v.status : "Not validated", note: str(v && v.note), date: str(v && v.date) });
+  const links = v => { const o = {}; if (v && typeof v === "object") ["session", "evidence", "request", "deliverable", "feature", "step", "question"].forEach(k => { if (v[k]) o[k] = str(v[k]); }); return o; };
+  const arr = v => Array.isArray(v) ? v.filter(x => x && typeof x === "object") : [];
+  const strIds = v => Array.isArray(v) ? v.filter(x => typeof x === "string") : [];
   s.pilots = s.pilots.filter(p => p && typeof p === "object").map(p => ({
     id: String(p.id || uid()), name: String(p.name || "Untitled pilot"),
     status: PILOT_STATUS.indexOf(p.status) !== -1 ? p.status : "Prospect",
@@ -148,7 +158,8 @@ export function normalize(state) {
     deliverables: (Array.isArray(p.deliverables) ? p.deliverables : []).filter(d => d && typeof d === "object").map(d => ({
       id: String(d.id || uid()), title: String(d.title || "Untitled deliverable"), note: String(d.note || ""),
       tag: ["Quick win", "Big bet", "Later", "Blocked"].indexOf(d.tag) !== -1 ? d.tag : "",
-      features: Array.isArray(d.features) ? d.features.filter(x => typeof x === "string") : []
+      features: Array.isArray(d.features) ? d.features.filter(x => typeof x === "string") : [],
+      status: d.status, validation: d.validation
     })),
     requests: (Array.isArray(p.requests) ? p.requests : []).filter(r => r && typeof r === "object").map(r => ({
       id: String(r.id || uid()), title: String(r.title || "Untitled request"),
@@ -156,6 +167,7 @@ export function normalize(state) {
       fit: ["Core to ALIE", "Adjacent", "Out of scope"].indexOf(r.fit) !== -1 ? r.fit : "",
       decision: ["Undecided", "Build", "Integrate or partner", "Later", "Declined"].indexOf(r.decision) !== -1 ? r.decision : "Undecided",
       reason: String(r.reason || ""), source: String(r.source || ""), feature: String(r.feature || ""),
+      evidence: r.evidence, validation: r.validation,
       created: Number(r.created) || Date.now(), updated: Number(r.updated) || Date.now()
     })),
     stack: (Array.isArray(p.stack) ? p.stack : []).filter(x => x && typeof x === "object").map(x => ({
@@ -163,8 +175,33 @@ export function normalize(state) {
       category: String(x.category || ""), usage: String(x.usage || ""), link: String(x.link || ""),
       created: Number(x.created) || Date.now(), updated: Number(x.updated) || Date.now()
     })),
+    /* discovery */
+    objective: str(p.objective),
+    nextTouch: { date: str(p.nextTouch && p.nextTouch.date), note: str(p.nextTouch && p.nextTouch.note) },
+    people: arr(p.people).map(x => ({ id: str(x.id || uid()), name: str(x.name || "Unnamed"), role: str(x.role), side: x.side === "Internal" ? "Internal" : "Client", note: str(x.note) })),
+    sessions: arr(p.sessions).map(x => ({ id: str(x.id || uid()), date: str(x.date), title: str(x.title), participants: str(x.participants), purpose: str(x.purpose), links: str(x.links), summary: str(x.summary), findings: str(x.findings), draft: !!x.draft, created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    evidence: arr(p.evidence).map(x => ({ id: str(x.id || uid()), text: str(x.text), kind: EV_KINDS.indexOf(x.kind) !== -1 ? x.kind : "Unsorted", session: str(x.session), source: str(x.source), speaker: str(x.speaker), note: str(x.note), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    steps: arr(p.steps).map((x, i) => ({ id: str(x.id || uid()), order: Number.isFinite(Number(x.order)) ? Number(x.order) : i, title: str(x.title || "Untitled step"), version: x.version === "proposed" ? "proposed" : "current", actor: str(x.actor), trigger: str(x.trigger), action: str(x.action), reasoning: str(x.reasoning), output: str(x.output), next: str(x.next), systems: str(x.systems), evidence: strIds(x.evidence), draft: !!x.draft, created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    workflowVersion: Math.max(1, Math.round(num(p.workflowVersion, 1))),
+    workflowHistory: arr(p.workflowHistory).map(h => ({ id: str(h.id || uid()), v: num(h.v, 1), label: str(h.label), at: num(h.at, Date.now()), steps: arr(h.steps) })),
+    questions: arr(p.questions).map(x => ({ id: str(x.id || uid()), text: str(x.text), status: x.status === "Answered" ? "Answered" : "Open", answer: str(x.answer), session: str(x.session), step: str(x.step), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    actions: arr(p.actions).map(x => ({ id: str(x.id || uid()), title: str(x.title), owner: str(x.owner), due: str(x.due), side: x.side === "Client" ? "Client" : "Internal", status: ["Open", "Done", "Blocked"].indexOf(x.status) !== -1 ? x.status : "Open", note: str(x.note), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    fit: Object.fromEntries(Object.entries(p.fit && typeof p.fit === "object" && !Array.isArray(p.fit) ? p.fit : {}).map(([k, v]) => [str(k), { fit: v && FIT_VALUES.indexOf(v.fit) !== -1 ? v.fit : "Not assessed", supports: str(v && v.supports), evidence: strIds(v && v.evidence), unknown: str(v && v.unknown), next: str(v && v.next), updated: num(v && v.updated, Date.now()) }])),
+    recaps: arr(p.recaps).map(x => ({ id: str(x.id || uid()), week: str(x.week), internal: str(x.internal), client: str(x.client), clientReviewed: !!x.clientReviewed, created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    artifacts: arr(p.artifacts).map(x => ({ id: str(x.id || uid()), title: str(x.title || "Untitled"), link: str(x.link), kind: ["Prototype", "Document", "Recording", "Other"].indexOf(x.kind) !== -1 ? x.kind : "Other", note: str(x.note), feature: str(x.feature), request: str(x.request), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    decisions: arr(p.decisions).map(x => ({ id: str(x.id || uid()), title: str(x.title || "Untitled decision"), decision: str(x.decision), reason: str(x.reason), date: str(x.date), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     created: Number(p.created) || Date.now(), updated: Number(p.updated) || Date.now()
   }));
+  s.pilots.forEach(p => {
+    p.deliverables.forEach(d => { d.status = DELIV_STATUS.indexOf(d.status) !== -1 ? d.status : "Proposed"; d.validation = validation(d.validation); });
+    p.requests.forEach(r => { r.evidence = strIds(r.evidence); r.validation = validation(r.validation); });
+    const evIds = new Set(p.evidence.map(e => e.id)), sIds = new Set(p.sessions.map(x => x.id)), stIds = new Set(p.steps.map(x => x.id));
+    p.steps.forEach(st => { st.evidence = st.evidence.filter(id => evIds.has(id)); });
+    p.requests.forEach(r => { r.evidence = r.evidence.filter(id => evIds.has(id)); });
+    Object.values(p.fit).forEach(v => { v.evidence = v.evidence.filter(id => evIds.has(id)); });
+    p.evidence.forEach(e => { if (e.session && !sIds.has(e.session)) e.session = ""; if (e.links.step && !stIds.has(e.links.step)) delete e.links.step; });
+    p.questions.forEach(q => { if (q.session && !sIds.has(q.session)) q.session = ""; if (q.step && !stIds.has(q.step)) q.step = ""; });
+  });
   if (!Array.isArray(s.log)) s.log = [];
   s.log = s.log.filter(e => e && typeof e === "object" && e.id).map(e => ({
     id: String(e.id), t: Number(e.t) || 0, who: String(e.who || ""), fid: String(e.fid || ""), fname: String(e.fname || ""),

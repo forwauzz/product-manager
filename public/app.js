@@ -2068,8 +2068,8 @@
   }
 
   /* --- pilots: who we are piloting with, what they asked for, what is live for them, what we think they will need --- */
-  var PILOT_STATUS = ["Prospect", "Piloting", "Live client", "Paused"];
-  var PILOT_STATUS_CLASS = { "Prospect": "st-planned", "Piloting": "st-building", "Live client": "st-live", "Paused": "st-feature-flag" };
+  var PILOT_STATUS = ["Prospect", "Discovery", "Preparing trial", "Piloting", "Live client", "Paused"];
+  var PILOT_STATUS_CLASS = { "Prospect": "st-planned", "Discovery": "st-research", "Preparing trial": "st-planned", "Piloting": "st-building", "Live client": "st-live", "Paused": "st-feature-flag" };
   function pilots() { return S.pilots || []; }
   function pilotById(id) { return pilots().filter(function (p) { return p.id === id; })[0]; }
   function pilotFeats(p, key) { return (p[key] || []).map(feature).filter(Boolean); }
@@ -2259,13 +2259,19 @@
       var next = dl.filter(function (d) { var pr = delivProgress(d); return d.tag !== "Blocked" && !(pr && pr.live === pr.total); })[0];
       var blocked = dl.filter(function (d) { return d.tag === "Blocked"; }).length;
       var rqU = (p.requests || []).filter(function (r) { return r.decision === "Undecided"; }).length;
-      var since = daysSince(p.updated);
-      tx.appendChild(el("span", null, next ? "Next: " + next.title : dl.length ? "Every deliverable is shipped" : "No deliverables outlined yet"));
+      ensurePilot(p);
+      var ls = lastSession(p), oa = openActions(p), oq = openQuestions(p), un = unsortedCount(p);
+      var since = daysSince(ls && ls.date ? new Date(ls.date + "T12:00:00").getTime() : p.updated);
+      var first = p.objective ? plain(p.objective).slice(0, 110) : next ? "Next: " + next.title : dl.length ? "Every deliverable is shipped" : "No deliverables outlined yet";
+      tx.appendChild(el("span", null, first));
       var l2 = [];
+      if (p.nextTouch && p.nextTouch.date) l2.push("next touch " + stamp(p.nextTouch.date));
+      if (oa.length) l2.push(oa.length + (oa.length === 1 ? " open action" : " open actions"));
+      if (oq.length) l2.push(oq.length + (oq.length === 1 ? " open question" : " open questions"));
       if (rqU) l2.push(rqU + (rqU === 1 ? " request to decide" : " requests to decide"));
       if (blocked) l2.push(blocked + " blocked");
-      l2.push(w ? l + " of " + w + " asks live" : "Nothing asked for yet");
-      if (p.contact) l2.push(p.contact);
+      if (un) l2.push(un + " unsorted");
+      if (!l2.length) l2.push(w ? l + " of " + w + " asks live" : "Nothing asked for yet");
       tx.appendChild(el("span", "sub", l2.join(" · ")));
       t.appendChild(tx);
       var nn = el("div", "n" + (since >= 14 ? " stale" : ""));
@@ -2347,109 +2353,1133 @@
     return r;
   }
 
-  function renderPilotPage(host, p) {
-    var back = el("button", "btn ghost", "Pilots");
-    back.onclick = function () { ui.pilot = null; renderView(); };
-    var more = menu("More", [
-      ["Rename", function () { askText("Rename pilot", { value: p.name, ok: "Rename" }).then(function (n) { if (n) { p.name = n; p.updated = Date.now(); render(); save(); } }); }],
-      "-",
-      ["Delete", function () { deletePilot(p); }, true]
-    ]);
-    var acts0 = [back, more];
-    if (p.driveDoc) { var dd = el("a", "btn ghost", "Drive copy ↗"); dd.href = "https://docs.google.com/document/d/" + p.driveDoc + "/edit"; dd.target = "_blank"; dd.rel = "noopener"; acts0 = [back, dd, more]; }
-    host.appendChild(header("PILOT", p.name, acts0));
-    host.appendChild(pilotTabs(p));
-    if (ui.pilotTab === "deliverables") return renderPilotDeliverables(host, p);
-    if (ui.pilotTab === "requests") return renderPilotRequests(host, p);
-    if (ui.pilotTab === "stack") return renderPilotStack(host, p);
-    var pad = el("div", "pad");
-    var grid = el("div", "grid2 pilotgrid");
-    var left = el("div"), right = el("div");
+  /* =====================================================================
+     Pilot page, second design: three calm levels (Overview, Discovery, Delivery),
+     one centred column, compact rows that expand, forms in a side drawer, and a
+     capture composer that is always within reach. Software & partners stays as
+     a context pane. Everything below reads and writes the same pilot record.
+     ===================================================================== */
+  var EV_KINDS = ["Unsorted", "Direct quote", "Client paraphrase", "Observed", "Product inference", "Explicit request"];
+  var EV_CLASS = { "Unsorted": "", "Direct quote": "ev-quote", "Client paraphrase": "ev-para", "Observed": "ev-obs", "Product inference": "ev-inf", "Explicit request": "ev-req" };
+  var FIT_VALUES = ["Not assessed", "Keep", "Simplify", "Rework", "Hide from pilot", "Retire candidate"];
+  var FIT_CLASS = { "Not assessed": "", "Keep": "st-live", "Simplify": "st-planned", "Rework": "st-building", "Hide from pilot": "st-feature-flag", "Retire candidate": "st-needs-work" };
+  var DELIV_STATUS = ["Proposed", "Agreed", "In delivery", "Ready for client testing", "Accepted"];
+  var DELIV_STATUS_CLASS = { "Proposed": "", "Agreed": "st-planned", "In delivery": "st-building", "Ready for client testing": "st-feature-flag", "Accepted": "st-live" };
+  var VALIDATION = ["Not validated", "Client validated", "Rejected"];
+  var VALIDATION_CLASS = { "Not validated": "", "Client validated": "st-live", "Rejected": "st-needs-work" };
+  var ACTION_STATUS = ["Open", "Done", "Blocked"];
+  var ARTIFACT_KINDS = ["Prototype", "Document", "Recording", "Other"];
+  var SIDES = ["Client", "Internal"];
 
-    /* left: facts and notebook */
-    var pf = el("div", "panel");
-    pf.appendChild(el("h3", null, "About"));
-    [["Status", selectOf(PILOT_STATUS, p.status, function (v) { p.status = v; p.updated = Date.now(); render(); save(); }, "Status")],
-     ["Profile", selectOf([["", "No profile"]].concat(S.icps.filter(function (x) { return x.kind === "Buyer"; }).map(function (x) { return [x.id, x.name]; })), p.icp || "", function (v) { p.icp = v; p.updated = Date.now(); render(); save(); }, "Buyer profile")],
-     ["Since", selectOf((function () { var ks = [], m = mAdd(mKey(new Date()), -12); for (var i = 0; i < 24; i++) ks.push([mAdd(m, i), mLong(mAdd(m, i))]); return ks; })(), p.since || mKey(new Date()), function (v) { p.since = v; p.updated = Date.now(); save(); }, "Since")]
-    ].forEach(function (pair) {
-      var row = el("div", "field");
-      row.appendChild(el("label", null, pair[0]));
-      row.appendChild(pair[1]);
-      pf.appendChild(row);
-    });
-    var crow = el("div", "field");
-    crow.appendChild(el("label", null, "Contact"));
-    var cin = el("input"); cin.value = p.contact || ""; cin.placeholder = "Name, role, email";
-    cin.setAttribute("aria-label", "Contact");
-    cin.onchange = function () { p.contact = cin.value.trim(); p.updated = Date.now(); save(); };
-    crow.appendChild(cin); pf.appendChild(crow);
-    var lrow = el("div", "field");
-    lrow.appendChild(el("label", null, "Drive"));
-    var lin = el("input"); lin.value = p.link || ""; lin.placeholder = "https://drive.google.com/…";
-    lin.setAttribute("aria-label", "Drive link");
-    lin.onchange = function () { p.link = lin.value.trim(); p.updated = Date.now(); save(); render(); };
-    lrow.appendChild(lin);
-    if (p.link) { var go = el("a", "btn ghost", "Open"); go.href = p.link; go.target = "_blank"; go.rel = "noopener"; lrow.appendChild(go); }
-    pf.appendChild(lrow);
-    foldable(pf, "p:" + p.id + ":about", true, "h3");
-    left.appendChild(pf);
+  function ensurePilot(p) {
+    ["people", "sessions", "evidence", "steps", "workflowHistory", "questions", "actions", "recaps", "artifacts", "decisions", "wants", "needs", "deliverables", "requests", "stack"].forEach(function (k) { if (!Array.isArray(p[k])) p[k] = []; });
+    if (!p.fit || typeof p.fit !== "object") p.fit = {};
+    if (!p.nextTouch || typeof p.nextTouch !== "object") p.nextTouch = { date: "", note: "" };
+    if (typeof p.objective !== "string") p.objective = "";
+    if (typeof p.workflowVersion !== "number") p.workflowVersion = 1;
+    return p;
+  }
+  function stamp(d) { return d ? new Date(d.length > 10 ? d : d + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : ""; }
+  function today() { return dKey(new Date()); }
+  function byDateDesc(a, b) { return (b.date || "") < (a.date || "") ? -1 : (b.date || "") > (a.date || "") ? 1 : (b.created || 0) - (a.created || 0); }
+  function sessionById(p, id) { return p.sessions.filter(function (s) { return s.id === id; })[0]; }
+  function sessionLabel(p, id) { var s = sessionById(p, id); return s ? (s.date ? stamp(s.date) + " · " : "") + (s.title || s.purpose || "Session") : ""; }
+  function evidenceFor(p, pred) { return p.evidence.filter(pred); }
+  function openQuestions(p) { return p.questions.filter(function (q) { return q.status !== "Answered"; }); }
+  function openActions(p) { return p.actions.filter(function (a) { return a.status !== "Done"; }).sort(function (a, b) { return (a.due || "9999") < (b.due || "9999") ? -1 : 1; }); }
+  function lastSession(p) { return p.sessions.slice().sort(byDateDesc)[0]; }
+  function pilotFeatureSet(p) {
+    var ids = {};
+    p.wants.concat(p.needs).forEach(function (id) { ids[id] = true; });
+    p.deliverables.forEach(function (d) { (d.features || []).forEach(function (id) { ids[id] = true; }); });
+    p.requests.forEach(function (r) { if (r.feature) ids[r.feature] = true; });
+    Object.keys(p.fit).forEach(function (id) { ids[id] = true; });
+    return Object.keys(ids).map(feature).filter(Boolean).sort(function (a, b) { return a.name.localeCompare(b.name); });
+  }
+  function fitOf(p, f) { return p.fit[f.id] || { fit: "Not assessed", supports: "", evidence: [], unknown: "", next: "" }; }
 
-    var pn = el("div", "panel");
-    pn.style.marginTop = "18px";
-    pn.appendChild(el("h3", null, "Notebook"));
-    pn.appendChild(richEditor(p.notes, function (h) { p.notes = h; p.updated = Date.now(); save(); }, "What they do, what hurts, what they said, next steps, dates.", "writer"));
-    foldable(pn, "p:" + p.id + ":notes", true, "h3");
-    left.appendChild(pn);
-
-    /* right: the three lists */
-    var listMode = pilotListMode();
-    var modeRow = el("div", "listmode");
-    var mseg = el("div", "seg small");
-    [["List", "list"], ["Grid", "grid"]].forEach(function (m) {
-      var b = el("button", null, m[0]);
-      b.setAttribute("aria-pressed", String(listMode === m[1]));
-      b.onclick = function () { setPilotListMode(m[1]); renderView(); };
-      mseg.appendChild(b);
-    });
-    modeRow.appendChild(mseg);
-    modeRow.insertBefore(foldAllButtons(pad), modeRow.firstChild);
-    right.appendChild(modeRow);
-    function listPanel(title, hint, key, derived) {
-      var pnl = el("div", "panel plist");
-      var items = derived ? pilotLive(p) : pilotFeats(p, key);
-      var h = el("h3", null, title);
-      h.appendChild(el("em", "hcount", String(items.length)));
-      pnl.appendChild(h);
-      pnl.appendChild(el("div", "note", hint));
-      var rows = el("div", "pilotrows" + (listMode === "grid" ? " grid" : ""));
-      if (!items.length) rows.appendChild(el("div", "note empty2", derived ? "Nothing they asked for is live yet." : "Nothing here yet."));
-      items.forEach(function (f) {
-        rows.appendChild(pilotFeatureRow(f, derived ? null : function (x) { p[key] = (p[key] || []).filter(function (id) { return id !== x.id; }); p.updated = Date.now(); render(); save(); }));
-      });
-      pnl.appendChild(rows);
-      if (!derived) {
-        var add = el("button", "btn ghost rowbtn", "+ Add a feature");
-        add.onclick = function () {
-          pickFeature(title, p[key] || []).then(function (f) {
-            if (!f) return;
-            p[key] = (p[key] || []).concat([f.id]); p.updated = Date.now(); render(); save();
-          });
-        };
-        pnl.appendChild(add);
-      }
-      foldable(pnl, "p:" + p.id + ":" + key + (derived ? ":live" : ""), true, "h3");
-      return pnl;
+  /* ---------- small building blocks ---------- */
+  function sideDrawer(title, build, o) {
+    o = o || {};
+    closeSideDrawer();
+    var sc = el("div", "dscrim"); sc.id = "escrim"; sc.onclick = closeSideDrawer;
+    document.body.appendChild(sc);
+    var d = el("div", "drawer edrawer" + (o.wide ? " wide" : "")); d.id = "edrawer";
+    d.setAttribute("role", "dialog"); d.setAttribute("aria-label", title);
+    var x = el("button", "dclose", "×"); x.setAttribute("aria-label", "Close"); x.onclick = closeSideDrawer;
+    d.appendChild(x);
+    if (o.eyebrow) d.appendChild(el("div", "eyebrow", o.eyebrow));
+    d.appendChild(el("h2", null, title));
+    var body = el("div", "ebody");
+    d.appendChild(body);
+    build(body, closeSideDrawer);
+    document.body.appendChild(d);
+    function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); closeSideDrawer(); } }
+    document.addEventListener("keydown", onKey);
+    d._onKey = onKey;
+    var first = body.querySelector("input, textarea, select, [contenteditable]");
+    if (first && !narrow()) setTimeout(function () { first.focus(); }, 0);
+    return closeSideDrawer;
+  }
+  function closeSideDrawer() {
+    var d = document.getElementById("edrawer"), sc = document.getElementById("escrim");
+    if (d) { if (d._onKey) document.removeEventListener("keydown", d._onKey); d.remove(); }
+    if (sc) sc.remove();
+  }
+  function fld(label, control, hint) {
+    var w = el("div", "fld");
+    var l = el("label", null, label);
+    w.appendChild(l);
+    w.appendChild(control);
+    if (hint) w.appendChild(el("span", "hint", hint));
+    return w;
+  }
+  function txtIn(value, ph, on, type) {
+    var i = el("input"); i.type = type || "text"; i.value = value || ""; i.placeholder = ph || "";
+    i.oninput = function () { on(i.value); };
+    return i;
+  }
+  function areaIn(value, ph, on, rows) {
+    var t = el("textarea"); t.value = value || ""; t.placeholder = ph || ""; t.rows = rows || 3;
+    t.oninput = function () { on(t.value); };
+    return t;
+  }
+  function selIn(options, value, on) {
+    var s = el("select");
+    options.forEach(function (o) { var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; var op = el("option", null, l); op.value = v; if (v === value) op.selected = true; s.appendChild(op); });
+    s.onchange = function () { on(s.value); };
+    return s;
+  }
+  function drawerActs(onSave, onCancel, extra) {
+    var acts = el("div", "acts");
+    (extra || []).forEach(function (b) { acts.appendChild(b); });
+    var sp = el("span", "grow"); acts.appendChild(sp);
+    var c = el("button", "btn ghost", "Cancel"); c.onclick = onCancel; acts.appendChild(c);
+    var s = el("button", "btn", "Save"); s.onclick = onSave; acts.appendChild(s);
+    return acts;
+  }
+  function quietPill(text, cls) { return pill(text, "quiet " + (cls || "")); }
+  function metaLine(parts) {
+    var m = el("div", "rmeta");
+    parts.filter(Boolean).forEach(function (x) { m.appendChild(typeof x === "string" ? el("span", null, x) : x); });
+    return m;
+  }
+  /* compact row that expands into details; remembered per row */
+  function xrow(o) {
+    var r = el("div", "xrow" + (o.cls ? " " + o.cls : ""));
+    r.dataset.fold = o.key;
+    var head = el("div", "xhead");
+    var chev = el("button", "fchev", "›"); chev.type = "button"; chev.setAttribute("aria-label", "Expand");
+    head.appendChild(chev);
+    var main = el("div", "xmain");
+    var t = el("div", "xtitle");
+    if (typeof o.title === "string") t.textContent = o.title; else t.appendChild(o.title);
+    main.appendChild(t);
+    if (o.meta) main.appendChild(o.meta);
+    head.appendChild(main);
+    if (o.side) { var sd = el("div", "xside"); o.side.forEach(function (n) { sd.appendChild(n); }); head.appendChild(sd); }
+    r.appendChild(head);
+    var det = el("div", "xdet");
+    r.appendChild(det);
+    var built = false;
+    function setOpen(v) {
+      r.classList.toggle("open", v);
+      foldSet(o.key, v);
+      if (v && !built) { built = true; o.details(det); }
     }
-    right.appendChild(listPanel("They asked for", "Features this client requested. Their state shows how far along each one is.", "wants", false));
-    var lv = listPanel("Requested features shipped", "Derived: what they asked for that is already live. Shipped is not the same as validated by the client.", "wants", true);
-    lv.style.marginTop = "18px"; right.appendChild(lv);
-    var nd = listPanel("We think they will need", "Our own view of what will matter to them, before they ask.", "needs", false);
-    nd.style.marginTop = "18px"; right.appendChild(nd);
+    if (foldOpen(o.key, !!o.open)) setOpen(true);
+    head.addEventListener("click", function (e) {
+      if (e.target.closest("input, select, button:not(.fchev), a, .rte, textarea")) return;
+      setOpen(!r.classList.contains("open"));
+    });
+    chev.onclick = function (e) { e.stopPropagation(); setOpen(!r.classList.contains("open")); };
+    return r;
+  }
+  function emptyNote(text) { return el("div", "note empty2", text); }
+  function secHead(title, count, hint, actions) {
+    var h = el("div", "sechead");
+    var t = el("h2", null, title);
+    if (count !== undefined && count !== null) t.appendChild(el("em", null, String(count)));
+    h.appendChild(t);
+    if (actions && actions.length) { var a = el("div", "secacts"); actions.forEach(function (b) { a.appendChild(b); }); h.appendChild(a); }
+    var w = el("div", "sec");
+    w.appendChild(h);
+    if (hint) w.appendChild(el("p", "note", hint));
+    return w;
+  }
+  function chipBtn(label, fn, cls) { var b = el("button", "chip" + (cls ? " " + cls : ""), label); b.onclick = fn; return b; }
+  function primaryBtn(label, fn) { var b = el("button", "btn small", label); b.onclick = fn; return b; }
 
-    grid.appendChild(left); grid.appendChild(right);
-    pad.appendChild(grid);
-    host.appendChild(pad);
+  /* source ids such as CM-20260908-01 become links into the Inbox */
+  var SRC_RE = /\b[A-Z]{2,4}-\d{8}-\d{2}\b/g;
+  function linkSources(root, p) {
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var nodes = [];
+    while (walker.nextNode()) { var n = walker.currentNode; if (SRC_RE.test(n.nodeValue) && !n.parentNode.closest("a, button, input, textarea, .srcid")) nodes.push(n); SRC_RE.lastIndex = 0; }
+    nodes.forEach(function (n) {
+      var frag = document.createDocumentFragment(), text = n.nodeValue, last = 0, m;
+      SRC_RE.lastIndex = 0;
+      while ((m = SRC_RE.exec(text))) {
+        frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        var a = el("button", "srcid", m[0]);
+        var has = p.evidence.some(function (e) { return e.source === m[0]; });
+        a.title = has ? "Open in the Inbox" : "Not in the Inbox yet: search it there";
+        if (!has) a.classList.add("missing");
+        a.onclick = (function (id) { return function (ev) { ev.stopPropagation(); ui.pilotTab = "discovery"; ui.pilotSub = "inbox"; ui.inboxQ = id; ui.inboxKind = ""; renderView(); }; })(m[0]);
+        frag.appendChild(a);
+        last = m.index + m[0].length;
+      }
+      frag.appendChild(document.createTextNode(text.slice(last)));
+      n.parentNode.replaceChild(frag, n);
+    });
+  }
+  function richBlock(html, p, cls) { var v = richView(html, cls || "readtext"); linkSources(v, p); return v; }
+
+  /* ---------- capture composer ---------- */
+  function captureBar(p) {
+    var bar = el("div", "capture");
+    var form = el("div", "capbox");
+    var inp = el("textarea", "capin");
+    inp.rows = 1;
+    inp.placeholder = "Capture a quote, observation, request, question, or idea…";
+    inp.setAttribute("aria-label", "Capture");
+    function grow() { inp.style.height = "auto"; inp.style.height = Math.min(160, inp.scrollHeight) + "px"; }
+    inp.oninput = grow;
+    function submit() {
+      var t = inp.value.trim();
+      if (!t) { inp.focus(); return; }
+      var e = { id: uid(), text: t, kind: "Unsorted", session: ui.pilotSession || "", source: "", speaker: "", note: "", links: {}, created: Date.now(), updated: Date.now() };
+      p.evidence = p.evidence.concat([e]);
+      touchPilot(p); save();
+      inp.value = ""; grow();
+      toast("Captured to the Inbox as Unsorted.");
+      if (ui.pilotTab === "discovery" && ui.pilotSub === "inbox") renderView();
+      else { var c = document.querySelector(".capcount"); if (c) c.textContent = unsortedCount(p) ? unsortedCount(p) + " unsorted" : ""; }
+      inp.focus();
+    }
+    inp.onkeydown = function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } };
+    form.appendChild(inp);
+    var go = el("button", "btn capgo", "Capture");
+    go.onclick = submit;
+    form.appendChild(go);
+    bar.appendChild(form);
+    var foot = el("div", "capfoot");
+    var cnt = el("button", "capcount", unsortedCount(p) ? unsortedCount(p) + " unsorted" : "");
+    cnt.onclick = function () { ui.pilotTab = "discovery"; ui.pilotSub = "inbox"; ui.inboxKind = "Unsorted"; ui.inboxQ = ""; renderView(); };
+    foot.appendChild(cnt);
+    foot.appendChild(el("span", "note", ui.pilotSession && sessionById(p, ui.pilotSession) ? "Linked to " + sessionLabel(p, ui.pilotSession) : "Saved as Unsorted with today's date. Sort and link it later."));
+    bar.appendChild(foot);
+    return bar;
+  }
+  function unsortedCount(p) { return p.evidence.filter(function (e) { return e.kind === "Unsorted"; }).length; }
+
+  /* ---------- page ---------- */
+  var PILOT_LEVELS = [["overview", "Overview"], ["discovery", "Discovery"], ["delivery", "Delivery"]];
+  var PILOT_SUBS = { discovery: [["sessions", "Sessions"], ["workflow", "Workflow"], ["inbox", "Inbox"]],
+                     delivery: [["requests", "Requests"], ["deliverables", "Deliverables"], ["fit", "Feature fit"], ["decisions", "Decisions"], ["artifacts", "Artifacts"], ["validation", "Validation"], ["recaps", "Recaps"]] };
+  function renderPilotPage(host, p) {
+    ensurePilot(p);
+    /* older links */
+    if (ui.pilotTab === "requests" || ui.pilotTab === "deliverables") { ui.pilotSub = ui.pilotTab; ui.pilotTab = "delivery"; }
+    if (ui.pilotTab === "stack") { ui.pilotTab = "overview"; setTimeout(function () { contextPane(p); }, 0); }
+    if (["overview", "discovery", "delivery"].indexOf(ui.pilotTab) === -1) ui.pilotTab = "overview";
+    if (ui.pilotTab !== "overview" && !PILOT_SUBS[ui.pilotTab].some(function (s) { return s[0] === ui.pilotSub; })) ui.pilotSub = PILOT_SUBS[ui.pilotTab][0][0];
+
+    var col = el("div", "pilotcol");
+    /* compact head */
+    var head = el("div", "phead");
+    var crumbs = el("div", "pcrumb");
+    var back = el("button", null, "Pilots"); back.onclick = function () { ui.pilot = null; renderView(); };
+    crumbs.appendChild(back);
+    crumbs.appendChild(el("span", null, "›"));
+    crumbs.appendChild(el("span", null, p.name));
+    head.appendChild(crumbs);
+    var row = el("div", "prow2");
+    var h1 = el("h1", null, p.name);
+    row.appendChild(h1);
+    var acts = el("div", "pacts");
+    var ctx = el("button", "btn ghost small", "Context");
+    ctx.title = "Software, partners and people around the firm";
+    ctx.onclick = function () { contextPane(p); };
+    acts.appendChild(ctx);
+    if (p.driveDoc) { var dd = el("a", "btn ghost small", "Drive copy ↗"); dd.href = "https://docs.google.com/document/d/" + p.driveDoc + "/edit"; dd.target = "_blank"; dd.rel = "noopener"; acts.appendChild(dd); }
+    acts.appendChild(menu("More", [
+      ["Edit overview", function () { editOverview(p); }],
+      ["Rename", function () { askText("Rename pilot", { value: p.name, ok: "Rename" }).then(function (n) { if (n) { p.name = n; touchPilot(p); render(); save(); } }); }],
+      ["Expand all rows", function () { Array.prototype.forEach.call(document.querySelectorAll(".xrow"), function (r) { if (!r.classList.contains("open")) r.querySelector(".fchev").click(); }); }],
+      ["Collapse all rows", function () { Array.prototype.forEach.call(document.querySelectorAll(".xrow.open"), function (r) { r.querySelector(".fchev").click(); }); }],
+      "-",
+      ["Delete pilot", function () { deletePilot(p); }, true]
+    ]));
+    row.appendChild(acts);
+    head.appendChild(row);
+    var sub = el("div", "psub");
+    sub.appendChild(pilotStatusPill(p));
+    if (p.since) sub.appendChild(el("span", "note", "since " + mLong(p.since)));
+    if (!p.objective) { var so = el("button", "chip", "Set the discovery objective"); so.onclick = function () { editOverview(p); }; sub.appendChild(so); }
+    head.appendChild(sub);
+    col.appendChild(head);
+
+    /* levels */
+    var tabs = el("div", "ptabs");
+    PILOT_LEVELS.forEach(function (m) {
+      var b = el("button", null, m[1]);
+      b.setAttribute("aria-pressed", String(ui.pilotTab === m[0]));
+      if (m[0] === "discovery" && unsortedCount(p)) b.appendChild(el("i", "dotn", String(unsortedCount(p))));
+      b.onclick = function () { ui.pilotTab = m[0]; renderView(); };
+      tabs.appendChild(b);
+    });
+    col.appendChild(tabs);
+    if (PILOT_SUBS[ui.pilotTab]) {
+      var subs = el("div", "psubs");
+      PILOT_SUBS[ui.pilotTab].forEach(function (s) {
+        var b = el("button", null, s[1]);
+        var n = subCount(p, s[0]);
+        if (n) b.appendChild(el("em", null, String(n)));
+        b.setAttribute("aria-pressed", String(ui.pilotSub === s[0]));
+        b.onclick = function () { ui.pilotSub = s[0]; ui.inboxQ = ""; renderView(); };
+        subs.appendChild(b);
+      });
+      col.appendChild(subs);
+    }
+    var body = el("div", "pbody");
+    if (ui.pilotTab === "overview") renderOverview(body, p);
+    else if (ui.pilotTab === "discovery") ({ sessions: renderSessions, workflow: renderWorkflow, inbox: renderInbox })[ui.pilotSub](body, p);
+    else ({ requests: renderRequestsLevel, deliverables: renderDeliverablesLevel, fit: renderFit, decisions: renderDecisions, artifacts: renderArtifacts, validation: renderValidation, recaps: renderRecaps })[ui.pilotSub](body, p);
+    col.appendChild(body);
+    host.appendChild(col);
+    host.appendChild(captureBar(p));
+  }
+  function subCount(p, key) {
+    switch (key) {
+      case "sessions": return p.sessions.length;
+      case "workflow": return p.steps.length;
+      case "inbox": return unsortedCount(p);
+      case "requests": return p.requests.length;
+      case "deliverables": return p.deliverables.length;
+      case "fit": return pilotFeatureSet(p).length;
+      case "decisions": return p.decisions.length + p.requests.filter(function (r) { return r.decision !== "Undecided"; }).length;
+      case "artifacts": return p.artifacts.length;
+      case "validation": return p.deliverables.filter(function (d) { return d.validation && d.validation.status === "Client validated"; }).length + p.requests.filter(function (r) { return r.validation && r.validation.status === "Client validated"; }).length;
+      case "recaps": return p.recaps.length;
+    }
+    return 0;
+  }
+
+  /* ---------- overview ---------- */
+  function editOverview(p) {
+    var d = { status: p.status, objective: p.objective, since: p.since || "", link: p.link || "", nextDate: p.nextTouch.date || "", nextNote: p.nextTouch.note || "", icp: p.icp || "" };
+    sideDrawer("Overview", function (body, close) {
+      body.appendChild(fld("Phase", selIn(PILOT_STATUS, d.status, function (v) { d.status = v; }), "Discovery and Preparing trial come before any use of ALIE."));
+      body.appendChild(fld("Discovery objective", areaIn(d.objective, "What we need to learn before this firm can start, in one or two sentences.", function (v) { d.objective = v; }, 3)));
+      body.appendChild(fld("Buyer profile", selIn([["", "No profile"]].concat(S.icps.filter(function (x) { return x.kind === "Buyer"; }).map(function (x) { return [x.id, x.name]; })), d.icp, function (v) { d.icp = v; })));
+      body.appendChild(fld("Since", txtIn(d.since, "2026-05", function (v) { d.since = v; }, "month")));
+      body.appendChild(fld("Next touch", txtIn(d.nextDate, "", function (v) { d.nextDate = v; }, "date")));
+      body.appendChild(fld("Next touch note", txtIn(d.nextNote, "For example: review the workflow map with Amélie", function (v) { d.nextNote = v; })));
+      body.appendChild(fld("Drive folder", txtIn(d.link, "https://drive.google.com/drive/folders/…", function (v) { d.link = v; })));
+      body.appendChild(drawerActs(function () {
+        p.status = d.status; p.objective = d.objective.trim(); p.since = d.since; p.link = d.link.trim(); p.icp = d.icp; p.nextTouch = { date: d.nextDate, note: d.nextNote.trim() };
+        touchPilot(p); close(); render(); save();
+      }, close));
+    });
+  }
+  function editPerson(p, person) {
+    var isNew = !person;
+    var d = person ? JSON.parse(JSON.stringify(person)) : { id: uid(), name: "", role: "", side: "Client", note: "" };
+    sideDrawer(isNew ? "Add a person" : d.name, function (body, close) {
+      body.appendChild(fld("Name", txtIn(d.name, "", function (v) { d.name = v; })));
+      body.appendChild(fld("Role", txtIn(d.role, "Lawyer, paralegal, technicienne, our CTO…", function (v) { d.role = v; })));
+      body.appendChild(fld("Side", selIn(SIDES, d.side, function (v) { d.side = v; })));
+      body.appendChild(fld("Note", areaIn(d.note, "What they care about, how to reach them.", function (v) { d.note = v; }, 3)));
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Remove"); del.onclick = function () { p.people = p.people.filter(function (x) { return x.id !== d.id; }); touchPilot(p); close(); render(); save(); }; extra.push(del); }
+      body.appendChild(drawerActs(function () {
+        if (!d.name.trim()) return;
+        d.name = d.name.trim();
+        if (isNew) p.people = p.people.concat([d]); else Object.assign(person, d);
+        touchPilot(p); close(); render(); save();
+      }, close, extra));
+    }, { eyebrow: "PEOPLE" });
+  }
+  function renderOverview(body, p) {
+    var strip = el("div", "ostrip");
+    var last = lastSession(p);
+    var oq = openQuestions(p), oa = openActions(p);
+    var pend = p.requests.filter(function (r) { return r.decision === "Undecided"; }).length;
+    var accepted = p.deliverables.filter(function (d) { return d.status === "Accepted"; }).length;
+    var validated = p.deliverables.filter(function (d) { return d.validation && d.validation.status === "Client validated"; }).length;
+    [["Phase", p.status], ["Last touch", last ? (last.date ? stamp(last.date) : "undated") : "none yet"], ["Next touch", p.nextTouch.date ? stamp(p.nextTouch.date) : "not set"], ["Open questions", String(oq.length)], ["Next actions", String(oa.length)], ["To decide", String(pend)], ["Accepted", accepted + " of " + p.deliverables.length], ["Validated", String(validated)]].forEach(function (x) {
+      var c = el("div", "ocell"); c.appendChild(el("span", null, x[0])); c.appendChild(el("b", null, x[1])); strip.appendChild(c);
+    });
+    body.appendChild(strip);
+
+    /* objective + people */
+    var s1 = secHead("Discovery objective", null, null, [chipBtn("Edit", function () { editOverview(p); })]);
+    s1.appendChild(p.objective ? richBlock(p.objective, p) : emptyNote("Not written yet. What must we learn before this firm can start?"));
+    if (p.nextTouch.note) s1.appendChild(el("p", "note", "Next touch: " + (p.nextTouch.date ? stamp(p.nextTouch.date) + " · " : "") + p.nextTouch.note));
+    body.appendChild(s1);
+
+    var s2 = secHead("People", p.people.length || null, null, [chipBtn("+ Add", function () { editPerson(p, null); })]);
+    if (p.people.length) {
+      var pl = el("div", "peoplelist");
+      p.people.forEach(function (x) {
+        var b = el("button", "person");
+        b.appendChild(el("b", null, x.name));
+        b.appendChild(el("span", null, [x.role, x.side].filter(Boolean).join(" · ")));
+        b.onclick = function () { editPerson(p, x); };
+        pl.appendChild(b);
+      });
+      s2.appendChild(pl);
+    }
+    if (p.contact) s2.appendChild(el("p", "note legacy", "Contact line, as recorded before: " + p.contact));
+    if (!p.people.length && !p.contact) s2.appendChild(emptyNote("Nobody listed yet."));
+    body.appendChild(s2);
+
+    /* open questions */
+    var s3 = secHead("Top open questions", oq.length || null, null, [chipBtn("+ Question", function () { editQuestion(p, null); }), chipBtn("All", function () { ui.pilotTab = "discovery"; ui.pilotSub = "workflow"; renderView(); })]);
+    if (!oq.length) s3.appendChild(emptyNote("No open questions. Add the ones the next session must answer."));
+    oq.slice(0, 6).forEach(function (q) { s3.appendChild(questionRow(p, q)); });
+    body.appendChild(s3);
+
+    /* next actions */
+    var s4 = secHead("Next actions", oa.length || null, null, [chipBtn("+ Action", function () { editAction(p, null); })]);
+    if (!oa.length) s4.appendChild(emptyNote("Nothing scheduled. Add what happens next, who owns it, and by when."));
+    oa.slice(0, 8).forEach(function (a) { s4.appendChild(actionRow(p, a)); });
+    body.appendChild(s4);
+
+    var deps = oa.filter(function (a) { return a.side === "Client"; });
+    var s5 = secHead("Client dependencies", deps.length || null, "What we are waiting on from the firm.");
+    if (!deps.length) s5.appendChild(emptyNote("Nothing owed by the client right now."));
+    deps.forEach(function (a) { s5.appendChild(actionRow(p, a)); });
+    body.appendChild(s5);
+
+    var pendReqs = p.requests.filter(function (r) { return r.decision === "Undecided"; });
+    var s6 = secHead("Pending decisions", pendReqs.length || null, null, [chipBtn("Requests", function () { ui.pilotTab = "delivery"; ui.pilotSub = "requests"; renderView(); })]);
+    if (!pendReqs.length) s6.appendChild(emptyNote("Every request has a decision."));
+    pendReqs.slice(0, 6).forEach(function (r) {
+      var b = el("button", "linkrow");
+      b.appendChild(el("b", null, r.title));
+      b.appendChild(el("span", null, r.fit || "fit not assessed"));
+      b.onclick = function () { ui.pilotTab = "delivery"; ui.pilotSub = "requests"; foldSet("r:" + r.id, true); renderView(); };
+      s6.appendChild(b);
+    });
+    body.appendChild(s6);
+
+    var s7 = secHead("Outcome progress", p.deliverables.length || null, "Deliverable status is ours; validation is the client's word.", [chipBtn("Deliverables", function () { ui.pilotTab = "delivery"; ui.pilotSub = "deliverables"; renderView(); })]);
+    if (!p.deliverables.length) s7.appendChild(emptyNote("No deliverables outlined yet."));
+    else {
+      var bars = el("div", "outbars");
+      DELIV_STATUS.forEach(function (st) {
+        var n = p.deliverables.filter(function (d) { return (d.status || "Proposed") === st; }).length;
+        var b = el("div", "outbar" + (n ? "" : " zero")); b.appendChild(el("b", null, String(n))); b.appendChild(el("span", null, st)); bars.appendChild(b);
+      });
+      s7.appendChild(bars);
+    }
+    body.appendChild(s7);
+
+    /* legacy notebook stays reachable, clearly labelled */
+    var s8 = secHead("Notebook", null, "Written before the discovery structure existed. Treat as draft and unverified until moved into sessions, evidence or the workflow.");
+    var nb = xrow({ key: "p:" + p.id + ":notes", title: "Imported notes", meta: metaLine([quietPill("draft · unverified", "st-feature-flag")]), details: function (det) {
+      det.appendChild(richEditor(p.notes, function (h) { p.notes = h; touchPilot(p); save(); }, "Nothing here.", "small"));
+    } });
+    s8.appendChild(nb);
+    body.appendChild(s8);
+  }
+
+  /* ---------- questions and actions (shared rows) ---------- */
+  function editQuestion(p, q, preset) {
+    var isNew = !q;
+    var d = q ? JSON.parse(JSON.stringify(q)) : Object.assign({ id: uid(), text: "", status: "Open", answer: "", session: ui.pilotSession || "", step: "", created: Date.now(), updated: Date.now() }, preset || {});
+    sideDrawer(isNew ? "New open question" : "Question", function (body, close) {
+      body.appendChild(fld("Question", areaIn(d.text, "What do we still not know?", function (v) { d.text = v; }, 3)));
+      body.appendChild(fld("Session", selIn([["", "None"]].concat(p.sessions.slice().sort(byDateDesc).map(function (s) { return [s.id, sessionLabel(p, s.id)]; })), d.session, function (v) { d.session = v; })));
+      body.appendChild(fld("Workflow step", selIn([["", "None"]].concat(p.steps.map(function (s) { return [s.id, s.title]; })), d.step, function (v) { d.step = v; })));
+      body.appendChild(fld("Status", selIn(["Open", "Answered"], d.status, function (v) { d.status = v; })));
+      body.appendChild(fld("Answer", areaIn(d.answer, "What we learned, and from whom.", function (v) { d.answer = v; }, 3)));
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { p.questions = p.questions.filter(function (x) { return x.id !== d.id; }); touchPilot(p); close(); render(); save(); }; extra.push(del); }
+      body.appendChild(drawerActs(function () {
+        if (!d.text.trim()) return;
+        d.text = d.text.trim(); d.updated = Date.now();
+        if (isNew) p.questions = p.questions.concat([d]); else Object.assign(q, d);
+        touchPilot(p); close(); render(); save();
+      }, close, extra));
+    }, { eyebrow: "OPEN QUESTION" });
+  }
+  function questionRow(p, q) {
+    var r = el("div", "qrow" + (q.status === "Answered" ? " done" : ""));
+    var tick = el("button", "tick" + (q.status === "Answered" ? " on" : ""), q.status === "Answered" ? "✓" : "");
+    tick.setAttribute("aria-label", q.status === "Answered" ? "Mark open" : "Mark answered");
+    tick.onclick = function () { q.status = q.status === "Answered" ? "Open" : "Answered"; q.updated = Date.now(); touchPilot(p); render(); save(); };
+    r.appendChild(tick);
+    var t = el("button", "qtext");
+    t.appendChild(el("b", null, q.text));
+    var m = [];
+    if (q.session && sessionById(p, q.session)) m.push(sessionLabel(p, q.session));
+    if (q.step) { var st = p.steps.filter(function (s) { return s.id === q.step; })[0]; if (st) m.push("step: " + st.title); }
+    if (q.answer) m.push("answered: " + q.answer);
+    if (m.length) t.appendChild(el("span", null, m.join(" · ")));
+    t.onclick = function () { editQuestion(p, q); };
+    r.appendChild(t);
+    return r;
+  }
+  function editAction(p, a, preset) {
+    var isNew = !a;
+    var d = a ? JSON.parse(JSON.stringify(a)) : Object.assign({ id: uid(), title: "", owner: "", due: "", side: "Internal", status: "Open", note: "", links: {}, created: Date.now(), updated: Date.now() }, preset || {});
+    d.links = d.links || {};
+    sideDrawer(isNew ? "New action" : "Action", function (body, close) {
+      body.appendChild(fld("What", txtIn(d.title, "Send the workflow map for review", function (v) { d.title = v; })));
+      body.appendChild(fld("Owner", txtIn(d.owner, "Uzziel, Amélie, David…", function (v) { d.owner = v; })));
+      body.appendChild(fld("Side", selIn(SIDES, d.side, function (v) { d.side = v; }), "Client side means we are waiting on the firm."));
+      body.appendChild(fld("Due", txtIn(d.due, "", function (v) { d.due = v; }, "date")));
+      body.appendChild(fld("Status", selIn(ACTION_STATUS, d.status, function (v) { d.status = v; })));
+      body.appendChild(fld("Note", areaIn(d.note, "", function (v) { d.note = v; }, 2)));
+      body.appendChild(fld("Source session", selIn([["", "None"]].concat(p.sessions.slice().sort(byDateDesc).map(function (s) { return [s.id, sessionLabel(p, s.id)]; })), d.links.session || "", function (v) { d.links.session = v; })));
+      body.appendChild(fld("Linked request", selIn([["", "None"]].concat(p.requests.map(function (r) { return [r.id, r.title]; })), d.links.request || "", function (v) { d.links.request = v; })));
+      body.appendChild(fld("Linked deliverable", selIn([["", "None"]].concat(p.deliverables.map(function (r) { return [r.id, r.title]; })), d.links.deliverable || "", function (v) { d.links.deliverable = v; })));
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { p.actions = p.actions.filter(function (x) { return x.id !== d.id; }); touchPilot(p); close(); render(); save(); }; extra.push(del); }
+      body.appendChild(drawerActs(function () {
+        if (!d.title.trim()) return;
+        d.title = d.title.trim(); d.updated = Date.now();
+        if (isNew) p.actions = p.actions.concat([d]); else Object.assign(a, d);
+        touchPilot(p); close(); render(); save();
+      }, close, extra));
+    }, { eyebrow: "NEXT ACTION" });
+  }
+  function actionRow(p, a) {
+    var r = el("div", "qrow" + (a.status === "Done" ? " done" : ""));
+    var tick = el("button", "tick" + (a.status === "Done" ? " on" : ""), a.status === "Done" ? "✓" : "");
+    tick.setAttribute("aria-label", a.status === "Done" ? "Reopen" : "Mark done");
+    tick.onclick = function () { a.status = a.status === "Done" ? "Open" : "Done"; a.updated = Date.now(); touchPilot(p); render(); save(); };
+    r.appendChild(tick);
+    var t = el("button", "qtext");
+    t.appendChild(el("b", null, a.title));
+    var m = [a.owner, a.side, a.due ? "due " + stamp(a.due) : "", a.status === "Blocked" ? "blocked" : ""].filter(Boolean);
+    var links = [];
+    if (a.links && a.links.session && sessionById(p, a.links.session)) links.push(sessionLabel(p, a.links.session));
+    if (a.links && a.links.request) { var rq = p.requests.filter(function (x) { return x.id === a.links.request; })[0]; if (rq) links.push("request: " + rq.title); }
+    if (a.links && a.links.deliverable) { var dl = p.deliverables.filter(function (x) { return x.id === a.links.deliverable; })[0]; if (dl) links.push("deliverable: " + dl.title); }
+    t.appendChild(el("span", null, m.concat(links).join(" · ")));
+    t.onclick = function () { editAction(p, a); };
+    r.appendChild(t);
+    if (a.due && a.status !== "Done" && a.due < today()) r.appendChild(quietPill("overdue", "st-needs-work"));
+    return r;
+  }
+
+  /* ---------- discovery: sessions ---------- */
+  function editSession(p, s) {
+    var isNew = !s;
+    var d = s ? JSON.parse(JSON.stringify(s)) : { id: uid(), date: today(), title: "", participants: "", purpose: "", links: "", summary: "", findings: "", draft: false, created: Date.now(), updated: Date.now() };
+    sideDrawer(isNew ? "New session" : (d.title || "Session"), function (body, close) {
+      body.appendChild(fld("Date", txtIn(d.date, "", function (v) { d.date = v; }, "date")));
+      body.appendChild(fld("Title", txtIn(d.title, "Onsite with Amélie: end-to-end case workflow", function (v) { d.title = v; })));
+      body.appendChild(fld("Participants", txtIn(d.participants, "Names and roles, both sides", function (v) { d.participants = v; })));
+      body.appendChild(fld("Purpose", areaIn(d.purpose, "What this session was meant to learn.", function (v) { d.purpose = v; }, 2)));
+      body.appendChild(fld("Original notes and artifacts", areaIn(d.links, "Drive links to the transcript, recording, photos, the firm's documents. One per line.", function (v) { d.links = v; }, 3)));
+      body.appendChild(fld("Summary", richEditor(d.summary, function (h) { d.summary = h; }, "What happened, in a few lines. Markdown pastes fine.", "small")));
+      body.appendChild(fld("Findings", richEditor(d.findings, function (h) { d.findings = h; }, "What we now believe, and how sure we are.", "small")));
+      var dr = el("label", "chk"); var cb = el("input"); cb.type = "checkbox"; cb.checked = !!d.draft; cb.onchange = function () { d.draft = cb.checked; }; dr.appendChild(cb); dr.appendChild(document.createTextNode(" Draft: details still to confirm"));
+      body.appendChild(dr);
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { askConfirm("Delete this session?", "Evidence, questions and actions linked to it stay, unlinked.", { danger: true, ok: "Delete" }).then(function (y) { if (!y) return; p.sessions = p.sessions.filter(function (x) { return x.id !== d.id; }); p.evidence.forEach(function (e) { if (e.session === d.id) e.session = ""; }); p.questions.forEach(function (e) { if (e.session === d.id) e.session = ""; }); touchPilot(p); close(); render(); save(); }); }; extra.push(del); }
+      body.appendChild(drawerActs(function () {
+        d.title = d.title.trim(); d.updated = Date.now();
+        if (isNew) p.sessions = p.sessions.concat([d]); else Object.assign(s, d);
+        touchPilot(p); close(); render(); save();
+      }, close, extra));
+    }, { eyebrow: "SESSION", wide: true });
+  }
+  function renderSessions(body, p) {
+    var list = p.sessions.slice().sort(byDateDesc);
+    var sec = secHead("Sessions", list.length || null, "One row per onsite visit, call or review. Open a row to see what came out of it; capture into a session by selecting it.", [primaryBtn("+ New session", function () { editSession(p, null); })]);
+    if (!list.length) sec.appendChild(emptyNote("No sessions yet. Add the first onsite visit and attach its notes."));
+    list.forEach(function (s) {
+      var ev = p.evidence.filter(function (e) { return e.session === s.id; });
+      var qs = p.questions.filter(function (q) { return q.session === s.id; });
+      var as = p.actions.filter(function (a) { return a.links && a.links.session === s.id; });
+      var side = [];
+      var sel = el("button", "chip" + (ui.pilotSession === s.id ? " on" : ""), ui.pilotSession === s.id ? "Capturing here" : "Capture here");
+      sel.onclick = function (e) { e.stopPropagation(); ui.pilotSession = ui.pilotSession === s.id ? "" : s.id; renderView(); };
+      side.push(sel);
+      var titleNode = el("span"); titleNode.appendChild(document.createTextNode(s.title || s.purpose || "Session"));
+      if (s.draft) titleNode.appendChild(quietPill("draft", "st-feature-flag"));
+      sec.appendChild(xrow({ key: "s:" + s.id, title: titleNode,
+        meta: metaLine([s.date ? stamp(s.date) : "undated", s.participants, ev.length ? ev.length + " evidence" : "", qs.length ? qs.length + " questions" : "", as.length ? as.length + " actions" : ""]),
+        side: side,
+        details: function (det) {
+          if (s.purpose) { det.appendChild(el("div", "lab", "Purpose")); det.appendChild(el("p", "readtext", s.purpose)); }
+          if (s.links) { det.appendChild(el("div", "lab", "Original notes and artifacts")); var ul = el("div", "linklist"); s.links.split(/\n+/).filter(Boolean).forEach(function (l) { var a; if (/^https?:\/\//.test(l.trim())) { a = el("a", null, l.trim()); a.href = l.trim(); a.target = "_blank"; a.rel = "noopener"; } else a = el("span", null, l); ul.appendChild(a); }); det.appendChild(ul); }
+          det.appendChild(el("div", "lab", "Summary")); det.appendChild(s.summary ? richBlock(s.summary, p) : emptyNote("No summary yet."));
+          det.appendChild(el("div", "lab", "Findings")); det.appendChild(s.findings ? richBlock(s.findings, p) : emptyNote("No findings recorded."));
+          det.appendChild(el("div", "lab", "Evidence from this session")); if (!ev.length) det.appendChild(emptyNote("Nothing captured against this session yet.")); ev.forEach(function (e) { det.appendChild(evidenceRow(p, e, true)); });
+          var lq = el("div", "lab", "Open questions"); det.appendChild(lq); if (!qs.length) det.appendChild(emptyNote("None.")); qs.forEach(function (q) { det.appendChild(questionRow(p, q)); });
+          det.appendChild(el("div", "lab", "Next actions")); if (!as.length) det.appendChild(emptyNote("None.")); as.forEach(function (a) { det.appendChild(actionRow(p, a)); });
+          var acts = el("div", "rowacts");
+          acts.appendChild(chipBtn("Edit session", function () { editSession(p, s); }));
+          acts.appendChild(chipBtn("+ Question", function () { editQuestion(p, null, { session: s.id }); }));
+          acts.appendChild(chipBtn("+ Action", function () { editAction(p, null, { links: { session: s.id } }); }));
+          det.appendChild(acts);
+        } }));
+    });
+    body.appendChild(sec);
+  }
+
+  /* ---------- discovery: workflow ---------- */
+  function editStep(p, s, preset) {
+    var isNew = !s;
+    var d = s ? JSON.parse(JSON.stringify(s)) : Object.assign({ id: uid(), title: "", version: "current", actor: "", trigger: "", action: "", reasoning: "", output: "", next: "", systems: "", evidence: [], draft: false, created: Date.now(), updated: Date.now() }, preset || {});
+    sideDrawer(isNew ? "New workflow step" : d.title, function (body, close) {
+      body.appendChild(fld("Step", txtIn(d.title, "Build the medical chronology", function (v) { d.title = v; })));
+      body.appendChild(fld("Version", selIn([["current", "Current: how they work today"], ["proposed", "Proposed: how it could work with ALIE"]], d.version, function (v) { d.version = v; })));
+      body.appendChild(fld("Actor", txtIn(d.actor, "Who does it", function (v) { d.actor = v; })));
+      body.appendChild(fld("Trigger or input", areaIn(d.trigger, "What starts the step and what comes in", function (v) { d.trigger = v; }, 2)));
+      body.appendChild(fld("Action", areaIn(d.action, "What they actually do", function (v) { d.action = v; }, 3)));
+      body.appendChild(fld("Reasoning and decisions", areaIn(d.reasoning, "How they decide what to include, exclude, quote or summarise", function (v) { d.reasoning = v; }, 3)));
+      body.appendChild(fld("Output", areaIn(d.output, "What the step produces", function (v) { d.output = v; }, 2)));
+      body.appendChild(fld("Next recipient", txtIn(d.next, "Who uses it next and for which decision", function (v) { d.next = v; })));
+      body.appendChild(fld("Systems used", txtIn(d.systems, "Juris Évolution, Outlook, paper…", function (v) { d.systems = v; })));
+      var dr = el("label", "chk"); var cb = el("input"); cb.type = "checkbox"; cb.checked = !!d.draft; cb.onchange = function () { d.draft = cb.checked; }; dr.appendChild(cb); dr.appendChild(document.createTextNode(" Draft: our reading, not yet confirmed by the firm"));
+      body.appendChild(dr);
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { p.steps = p.steps.filter(function (x) { return x.id !== d.id; }); p.questions.forEach(function (q) { if (q.step === d.id) q.step = ""; }); touchPilot(p); close(); render(); save(); }; extra.push(del); }
+      body.appendChild(drawerActs(function () {
+        if (!d.title.trim()) return;
+        d.title = d.title.trim(); d.updated = Date.now();
+        if (isNew) { d.order = p.steps.length; p.steps = p.steps.concat([d]); } else Object.assign(s, d);
+        touchPilot(p); close(); render(); save();
+      }, close, extra));
+    }, { eyebrow: "WORKFLOW STEP", wide: true });
+  }
+  function renderWorkflow(body, p) {
+    var mode = ui.wfMode || "current";
+    var all = p.steps.slice().sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    var shown = mode === "all" ? all : all.filter(function (s) { return (s.version || "current") === mode; });
+    var seg = el("div", "psubs mini");
+    [["current", "Current"], ["proposed", "Proposed"], ["all", "Both"]].forEach(function (m) {
+      var b = el("button", null, m[1]); b.setAttribute("aria-pressed", String(mode === m[0])); b.onclick = function () { ui.wfMode = m[0]; renderView(); }; seg.appendChild(b);
+    });
+    var snap = chipBtn("Snapshot v" + p.workflowVersion, function () {
+      askText("Name this version", { placeholder: "After the session with Amélie", ok: "Snapshot" }).then(function (n) {
+        if (n === null) return;
+        p.workflowHistory = p.workflowHistory.concat([{ id: uid(), v: p.workflowVersion, label: n || "", at: Date.now(), steps: JSON.parse(JSON.stringify(p.steps)) }]);
+        p.workflowVersion += 1; touchPilot(p); render(); save(); toast("Workflow v" + (p.workflowVersion - 1) + " kept.");
+      });
+    });
+    var sec = secHead("Workflow map", all.length || null, "How the firm actually reasons, step by step. Current is what they do today; Proposed is what it could become. Every step carries its evidence and what we still do not know.", [snap, primaryBtn("+ Step", function () { editStep(p, null, { version: mode === "proposed" ? "proposed" : "current" }); })]);
+    sec.insertBefore(seg, sec.children[1]);
+    if (!shown.length) sec.appendChild(emptyNote(all.length ? "No " + mode + " steps yet." : "No steps yet. Start with the step you understand least."));
+    shown.forEach(function (s, i) {
+      var ev = (s.evidence || []).map(function (id) { return p.evidence.filter(function (e) { return e.id === id; })[0]; }).filter(Boolean);
+      var qs = p.questions.filter(function (q) { return q.step === s.id; });
+      var oq = qs.filter(function (q) { return q.status !== "Answered"; });
+      var titleNode = el("span"); titleNode.appendChild(el("i", "stepn", String(i + 1))); titleNode.appendChild(document.createTextNode(s.title));
+      if (s.draft) titleNode.appendChild(quietPill("draft", "st-feature-flag"));
+      var side = [];
+      var up = el("button", "dmove", "↑"); up.title = "Move up"; up.onclick = function (e) { e.stopPropagation(); moveStep(p, s, -1); };
+      var dn = el("button", "dmove", "↓"); dn.title = "Move down"; dn.onclick = function (e) { e.stopPropagation(); moveStep(p, s, 1); };
+      side.push(up, dn);
+      sec.appendChild(xrow({ key: "w:" + s.id, title: titleNode,
+        meta: metaLine([quietPill(s.version === "proposed" ? "proposed" : "current", s.version === "proposed" ? "st-planned" : ""), s.actor ? s.actor : "actor unknown", s.output ? "→ " + s.output.slice(0, 60) : "", ev.length ? ev.length + " evidence" : "no evidence yet", oq.length ? oq.length + " open" : ""]),
+        side: side,
+        details: function (det) {
+          var g = el("div", "stepgrid");
+          [["Actor", s.actor], ["Trigger or input", s.trigger], ["Action", s.action], ["Reasoning and decisions", s.reasoning], ["Output", s.output], ["Next recipient", s.next], ["Systems used", s.systems]].forEach(function (x) {
+            var c = el("div", "stepcell"); c.appendChild(el("div", "lab", x[0])); c.appendChild(x[1] ? el("p", "readtext", x[1]) : el("p", "readtext muted", "unknown")); g.appendChild(c);
+          });
+          det.appendChild(g);
+          det.appendChild(el("div", "lab", "Supporting evidence"));
+          if (!ev.length) det.appendChild(emptyNote("Nothing linked yet. Open an Inbox item and attach it to this step."));
+          ev.forEach(function (e) { det.appendChild(evidenceRow(p, e, true)); });
+          det.appendChild(el("div", "lab", "Open questions")); if (!qs.length) det.appendChild(emptyNote("None.")); qs.forEach(function (q) { det.appendChild(questionRow(p, q)); });
+          var acts = el("div", "rowacts");
+          acts.appendChild(chipBtn("Edit step", function () { editStep(p, s); }));
+          acts.appendChild(chipBtn("+ Question", function () { editQuestion(p, null, { step: s.id }); }));
+          acts.appendChild(chipBtn(s.version === "proposed" ? "Copy as current" : "Propose a change", function () {
+            var c = JSON.parse(JSON.stringify(s)); c.id = uid(); c.version = s.version === "proposed" ? "current" : "proposed"; c.draft = true; c.created = c.updated = Date.now(); c.order = (s.order || 0) + 0.5;
+            p.steps = p.steps.concat([c]); renumber(p); touchPilot(p); ui.wfMode = c.version; render(); save();
+          }));
+          det.appendChild(acts);
+        } }));
+    });
+    if (p.workflowHistory.length) {
+      var hist = xrow({ key: "wh:" + p.id, title: "Earlier versions", meta: metaLine([p.workflowHistory.length + " kept"]), details: function (det) {
+        p.workflowHistory.slice().reverse().forEach(function (h) {
+          var r = el("div", "qrow"); var t = el("div", "qtext"); t.appendChild(el("b", null, "v" + h.v + (h.label ? " · " + h.label : ""))); t.appendChild(el("span", null, new Date(h.at).toLocaleString() + " · " + h.steps.length + " steps: " + h.steps.map(function (s) { return s.title; }).join(", "))); r.appendChild(t); det.appendChild(r);
+        });
+      } });
+      sec.appendChild(hist);
+    }
+    body.appendChild(sec);
+  }
+  function renumber(p) { p.steps.slice().sort(function (a, b) { return (a.order || 0) - (b.order || 0); }).forEach(function (s, i) { s.order = i; }); }
+  function moveStep(p, s, dir) {
+    renumber(p);
+    var same = p.steps.slice().sort(function (a, b) { return a.order - b.order; });
+    var i = same.indexOf(s), j = i + dir;
+    if (j < 0 || j >= same.length) return;
+    var o = same[j].order; same[j].order = s.order; s.order = o;
+    touchPilot(p); render(); save();
+  }
+
+  /* ---------- discovery: inbox ---------- */
+  function editEvidence(p, e) {
+    var d = JSON.parse(JSON.stringify(e)); d.links = d.links || {};
+    sideDrawer("Evidence", function (body, close) {
+      body.appendChild(fld("Original wording", areaIn(d.text, "", function (v) { d.text = v; }, 4), "Keep it as it was said or seen. Interpretation goes in the note."));
+      body.appendChild(fld("Kind", selIn(EV_KINDS, d.kind, function (v) { d.kind = v; }), "A product inference is ours. It never becomes a client request on its own."));
+      body.appendChild(fld("Session", selIn([["", "None"]].concat(p.sessions.slice().sort(byDateDesc).map(function (s) { return [s.id, sessionLabel(p, s.id)]; })), d.session, function (v) { d.session = v; })));
+      body.appendChild(fld("Who said or did it", txtIn(d.speaker, "Amélie, Sarah, Claudine…", function (v) { d.speaker = v; })));
+      body.appendChild(fld("Source id", txtIn(d.source, "CM-20260908-01, a Drive link, a page", function (v) { d.source = v; })));
+      body.appendChild(fld("Our note", areaIn(d.note, "What we make of it.", function (v) { d.note = v; }, 2)));
+      body.appendChild(fld("Workflow step", selIn([["", "None"]].concat(p.steps.map(function (s) { return [s.id, s.title]; })), d.links.step || "", function (v) { d.links.step = v; })));
+      body.appendChild(fld("Request", selIn([["", "None"]].concat(p.requests.map(function (r) { return [r.id, r.title]; })), d.links.request || "", function (v) { d.links.request = v; })));
+      body.appendChild(fld("Deliverable", selIn([["", "None"]].concat(p.deliverables.map(function (r) { return [r.id, r.title]; })), d.links.deliverable || "", function (v) { d.links.deliverable = v; })));
+      var frow = el("div", "fld"); frow.appendChild(el("label", null, "Feature"));
+      var fb = el("button", "btn ghost small", d.links.feature && feature(d.links.feature) ? feature(d.links.feature).name : "Pick a feature");
+      fb.onclick = function () { pickFeature("Link to a feature", []).then(function (f) { if (f) { d.links.feature = f.id; fb.textContent = f.name; } }); };
+      frow.appendChild(fb);
+      if (d.links.feature) { var clr = el("button", "chip", "Clear"); clr.onclick = function () { d.links.feature = ""; fb.textContent = "Pick a feature"; }; frow.appendChild(clr); }
+      body.appendChild(frow);
+      var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { askConfirm("Delete this evidence?", "", { danger: true, ok: "Delete" }).then(function (y) { if (!y) return; p.evidence = p.evidence.filter(function (x) { return x.id !== d.id; }); p.steps.forEach(function (s) { s.evidence = (s.evidence || []).filter(function (id) { return id !== d.id; }); }); touchPilot(p); close(); render(); save(); }); };
+      body.appendChild(drawerActs(function () {
+        d.text = d.text.trim(); d.updated = Date.now();
+        Object.assign(e, d);
+        if (d.links.step) { var st = p.steps.filter(function (s) { return s.id === d.links.step; })[0]; if (st && (st.evidence || []).indexOf(e.id) === -1) st.evidence = (st.evidence || []).concat([e.id]); }
+        touchPilot(p); close(); render(); save();
+      }, close, [del]));
+    }, { eyebrow: (e.kind || "Unsorted").toUpperCase() });
+  }
+  function promoteEvidence(p, e) {
+    if (e.kind === "Product inference") { toast("A product inference stays ours. Record it as a proposed solution on a request, or ask the firm first.", true); return; }
+    askConfirm("Turn this into a request?", "The wording is kept as the request title and stays linked as evidence. You decide fit and decision afterwards.", { ok: "Create request" }).then(function (y) {
+      if (!y) return;
+      var r = { id: uid(), title: e.text.length > 90 ? e.text.slice(0, 87) + "…" : e.text, bottleneck: "", need: "", solution: "", fit: "", decision: "Undecided", reason: "", source: [e.speaker, e.source, e.session ? sessionLabel(p, e.session) : ""].filter(Boolean).join(" · "), feature: "", evidence: [e.id], validation: { status: "Not validated", note: "", date: "" }, created: Date.now(), updated: Date.now() };
+      p.requests = p.requests.concat([r]);
+      e.links = e.links || {}; e.links.request = r.id;
+      if (e.kind === "Unsorted") e.kind = "Explicit request";
+      touchPilot(p); save(); ui.pilotTab = "delivery"; ui.pilotSub = "requests"; foldSet("r:" + r.id, true); render();
+    });
+  }
+  function evidenceRow(p, e, compact) {
+    var r = el("div", "evrow " + (EV_CLASS[e.kind] || ""));
+    var k = el("button", "evkind", e.kind || "Unsorted");
+    k.title = "Classify"; k.onclick = function () { editEvidence(p, e); };
+    r.appendChild(k);
+    var t = el("div", "evtext");
+    var q = el("div", "evq" + (e.kind === "Direct quote" ? " quote" : ""), e.text);
+    t.appendChild(q);
+    var m = [];
+    if (e.speaker) m.push(e.speaker);
+    if (e.session && sessionById(p, e.session)) m.push(sessionLabel(p, e.session));
+    if (e.source) m.push(e.source);
+    m.push(stamp(dKey(new Date(e.created || Date.now()))));
+    if (e.links && e.links.feature && feature(e.links.feature)) m.push("→ " + feature(e.links.feature).name);
+    if (e.links && e.links.request) { var rq = p.requests.filter(function (x) { return x.id === e.links.request; })[0]; if (rq) m.push("→ request: " + rq.title); }
+    if (e.links && e.links.step) { var st = p.steps.filter(function (x) { return x.id === e.links.step; })[0]; if (st) m.push("→ step: " + st.title); }
+    t.appendChild(el("div", "rmeta", m.join(" · ")));
+    if (e.note) t.appendChild(el("div", "evnote", e.note));
+    r.appendChild(t);
+    if (!compact) {
+      var acts = el("div", "evacts");
+      acts.appendChild(chipBtn("Sort", function () { editEvidence(p, e); }));
+      if (e.kind !== "Product inference" && !(e.links && e.links.request)) acts.appendChild(chipBtn("→ Request", function () { promoteEvidence(p, e); }));
+      acts.appendChild(chipBtn("→ Question", function () { editQuestion(p, null, { text: e.text, session: e.session || "" }); }));
+      r.appendChild(acts);
+    }
+    return r;
+  }
+  function renderInbox(body, p) {
+    var kind = ui.inboxKind || "", q = (ui.inboxQ || "").toLowerCase();
+    var list = p.evidence.slice().sort(function (a, b) { return (b.created || 0) - (a.created || 0); }).filter(function (e) { return (!kind || e.kind === kind) && (!q || (e.text + " " + e.source + " " + e.speaker + " " + e.note).toLowerCase().indexOf(q) !== -1); });
+    var sec = secHead("Inbox and evidence", p.evidence.length || null, "Everything captured, in the words it came in. Sort each item by provenance and link it to a session, a step, a request or a feature. Nothing here is a commitment.");
+    var filt = el("div", "psubs mini wrap");
+    [["", "All"]].concat(EV_KINDS.map(function (k) { return [k, k]; })).forEach(function (m) {
+      var n = m[0] ? p.evidence.filter(function (e) { return e.kind === m[0]; }).length : p.evidence.length;
+      var b = el("button", null, m[1]); if (n) b.appendChild(el("em", null, String(n)));
+      b.setAttribute("aria-pressed", String(kind === m[0])); b.onclick = function () { ui.inboxKind = m[0]; renderView(); }; filt.appendChild(b);
+    });
+    sec.insertBefore(filt, sec.children[1]);
+    var srow = el("div", "inboxsearch");
+    var sin = el("input"); sin.type = "search"; sin.placeholder = "Search wording, source id, speaker…"; sin.value = ui.inboxQ || ""; sin.setAttribute("aria-label", "Search evidence");
+    sin.oninput = function () { ui.inboxQ = sin.value; var host = sec.querySelector(".evlist"); host.innerHTML = ""; fill(host); };
+    srow.appendChild(sin);
+    sec.appendChild(srow);
+    var host = el("div", "evlist");
+    function fill(h) {
+      var qq = (ui.inboxQ || "").toLowerCase();
+      var items = p.evidence.slice().sort(function (a, b) { return (b.created || 0) - (a.created || 0); }).filter(function (e) { return (!kind || e.kind === kind) && (!qq || (e.text + " " + e.source + " " + e.speaker + " " + e.note).toLowerCase().indexOf(qq) !== -1); });
+      if (!items.length) h.appendChild(emptyNote(p.evidence.length ? "Nothing matches." : "Empty. Use the capture box below: one line, then sort it later."));
+      items.forEach(function (e) { h.appendChild(evidenceRow(p, e, false)); });
+    }
+    fill(host);
+    sec.appendChild(host);
+    body.appendChild(sec);
+    void list;
+  }
+
+  /* ---------- delivery: requests as rows, edited in a drawer ---------- */
+  var REQ_FIT_CLASS = { "Core to ALIE": "st-live", "Adjacent": "st-planned", "Out of scope": "st-needs-work" };
+  function evidenceOfRequest(p, r) {
+    var ids = (r.evidence || []).slice();
+    p.evidence.forEach(function (e) { if (e.links && e.links.request === r.id && ids.indexOf(e.id) === -1) ids.push(e.id); });
+    return ids.map(function (id) { return p.evidence.filter(function (e) { return e.id === id; })[0]; }).filter(Boolean);
+  }
+  function editRequest(p, r) {
+    var isNew = !r;
+    var d = r ? JSON.parse(JSON.stringify(r)) : { id: uid(), title: "", bottleneck: "", need: "", solution: "", fit: "", decision: "Undecided", reason: "", source: "", feature: "", evidence: [], validation: { status: "Not validated", note: "", date: "" }, created: Date.now(), updated: Date.now() };
+    d.evidence = d.evidence || [];
+    sideDrawer(isNew ? "New request" : d.title, function (body, close) {
+      body.appendChild(fld("What they asked for, in their words", txtIn(d.title, "", function (v) { d.title = v; })));
+      body.appendChild(fld("Source", txtIn(d.source, "Who said it, when · a source id · a Drive link", function (v) { d.source = v; })));
+      body.appendChild(fld("Current bottleneck", richEditor(d.bottleneck, function (h) { d.bottleneck = h; }, "What happens today, who does it, how often, how long it takes.", "small")));
+      body.appendChild(fld("Business need", richEditor(d.need, function (h) { d.need = h; }, "Why it matters to them: what it costs, what it blocks.", "small")));
+      body.appendChild(fld("Possible solution", richEditor(d.solution, function (h) { d.solution = h; }, "Build, integrate with what they use, partner, or nothing. First take, not a commitment.", "small")));
+      body.appendChild(fld("Fit", selIn(REQ_FIT.map(function (x) { return [x, x || "Not assessed"]; }), d.fit || "", function (v) { d.fit = v; })));
+      body.appendChild(fld("Decision", selIn(REQ_DECISION, d.decision || "Undecided", function (v) { d.decision = v; })));
+      body.appendChild(fld("Why", txtIn(d.reason, "One line the team will understand in six months.", function (v) { d.reason = v; })));
+      var evl = el("div", "fld"); evl.appendChild(el("label", null, "Evidence"));
+      var chosen = el("div", "linklist");
+      function drawEv() { chosen.innerHTML = ""; d.evidence.forEach(function (id) { var e = p.evidence.filter(function (x) { return x.id === id; })[0]; if (!e) return; var c = el("button", "chip", (e.kind || "") + ": " + e.text.slice(0, 60)); c.title = "Remove"; c.onclick = function () { d.evidence = d.evidence.filter(function (x) { return x !== id; }); drawEv(); }; chosen.appendChild(c); }); }
+      drawEv(); evl.appendChild(chosen);
+      var pickEv = selIn([["", "Attach evidence…"]].concat(p.evidence.map(function (e) { return [e.id, (e.kind || "") + ": " + e.text.slice(0, 70)]; })), "", function (v) { if (v && d.evidence.indexOf(v) === -1) { d.evidence.push(v); drawEv(); } pickEv.value = ""; });
+      evl.appendChild(pickEv); body.appendChild(evl);
+      var frow = el("div", "fld"); frow.appendChild(el("label", null, "Feature that answers it"));
+      var fb = el("button", "btn ghost small", d.feature && feature(d.feature) ? feature(d.feature).name : "Pick a feature");
+      fb.onclick = function () { pickFeature("Link to a feature", []).then(function (f) { if (f) { d.feature = f.id; fb.textContent = f.name; } }); };
+      frow.appendChild(fb);
+      if (d.feature) { var clr = el("button", "chip", "Clear"); clr.onclick = function () { d.feature = ""; fb.textContent = "Pick a feature"; }; frow.appendChild(clr); }
+      body.appendChild(frow);
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { askConfirm("Delete “" + d.title + "”?", "The record of this request goes away. Evidence stays.", { danger: true, ok: "Delete" }).then(function (y) { if (!y) return; p.requests = p.requests.filter(function (x) { return x.id !== d.id; }); p.evidence.forEach(function (e) { if (e.links && e.links.request === d.id) delete e.links.request; }); touchPilot(p); close(); render(); save(); }); }; extra.push(del); }
+      body.appendChild(drawerActs(function () {
+        if (!d.title.trim()) return;
+        d.title = d.title.trim(); d.updated = Date.now();
+        if (isNew) p.requests = p.requests.concat([d]); else Object.assign(r, d);
+        touchPilot(p); close(); render(); save();
+      }, close, extra));
+    }, { eyebrow: "REQUEST", wide: true });
+  }
+  function promoteRequest(p, r) {
+    askConfirm("Promote “" + r.title + "” to a feature?", "It starts as Proposed, carries the bottleneck, need and solution as its description, and joins this pilot's asks. Nothing is agreed until you move it to Planned.", { ok: "Promote" }).then(function (yes) {
+      if (!yes) return;
+      var note = "<p><b>From " + escapeHtml(p.name) + "'s request.</b></p>" +
+        (r.bottleneck ? "<h4>Current bottleneck</h4>" + richHtml(r.bottleneck) : "") +
+        (r.need ? "<h4>Business need</h4>" + richHtml(r.need) : "") +
+        (r.solution ? "<h4>Possible solution</h4>" + richHtml(r.solution) : "");
+      var f = create([], { name: r.title, state: "Proposed", note: note }, true);
+      r.feature = f.id; if (r.decision === "Undecided") r.decision = "Build";
+      if (p.wants.indexOf(f.id) === -1) p.wants = p.wants.concat([f.id]);
+      r.updated = Date.now(); touchPilot(p); save();
+      toast(r.title + " is now a Proposed feature. Give it a space and a division.");
+      open(f.id);
+    });
+  }
+  function renderRequestsLevel(body, p) {
+    var undecided = p.requests.filter(function (r) { return r.decision === "Undecided"; }).length;
+    var sec = secHead("Requests", p.requests.length || null, "What the firm asked for, in their words, whether or not it fits ALIE. Each one carries its evidence, our decision, and whether the client validated the outcome." + (undecided ? " " + undecided + " still to decide." : ""), [primaryBtn("+ Request", function () { editRequest(p, null); })]);
+    if (!p.requests.length) sec.appendChild(emptyNote("No requests yet. Capture their words in the Inbox, then turn the explicit ones into requests."));
+    p.requests.forEach(function (r, i) {
+      var ev = evidenceOfRequest(p, r);
+      var lf = r.feature ? feature(r.feature) : null;
+      var titleNode = el("span"); titleNode.appendChild(el("i", "stepn", String(i + 1))); titleNode.appendChild(document.createTextNode(r.title));
+      var side = [quietPill(r.decision || "Undecided", REQ_DECISION_CLASS[r.decision] || "")];
+      sec.appendChild(xrow({ key: "r:" + r.id, title: titleNode,
+        meta: metaLine([r.fit ? quietPill(r.fit, REQ_FIT_CLASS[r.fit]) : "fit not assessed", ev.length ? ev.length + " evidence" : "no evidence linked", lf ? "→ " + lf.name + " · " + lf.state : "", r.source ? r.source : ""]),
+        side: side,
+        details: function (det) {
+          if (r.decision !== "Undecided" && r.reason) { det.appendChild(el("div", "lab", "Why " + r.decision.toLowerCase())); det.appendChild(el("p", "readtext", r.reason)); }
+          var g = el("div", "stepgrid three");
+          [["Current bottleneck", r.bottleneck], ["Business need", r.need], ["Possible solution", r.solution]].forEach(function (x) { var c = el("div", "stepcell"); c.appendChild(el("div", "lab", x[0])); c.appendChild(x[1] ? richBlock(x[1], p) : el("p", "readtext muted", "not written")); g.appendChild(c); });
+          det.appendChild(g);
+          det.appendChild(el("div", "lab", "Evidence"));
+          if (!ev.length) det.appendChild(emptyNote("Nothing linked. Attach the quote or observation this came from."));
+          ev.forEach(function (e) { det.appendChild(evidenceRow(p, e, true)); });
+          if (lf) { det.appendChild(el("div", "lab", "Feature")); var chip = el("button", "chip", lf.name + " · " + lf.state); chip.onclick = function () { open(lf.id); }; det.appendChild(chip); }
+          det.appendChild(chainLine(p, r));
+          var acts = el("div", "rowacts");
+          acts.appendChild(chipBtn("Edit", function () { editRequest(p, r); }));
+          if (!lf) acts.appendChild(chipBtn("↑ Promote to a Proposed feature", function () { promoteRequest(p, r); }));
+          acts.appendChild(chipBtn("+ Action", function () { editAction(p, null, { links: { request: r.id } }); }));
+          det.appendChild(acts);
+        } }));
+    });
+    body.appendChild(sec);
+  }
+
+  /* ---------- delivery: deliverables as rows ---------- */
+  function editDeliverable(p, d0) {
+    var isNew = !d0;
+    var d = d0 ? JSON.parse(JSON.stringify(d0)) : { id: uid(), title: "", note: "", tag: "", status: "Proposed", validation: { status: "Not validated", note: "", date: "" }, features: [] };
+    sideDrawer(isNew ? "New deliverable" : d.title, function (body, close) {
+      body.appendChild(fld("Deliverable", txtIn(d.title, "What the firm gets, in one line", function (v) { d.title = v; })));
+      body.appendChild(fld("Status", selIn(DELIV_STATUS, d.status || "Proposed", function (v) { d.status = v; }), "Our delivery state. Client validation is set separately."));
+      body.appendChild(fld("Tag", selIn(DELIV_TAGS.map(function (t) { return [t, t || "No tag"]; }), d.tag || "", function (v) { d.tag = v; })));
+      body.appendChild(fld("Note", richEditor(d.note, function (h) { d.note = h; }, "Why it matters, what done looks like, what it depends on.", "small")));
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { askConfirm("Delete “" + d.title + "”?", "Features stay untouched.", { danger: true, ok: "Delete" }).then(function (y) { if (!y) return; p.deliverables = p.deliverables.filter(function (x) { return x.id !== d.id; }); touchPilot(p); close(); render(); save(); }); }; extra.push(del); }
+      body.appendChild(drawerActs(function () {
+        if (!d.title.trim()) return;
+        d.title = d.title.trim();
+        if (isNew) p.deliverables = p.deliverables.concat([d]); else Object.assign(d0, d);
+        touchPilot(p); close(); render(); save();
+      }, close, extra));
+    }, { eyebrow: "DELIVERABLE" });
+  }
+  function renderDeliverablesLevel(body, p) {
+    var sec = secHead("Deliverables and outcomes", p.deliverables.length || null, "What the firm should get, which features provide it, and where each one stands. Order is the build order. Status is our delivery state; validation is the client's judgement, kept apart.", [primaryBtn("+ Deliverable", function () { editDeliverable(p, null); })]);
+    if (!p.deliverables.length) sec.appendChild(emptyNote("No deliverables outlined yet."));
+    p.deliverables.forEach(function (d, i) {
+      var fs = delivFeats(d), pr = delivProgress(d);
+      var v = d.validation && d.validation.status ? d.validation.status : "Not validated";
+      var titleNode = el("span"); titleNode.appendChild(el("i", "stepn", String(i + 1))); titleNode.appendChild(document.createTextNode(d.title));
+      if (d.tag) titleNode.appendChild(quietPill(d.tag, DELIV_TAG_CLASS[d.tag]));
+      var side = [];
+      var up = el("button", "dmove", "↑"); up.title = "Build earlier"; up.onclick = function (e) { e.stopPropagation(); if (i === 0) return; p.deliverables.splice(i, 1); p.deliverables.splice(i - 1, 0, d); touchPilot(p); render(); save(); };
+      var dn = el("button", "dmove", "↓"); dn.title = "Build later"; dn.onclick = function (e) { e.stopPropagation(); if (i === p.deliverables.length - 1) return; p.deliverables.splice(i, 1); p.deliverables.splice(i + 1, 0, d); touchPilot(p); render(); save(); };
+      side.push(up, dn);
+      sec.appendChild(xrow({ key: "d:" + d.id, title: titleNode,
+        meta: metaLine([quietPill(d.status || "Proposed", DELIV_STATUS_CLASS[d.status || "Proposed"]), pr ? pr.live + " of " + pr.total + " features live" : "no features tagged", quietPill(v, VALIDATION_CLASS[v])]),
+        side: side,
+        details: function (det) {
+          det.appendChild(el("div", "lab", "Note")); det.appendChild(d.note ? richBlock(d.note, p) : emptyNote("Nothing written."));
+          det.appendChild(el("div", "lab", "Features that deliver it"));
+          if (!fs.length) det.appendChild(emptyNote("None tagged yet."));
+          fs.forEach(function (f) {
+            det.appendChild(pilotFeatureRow(f, function (x) { d.features = (d.features || []).filter(function (id) { return id !== x.id; }); touchPilot(p); render(); save(); }));
+          });
+          if (d.validation && d.validation.note) { det.appendChild(el("div", "lab", "Client validation")); det.appendChild(el("p", "readtext", (d.validation.date ? stamp(d.validation.date) + " · " : "") + d.validation.note)); }
+          var acts = el("div", "rowacts");
+          acts.appendChild(chipBtn("Edit", function () { editDeliverable(p, d); }));
+          acts.appendChild(chipBtn("+ Feature", function () { pickFeature(d.title, d.features || []).then(function (f) { if (!f) return; d.features = (d.features || []).concat([f.id]); touchPilot(p); render(); save(); }); }));
+          acts.appendChild(chipBtn("Set validation", function () { editValidation(p, d, "deliverable"); }));
+          acts.appendChild(chipBtn("+ Action", function () { editAction(p, null, { links: { deliverable: d.id } }); }));
+          det.appendChild(acts);
+        } }));
+    });
+    body.appendChild(sec);
+  }
+  function chainLine(p, r) {
+    var ev = (r.evidence || []).length + p.evidence.filter(function (e) { return e.links && e.links.request === r.id && (r.evidence || []).indexOf(e.id) === -1; }).length;
+    var f = r.feature ? feature(r.feature) : null;
+    var v = r.validation && r.validation.status ? r.validation.status : "Not validated";
+    var line = el("div", "chain");
+    [["Evidence", ev ? ev + " linked" : "none", ev ? "on" : ""], ["Problem", r.bottleneck ? "written" : "empty", r.bottleneck ? "on" : ""], ["Solution", r.solution ? "proposed" : "none", r.solution ? "on" : ""], ["Decision", r.decision, r.decision !== "Undecided" ? "on" : ""], ["Build", f ? f.state : "no feature", f ? "on" : ""], ["Available", f && (f.state === "Live" || f.state === "Feature flag") ? "yes" : "not yet", f && (f.state === "Live" || f.state === "Feature flag") ? "on" : ""], ["Client validation", v, v === "Client validated" ? "on good" : v === "Rejected" ? "on bad" : ""]].forEach(function (x, i) {
+      if (i) line.appendChild(el("i", null, "›"));
+      var c = el("span", "cnode " + x[2]); c.appendChild(el("b", null, x[0])); c.appendChild(el("span", null, x[1])); line.appendChild(c);
+    });
+    var vb = chipBtn("Set validation", function () { editValidation(p, r, "request"); });
+    line.appendChild(vb);
+    return line;
+  }
+  function editValidation(p, rec, kind) {
+    var d = JSON.parse(JSON.stringify(rec.validation || { status: "Not validated", note: "", date: "" }));
+    sideDrawer("Client validation", function (body, close) {
+      body.appendChild(el("p", "note", "What the firm said after seeing or using it. Live in the product is not the same thing."));
+      body.appendChild(fld("Status", selIn(VALIDATION, d.status, function (v) { d.status = v; })));
+      body.appendChild(fld("Date", txtIn(d.date, "", function (v) { d.date = v; }, "date")));
+      body.appendChild(fld("What they said", areaIn(d.note, "Who validated, on what, with which caveats.", function (v) { d.note = v; }, 4)));
+      body.appendChild(drawerActs(function () { rec.validation = d; rec.updated = Date.now(); touchPilot(p); close(); render(); save(); }, close));
+    }, { eyebrow: kind === "request" ? "REQUEST" : "DELIVERABLE" });
+  }
+
+  /* ---------- delivery: feature fit ---------- */
+  function editFit(p, f) {
+    var cur = fitOf(p, f);
+    var d = JSON.parse(JSON.stringify(cur)); d.evidence = d.evidence || [];
+    sideDrawer(f.name, function (body, close) {
+      var st = el("div", "fitstate"); st.appendChild(el("span", null, "Engineering state")); st.appendChild(statePill(f)); body.appendChild(st);
+      body.appendChild(fld("Workflow fit for this pilot", selIn(FIT_VALUES, d.fit, function (v) { d.fit = v; }), "Independent of whether it is built. A Live feature can still be Not assessed here."));
+      body.appendChild(fld("Supports", areaIn(d.supports, "Which step or deliverable it serves, and how", function (v) { d.supports = v; }, 2)));
+      body.appendChild(fld("Still unknown", areaIn(d.unknown, "What we could not confirm", function (v) { d.unknown = v; }, 2)));
+      body.appendChild(fld("Next validation", areaIn(d.next, "What to show or ask, to whom, when", function (v) { d.next = v; }, 2)));
+      var evl = el("div", "fld"); evl.appendChild(el("label", null, "Evidence"));
+      var chosen = el("div", "linklist");
+      function drawEv() { chosen.innerHTML = ""; d.evidence.forEach(function (id) { var e = p.evidence.filter(function (x) { return x.id === id; })[0]; if (!e) return; var c = el("button", "chip", (e.kind || "") + ": " + e.text.slice(0, 60)); c.title = "Remove"; c.onclick = function () { d.evidence = d.evidence.filter(function (x) { return x !== id; }); drawEv(); }; chosen.appendChild(c); }); }
+      drawEv();
+      evl.appendChild(chosen);
+      var pickEv = selIn([["", "Attach evidence…"]].concat(p.evidence.map(function (e) { return [e.id, (e.kind || "") + ": " + e.text.slice(0, 70)]; })), "", function (v) { if (v && d.evidence.indexOf(v) === -1) { d.evidence.push(v); drawEv(); } pickEv.value = ""; });
+      evl.appendChild(pickEv);
+      body.appendChild(evl);
+      body.appendChild(drawerActs(function () { d.updated = Date.now(); p.fit[f.id] = d; touchPilot(p); close(); render(); save(); }, close));
+    }, { eyebrow: "FEATURE FIT" });
+  }
+  function renderFit(body, p) {
+    var set = pilotFeatureSet(p);
+    var sec = secHead("Feature fit", set.length || null, "Two independent facts per feature: where engineering stands, and whether it fits this firm's workflow. Assess against evidence, not against the roadmap.", [chipBtn("+ Asked for", function () { pickFeature("They asked for", p.wants).then(function (f) { if (f) { p.wants = p.wants.concat([f.id]); touchPilot(p); render(); save(); } }); }), chipBtn("+ We think they need", function () { pickFeature("We think they will need", p.needs).then(function (f) { if (f) { p.needs = p.needs.concat([f.id]); touchPilot(p); render(); save(); } }); }), chipBtn("+ Assess another", function () { pickFeature("Assess a feature", Object.keys(p.fit)).then(function (f) { if (f) editFit(p, f); }); })]);
+    var counts = {};
+    set.forEach(function (f) { var v = fitOf(p, f).fit; counts[v] = (counts[v] || 0) + 1; });
+    var filt = el("div", "psubs mini wrap");
+    [["", "All"]].concat(FIT_VALUES.map(function (v) { return [v, v]; })).forEach(function (m) {
+      var n = m[0] ? counts[m[0]] || 0 : set.length;
+      var b = el("button", null, m[1]); if (n) b.appendChild(el("em", null, String(n)));
+      b.setAttribute("aria-pressed", String((ui.fitFilter || "") === m[0])); b.onclick = function () { ui.fitFilter = m[0]; renderView(); }; filt.appendChild(b);
+    });
+    sec.insertBefore(filt, sec.children[1]);
+    var shown = set.filter(function (f) { return !ui.fitFilter || fitOf(p, f).fit === ui.fitFilter; });
+    if (!shown.length) sec.appendChild(emptyNote(set.length ? "Nothing with that fit." : "No features linked to this pilot yet."));
+    shown.forEach(function (f) {
+      var ft = fitOf(p, f);
+      var par = f.parent ? feature(f.parent) : null;
+      var titleNode = el("span"); if (par) titleNode.appendChild(el("span", "pp", par.name + " › ")); titleNode.appendChild(document.createTextNode(f.name));
+      var tags = [];
+      if (p.wants.indexOf(f.id) !== -1) tags.push("asked for");
+      if (p.needs.indexOf(f.id) !== -1) tags.push("we think they need");
+      var dls = p.deliverables.filter(function (d) { return (d.features || []).indexOf(f.id) !== -1; });
+      if (dls.length) tags.push(dls.length + (dls.length === 1 ? " deliverable" : " deliverables"));
+      var side = [el("span", "twin"), statePill(f), quietPill(ft.fit, FIT_CLASS[ft.fit])];
+      side[0].appendChild(el("i", null, "engineering")); side[0].appendChild(el("i", null, "pilot fit"));
+      sec.appendChild(xrow({ key: "f:" + p.id + ":" + f.id, title: titleNode, meta: metaLine([tags.join(" · "), f.owner && f.owner !== "Unassigned" ? f.owner : ""]), side: side, details: function (det) {
+        var g = el("div", "stepgrid two");
+        [["Supports", ft.supports], ["Still unknown", ft.unknown], ["Next validation", ft.next]].forEach(function (x) { var c = el("div", "stepcell"); c.appendChild(el("div", "lab", x[0])); c.appendChild(el("p", "readtext" + (x[1] ? "" : " muted"), x[1] || "not written")); g.appendChild(c); });
+        det.appendChild(g);
+        det.appendChild(el("div", "lab", "Evidence"));
+        var ev = (ft.evidence || []).map(function (id) { return p.evidence.filter(function (e) { return e.id === id; })[0]; }).filter(Boolean);
+        if (!ev.length) det.appendChild(emptyNote("None attached."));
+        ev.forEach(function (e) { det.appendChild(evidenceRow(p, e, true)); });
+        var acts = el("div", "rowacts");
+        acts.appendChild(chipBtn("Assess", function () { editFit(p, f); }));
+        acts.appendChild(chipBtn("Open feature", function () { open(f.id); }));
+        if (p.wants.indexOf(f.id) !== -1) acts.appendChild(chipBtn("Remove from asked for", function () { p.wants = p.wants.filter(function (id) { return id !== f.id; }); touchPilot(p); render(); save(); }));
+        if (p.needs.indexOf(f.id) !== -1) acts.appendChild(chipBtn("Remove from we think they need", function () { p.needs = p.needs.filter(function (id) { return id !== f.id; }); touchPilot(p); render(); save(); }));
+        det.appendChild(acts);
+      } }));
+    });
+    body.appendChild(sec);
+  }
+
+  /* ---------- delivery: decisions, artifacts, validation, recaps ---------- */
+  function editDecision(p, dc) {
+    var isNew = !dc;
+    var d = dc ? JSON.parse(JSON.stringify(dc)) : { id: uid(), title: "", decision: "", reason: "", date: today(), links: {}, created: Date.now(), updated: Date.now() };
+    d.links = d.links || {};
+    sideDrawer(isNew ? "New product decision" : d.title, function (body, close) {
+      body.appendChild(fld("Decision about", txtIn(d.title, "Duplicate handling for this firm", function (v) { d.title = v; })));
+      body.appendChild(fld("What we decided", areaIn(d.decision, "", function (v) { d.decision = v; }, 2)));
+      body.appendChild(fld("Why", areaIn(d.reason, "One line the team will understand in six months.", function (v) { d.reason = v; }, 2)));
+      body.appendChild(fld("Date", txtIn(d.date, "", function (v) { d.date = v; }, "date")));
+      body.appendChild(fld("Request", selIn([["", "None"]].concat(p.requests.map(function (r) { return [r.id, r.title]; })), d.links.request || "", function (v) { d.links.request = v; })));
+      body.appendChild(fld("Workflow step", selIn([["", "None"]].concat(p.steps.map(function (s) { return [s.id, s.title]; })), d.links.step || "", function (v) { d.links.step = v; })));
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { p.decisions = p.decisions.filter(function (x) { return x.id !== d.id; }); touchPilot(p); close(); render(); save(); }; extra.push(del); }
+      body.appendChild(drawerActs(function () { if (!d.title.trim()) return; d.title = d.title.trim(); d.updated = Date.now(); if (isNew) p.decisions = p.decisions.concat([d]); else Object.assign(dc, d); touchPilot(p); close(); render(); save(); }, close, extra));
+    }, { eyebrow: "PRODUCT DECISION" });
+  }
+  function renderDecisions(body, p) {
+    var decided = p.requests.filter(function (r) { return r.decision !== "Undecided"; });
+    var fits = pilotFeatureSet(p).filter(function (f) { return fitOf(p, f).fit !== "Not assessed"; });
+    var sec = secHead("Product decisions", p.decisions.length + decided.length + fits.length || null, "Everything we chose to do, not do, or change for this firm, with the reason. Decisions on requests and fit assessments appear here on their own.", [primaryBtn("+ Decision", function () { editDecision(p, null); })]);
+    if (!p.decisions.length && !decided.length && !fits.length) sec.appendChild(emptyNote("No decisions yet."));
+    p.decisions.slice().sort(byDateDesc).forEach(function (d) {
+      sec.appendChild(xrow({ key: "dc:" + d.id, title: d.title, meta: metaLine([d.date ? stamp(d.date) : "", d.decision.slice(0, 80)]), details: function (det) {
+        det.appendChild(el("div", "lab", "Decision")); det.appendChild(el("p", "readtext", d.decision || "—"));
+        det.appendChild(el("div", "lab", "Why")); det.appendChild(el("p", "readtext", d.reason || "—"));
+        var acts = el("div", "rowacts"); acts.appendChild(chipBtn("Edit", function () { editDecision(p, d); })); det.appendChild(acts);
+      } }));
+    });
+    decided.forEach(function (r) {
+      var b = el("button", "linkrow"); b.appendChild(el("b", null, r.title)); b.appendChild(el("span", null, r.decision + (r.reason ? " · " + r.reason : "")));
+      b.onclick = function () { ui.pilotTab = "delivery"; ui.pilotSub = "requests"; foldSet("r:" + r.id, true); renderView(); };
+      sec.appendChild(b);
+    });
+    fits.forEach(function (f) {
+      var ft = fitOf(p, f);
+      var b = el("button", "linkrow"); b.appendChild(el("b", null, f.name)); b.appendChild(el("span", null, "fit: " + ft.fit + (ft.supports ? " · " + ft.supports.slice(0, 80) : "")));
+      b.onclick = function () { ui.pilotTab = "delivery"; ui.pilotSub = "fit"; foldSet("f:" + p.id + ":" + f.id, true); renderView(); };
+      sec.appendChild(b);
+    });
+    body.appendChild(sec);
+  }
+  function editArtifact(p, a) {
+    var isNew = !a;
+    var d = a ? JSON.parse(JSON.stringify(a)) : { id: uid(), title: "", link: "", kind: "Prototype", note: "", feature: "", request: "", created: Date.now(), updated: Date.now() };
+    sideDrawer(isNew ? "New artifact" : d.title, function (body, close) {
+      body.appendChild(fld("Title", txtIn(d.title, "Portal prototype v2", function (v) { d.title = v; })));
+      body.appendChild(fld("Kind", selIn(ARTIFACT_KINDS, d.kind, function (v) { d.kind = v; })));
+      body.appendChild(fld("Link", txtIn(d.link, "Drive or prototype URL", function (v) { d.link = v; })));
+      body.appendChild(fld("Note", areaIn(d.note, "What it shows, what it is for.", function (v) { d.note = v; }, 2)));
+      body.appendChild(fld("Request", selIn([["", "None"]].concat(p.requests.map(function (r) { return [r.id, r.title]; })), d.request, function (v) { d.request = v; })));
+      var frow = el("div", "fld"); frow.appendChild(el("label", null, "Feature"));
+      var fb = el("button", "btn ghost small", d.feature && feature(d.feature) ? feature(d.feature).name : "Pick a feature");
+      fb.onclick = function () { pickFeature("Link to a feature", []).then(function (f) { if (f) { d.feature = f.id; fb.textContent = f.name; } }); };
+      frow.appendChild(fb); body.appendChild(frow);
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { p.artifacts = p.artifacts.filter(function (x) { return x.id !== d.id; }); touchPilot(p); close(); render(); save(); }; extra.push(del); }
+      body.appendChild(drawerActs(function () { if (!d.title.trim()) return; d.title = d.title.trim(); d.updated = Date.now(); if (isNew) p.artifacts = p.artifacts.concat([d]); else Object.assign(a, d); touchPilot(p); close(); render(); save(); }, close, extra));
+    }, { eyebrow: "ARTIFACT" });
+  }
+  function renderArtifacts(body, p) {
+    var sec = secHead("Prototypes and artifacts", p.artifacts.length || null, "What we showed or gave the firm: prototypes, documents, recordings. Kept in Drive; listed here with what they were for.", [primaryBtn("+ Artifact", function () { editArtifact(p, null); })]);
+    if (!p.artifacts.length) sec.appendChild(emptyNote("Nothing listed yet."));
+    p.artifacts.forEach(function (a) {
+      var r = el("div", "qrow");
+      var t = el("button", "qtext"); t.appendChild(el("b", null, a.title));
+      var m = [a.kind, a.feature && feature(a.feature) ? feature(a.feature).name : "", a.note].filter(Boolean);
+      t.appendChild(el("span", null, m.join(" · "))); t.onclick = function () { editArtifact(p, a); }; r.appendChild(t);
+      if (/^https?:\/\//.test(a.link || "")) { var go = el("a", "chip", "Open ↗"); go.href = a.link; go.target = "_blank"; go.rel = "noopener"; r.appendChild(go); }
+      sec.appendChild(r);
+    });
+    body.appendChild(sec);
+  }
+  function renderValidation(body, p) {
+    var sec = secHead("Client validation", null, "Two different truths, side by side: what is live in ALIE, and what the firm has confirmed works for them. Only the second one counts as validated.");
+    var rows = [];
+    p.deliverables.forEach(function (d) { rows.push({ kind: "Deliverable", rec: d, title: d.title, live: delivProgress(d), status: d.status || "Proposed" }); });
+    p.requests.forEach(function (r) { var f = r.feature ? feature(r.feature) : null; rows.push({ kind: "Request", rec: r, title: r.title, live: f ? { live: f.state === "Live" || f.state === "Feature flag" ? 1 : 0, total: 1 } : null, status: r.decision }); });
+    if (!rows.length) sec.appendChild(emptyNote("Nothing to validate yet."));
+    var tbl = el("div", "vtable");
+    rows.forEach(function (x) {
+      var v = x.rec.validation && x.rec.validation.status ? x.rec.validation.status : "Not validated";
+      var r = el("div", "vrow");
+      var t = el("div", "vt"); t.appendChild(el("b", null, x.title)); t.appendChild(el("span", null, x.kind + " · " + x.status)); r.appendChild(t);
+      r.appendChild(el("span", "vl", x.live ? (x.live.live + " of " + x.live.total + " live") : "no feature"));
+      r.appendChild(quietPill(v, VALIDATION_CLASS[v]));
+      r.appendChild(chipBtn("Set", function () { editValidation(p, x.rec, x.kind === "Request" ? "request" : "deliverable"); }));
+      if (x.rec.validation && x.rec.validation.note) { var n = el("div", "vnote", (x.rec.validation.date ? stamp(x.rec.validation.date) + " · " : "") + x.rec.validation.note); r.appendChild(n); }
+      tbl.appendChild(r);
+    });
+    sec.appendChild(tbl);
+    body.appendChild(sec);
+  }
+  function weekStart(d) { var x = new Date(d); var day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); return dKey(x); }
+  function editRecap(p, rc) {
+    var isNew = !rc;
+    var d = rc ? JSON.parse(JSON.stringify(rc)) : { id: uid(), week: weekStart(new Date()), internal: "", client: "", clientReviewed: false, created: Date.now(), updated: Date.now() };
+    sideDrawer(isNew ? "Weekly recap" : "Week of " + stamp(d.week), function (body, close) {
+      body.appendChild(fld("Week starting", txtIn(d.week, "", function (v) { d.week = v; }, "date")));
+      body.appendChild(fld("Internal notes", richEditor(d.internal, function (h) { d.internal = h; }, "For us only: what we learned, worries, what to push.", "small")));
+      body.appendChild(fld("Recap shared with the client", richEditor(d.client, function (h) { d.client = h; }, "What we send the firm: progress, what we need from them, next steps.", "small")));
+      var cr = el("label", "chk"); var cb = el("input"); cb.type = "checkbox"; cb.checked = !!d.clientReviewed; cb.onchange = function () { d.clientReviewed = cb.checked; }; cr.appendChild(cb); cr.appendChild(document.createTextNode(" The client has reviewed this recap"));
+      body.appendChild(cr);
+      var extra = [];
+      if (!isNew) { var del = el("button", "btn ghost danger", "Delete"); del.onclick = function () { p.recaps = p.recaps.filter(function (x) { return x.id !== d.id; }); touchPilot(p); close(); render(); save(); }; extra.push(del); }
+      body.appendChild(drawerActs(function () { d.updated = Date.now(); if (isNew) p.recaps = p.recaps.concat([d]); else Object.assign(rc, d); touchPilot(p); close(); render(); save(); }, close, extra));
+    }, { eyebrow: "WEEKLY RECAP", wide: true });
+  }
+  function renderRecaps(body, p) {
+    var list = p.recaps.slice().sort(function (a, b) { return b.week < a.week ? -1 : 1; });
+    var sec = secHead("Weekly recaps", list.length || null, "Internal notes and the recap the client sees are kept apart. Mark a recap reviewed once the firm has read it.", [primaryBtn("+ This week", function () { editRecap(p, null); })]);
+    if (!list.length) sec.appendChild(emptyNote("No recaps yet."));
+    list.forEach(function (rc) {
+      sec.appendChild(xrow({ key: "rc:" + rc.id, title: "Week of " + stamp(rc.week), meta: metaLine([rc.clientReviewed ? quietPill("client reviewed", "st-live") : quietPill("not reviewed by client"), rc.client ? "shared recap written" : "no client recap", rc.internal ? "internal notes" : ""]), details: function (det) {
+        var g = el("div", "stepgrid two");
+        var a = el("div", "stepcell"); a.appendChild(el("div", "lab", "Internal notes")); a.appendChild(rc.internal ? richBlock(rc.internal, p) : emptyNote("Empty.")); g.appendChild(a);
+        var b = el("div", "stepcell client"); b.appendChild(el("div", "lab", "Shared with the client")); b.appendChild(rc.client ? richBlock(rc.client, p) : emptyNote("Empty.")); g.appendChild(b);
+        det.appendChild(g);
+        var acts = el("div", "rowacts"); acts.appendChild(chipBtn("Edit", function () { editRecap(p, rc); })); det.appendChild(acts);
+      } }));
+    });
+    body.appendChild(sec);
+  }
+
+  /* ---------- context pane: software, partners, people ---------- */
+  function contextPane(p) {
+    sideDrawer("Context", function (body) {
+      body.appendChild(el("p", "note", "The firm's tools and the firms around them. Supporting context, not the work itself."));
+      var wrap = el("div", "legacywrap ctx");
+      renderPilotStack(wrap, p);
+      body.appendChild(wrap);
+    }, { eyebrow: "SOFTWARE & PARTNERS", wide: true });
   }
 
   /* feature page: which pilots care about this feature */
@@ -2504,152 +3534,6 @@
   }
   function touchPilot(p) { p.updated = Date.now(); }
 
-  function pilotTabs(p) {
-    var bar = el("div", "bar modebar");
-    var seg = el("div", "seg");
-    [["Overview", "overview"], ["Requests" + ((p.requests || []).length ? " · " + p.requests.length : ""), "requests"], ["Deliverables" + ((p.deliverables || []).length ? " · " + p.deliverables.length : ""), "deliverables"], ["Software & partners" + ((p.stack || []).length ? " · " + p.stack.length : ""), "stack"]].forEach(function (m) {
-      var b = el("button", null, m[0]);
-      b.setAttribute("aria-pressed", String((ui.pilotTab || "overview") === m[1]));
-      b.onclick = function () { ui.pilotTab = m[1]; renderView(); };
-      seg.appendChild(b);
-    });
-    bar.appendChild(seg);
-    return bar;
-  }
-
-  function renderPilotDeliverables(host, p) {
-    var pad = el("div", "pad");
-    var dir = el("div", "dir");
-    var list = p.deliverables || [];
-    var allF = [];
-    list.forEach(function (d) { delivFeats(d).forEach(function (f) { if (allF.indexOf(f) === -1) allF.push(f); }); });
-    var liveN = allF.filter(function (f) { return f.state === "Live" || f.state === "Needs work" || f.state === "Feature flag"; }).length;
-
-    var intro = el("div", "dsum");
-    intro.appendChild(el("b", null, list.length ? list.length + (list.length === 1 ? " deliverable" : " deliverables") + " · " + allF.length + " features involved · " + liveN + " live" : "No deliverables yet"));
-    intro.appendChild(el("span", "note", "Each deliverable is something the client gets. Tag the features that provide it, label quick wins, and drag the order to say what we build first."));
-    intro.appendChild(foldAllButtons(pad));
-    dir.appendChild(intro);
-
-    var wrap = el("div", "delivs");
-    if (!list.length) wrap.appendChild(el("div", "empty", "Add the first deliverable: the outcome the client is waiting for, in their words."));
-    list.forEach(function (d, i) {
-      var card = el("div", "deliv");
-      card.draggable = true;
-      card.addEventListener("dragstart", function (e) { e.dataTransfer.setData("text/plain", "deliv:" + d.id); card.classList.add("dragging"); });
-      card.addEventListener("dragend", function () { card.classList.remove("dragging"); });
-      card.addEventListener("dragover", function (e) { e.preventDefault(); card.classList.add("dragover"); });
-      card.addEventListener("dragleave", function () { card.classList.remove("dragover"); });
-      card.addEventListener("drop", function (e) {
-        e.preventDefault(); card.classList.remove("dragover");
-        var id = (e.dataTransfer.getData("text/plain") || "").replace(/^deliv:/, "");
-        var from = list.findIndex(function (x) { return x.id === id; });
-        if (from === -1 || from === i) return;
-        var moved = list.splice(from, 1)[0];
-        list.splice(i, 0, moved);
-        touchPilot(p); render(); save();
-      });
-
-      var head = el("div", "dhead");
-      var num = el("span", "dnum", String(i + 1));
-      head.appendChild(num);
-      var title = el("input", "dtitle");
-      title.value = d.title; title.placeholder = "What the client gets, in their words";
-      title.setAttribute("aria-label", "Deliverable title");
-      title.onchange = function () { d.title = title.value.trim() || "Untitled deliverable"; touchPilot(p); save(); };
-      head.appendChild(title);
-      var tagSel = selectOf(DELIV_TAGS.map(function (t) { return [t, t || "No label"]; }), d.tag || "", function (v) { d.tag = v; touchPilot(p); render(); save(); }, "Label");
-      tagSel.classList.add("dtag");
-      if (d.tag && DELIV_TAG_CLASS[d.tag]) tagSel.classList.add(DELIV_TAG_CLASS[d.tag]);
-      head.appendChild(tagSel);
-      var prog = delivProgress(d);
-      head.appendChild(el("span", "dprog" + (prog && prog.live === prog.total ? " done" : ""), prog ? prog.live + " of " + prog.total + " live" : "no features yet"));
-      var up = el("button", "dmove", "↑"); up.title = "Move up"; up.disabled = i === 0;
-      up.onclick = function () { list.splice(i - 1, 0, list.splice(i, 1)[0]); touchPilot(p); render(); save(); };
-      var down = el("button", "dmove", "↓"); down.title = "Move down"; down.disabled = i === list.length - 1;
-      down.onclick = function () { list.splice(i + 1, 0, list.splice(i, 1)[0]); touchPilot(p); render(); save(); };
-      head.appendChild(up); head.appendChild(down);
-      var del = el("button", "dmove del", "×"); del.title = "Delete deliverable";
-      del.onclick = function () {
-        askConfirm("Delete “" + d.title + "”?", "Features stay untouched.", { danger: true, ok: "Delete" }).then(function (yes) {
-          if (!yes) return;
-          p.deliverables = list.filter(function (x) { return x.id !== d.id; }); touchPilot(p); render(); save();
-        });
-      };
-      head.appendChild(del);
-      card.appendChild(head);
-
-      card.appendChild(richEditor(d.note, function (h) { d.note = h; touchPilot(p); save(); }, "Why it matters to them, what done looks like, open questions from the team.", "small dnote"));
-
-      var fl = el("div", "dfeats");
-      delivFeats(d).forEach(function (f) {
-        var chip = el("span", "dchip " + stateClass(f.state));
-        var b = el("button", null, f.name);
-        b.title = f.state + (f.effort ? " · takes " + effortLabel(f, true) : "") + (f.owner && f.owner !== "Unassigned" ? " · " + f.owner : "");
-        b.onclick = function () { open(f.id); };
-        chip.appendChild(el("i", "sd " + stateClass(f.state)));
-        chip.appendChild(b);
-        if (f.effort) chip.appendChild(el("em", null, effortLabel(f)));
-        var x = el("button", "x", "×"); x.setAttribute("aria-label", "Untag " + f.name);
-        x.onclick = function () { d.features = (d.features || []).filter(function (id) { return id !== f.id; }); touchPilot(p); render(); save(); };
-        chip.appendChild(x);
-        fl.appendChild(chip);
-      });
-      var addF = el("button", "chip", "+ Tag a feature");
-      addF.onclick = function () {
-        pickFeature("Which feature provides “" + d.title + "”?", d.features || []).then(function (f) {
-          if (!f) return;
-          d.features = (d.features || []).concat([f.id]); touchPilot(p); render(); save();
-        });
-      };
-      fl.appendChild(addF);
-      card.appendChild(fl);
-      var dpr = delivProgress(d);
-      foldable(card, "d:" + d.id, true, ".dhead", [d.tag, dpr ? dpr.live + " of " + dpr.total + " features live" : (d.features || []).length ? "" : "no features tagged", peekText(d.note, "")].filter(Boolean).join(" · ") || "No note yet");
-      wrap.appendChild(card);
-    });
-    dir.appendChild(wrap);
-
-    var addD = el("button", "btn ghost rowbtn", "+ Add a deliverable");
-    addD.style.marginTop = "14px";
-    addD.onclick = function () {
-      askText("New deliverable", { placeholder: "For example: a medical chronology within 24 hours of upload", ok: "Add" }).then(function (t) {
-        if (!t) return;
-        p.deliverables = (p.deliverables || []).concat([{ id: uid(), title: t, note: "", tag: "", features: [] }]);
-        touchPilot(p); render(); save();
-      });
-    };
-    dir.appendChild(addD);
-
-    /* derived build order: features in the order their deliverables sit, not yet live first */
-    if (allF.length) {
-      var order = el("div", "dirsec");
-      order.style.marginTop = "36px";
-      var h = el("h2", null, "Build order for this pilot");
-      h.appendChild(el("em", null, allF.length + " features"));
-      order.appendChild(h);
-      order.appendChild(el("div", "note", "Features in the order their deliverables are ranked. Live ones are shown last so the queue is what is left to do."));
-      var todo = allF.filter(function (f) { return ["Live", "Needs work", "Feature flag"].indexOf(f.state) === -1; });
-      var done = allF.filter(function (f) { return todo.indexOf(f) === -1; });
-      var rows = el("div", "pilotrows buildorder");
-      todo.concat(done).forEach(function (f, idx) {
-        var r = pilotFeatureRow(f, null);
-        var n = el("span", "dnum small", String(idx + 1));
-        r.insertBefore(n, r.firstChild);
-        var which = list.filter(function (d) { return (d.features || []).indexOf(f.id) !== -1; }).map(function (d) { return d.title; });
-        var extra = el("span", "d");
-        extra.appendChild(el("span", "note", "for " + which.join(", ") + (f.effort ? " · takes " + effortLabel(f, true) : " · no estimate")));
-        r.querySelector(".t").appendChild(extra);
-        if (todo.indexOf(f) === -1) r.classList.add("isdone");
-        rows.appendChild(r);
-      });
-      order.appendChild(rows);
-      dir.appendChild(order);
-    }
-    pad.appendChild(dir);
-    host.appendChild(pad);
-  }
-
   /* --- requests: what a pilot asked for, in their words, before it is (or is not) a feature --- */
   var REQ_FIT = ["", "Core to ALIE", "Adjacent", "Out of scope"];
   var REQ_DECISION = ["Undecided", "Build", "Integrate or partner", "Later", "Declined"];
@@ -2660,119 +3544,6 @@
     return out;
   }
   function requestsFor(f) { return allRequests().filter(function (x) { return x.r.feature === f.id; }); }
-
-  function renderPilotRequests(host, p) {
-    var pad = el("div", "pad");
-    var dir = el("div", "dir");
-    var list = p.requests || [];
-    var undecided = list.filter(function (r) { return r.decision === "Undecided"; }).length;
-    var intro = el("div", "dsum");
-    intro.appendChild(el("b", null, list.length ? list.length + (list.length === 1 ? " request" : " requests") + (undecided ? " · " + undecided + " to decide" : " · all decided") : "No requests yet"));
-    intro.appendChild(el("span", "note", "Anything they raised, whether or not it fits ALIE. Write the bottleneck, the business need and a possible solution; decide with the team; promote to a feature only what we build."));
-    intro.appendChild(foldAllButtons(pad));
-    dir.appendChild(intro);
-
-    var wrap = el("div", "delivs");
-    if (!list.length) wrap.appendChild(el("div", "empty", "Add the first request: the title in their words, then what slows them down today, why it matters to the business, and what could solve it."));
-    list.forEach(function (r, i) {
-      var card = el("div", "deliv req");
-      var head = el("div", "dhead");
-      head.appendChild(el("span", "dnum", String(i + 1)));
-      var title = el("input", "dtitle");
-      title.value = r.title; title.placeholder = "What they asked for, in their words";
-      title.setAttribute("aria-label", "Request title");
-      title.onchange = function () { r.title = title.value.trim() || "Untitled request"; r.updated = Date.now(); touchPilot(p); save(); };
-      head.appendChild(title);
-      var decSel = selectOf(REQ_DECISION.map(function (d) { return [d, d]; }), r.decision || "Undecided", function (v) {
-        r.decision = v; r.updated = Date.now(); touchPilot(p);
-        if (v === "Undecided") { render(); save(); return; }
-        askText("Why " + v.toLowerCase() + "?", { value: r.reason || "", placeholder: "One line the team will understand in six months.", ok: "Save" }).then(function (t) { if (t !== null) r.reason = t; render(); save(); });
-      }, "Decision");
-      decSel.classList.add("dtag"); if (REQ_DECISION_CLASS[r.decision]) decSel.classList.add(REQ_DECISION_CLASS[r.decision]);
-      head.appendChild(decSel);
-      var del = el("button", "dmove del", "×"); del.title = "Delete request";
-      del.onclick = function () {
-        askConfirm("Delete “" + r.title + "”?", "The record of this request goes away.", { danger: true, ok: "Delete" }).then(function (yes) {
-          if (!yes) return;
-          p.requests = list.filter(function (x) { return x.id !== r.id; }); touchPilot(p); render(); save();
-        });
-      };
-      head.appendChild(del);
-      card.appendChild(head);
-
-      var meta = el("div", "reqmeta");
-      var fitRow = el("span", "reqfit");
-      fitRow.appendChild(el("label", null, "Fit"));
-      fitRow.appendChild(selectOf(REQ_FIT.map(function (x) { return [x, x || "Not assessed"]; }), r.fit || "", function (v) { r.fit = v; r.updated = Date.now(); touchPilot(p); save(); }, "Fit"));
-      meta.appendChild(fitRow);
-      var src = el("span", "reqsrc");
-      src.appendChild(el("label", null, "Source"));
-      var sin = el("input"); sin.value = r.source || ""; sin.placeholder = "Who said it, when · Drive link";
-      sin.setAttribute("aria-label", "Source");
-      sin.onchange = function () { r.source = sin.value.trim(); r.updated = Date.now(); touchPilot(p); save(); };
-      src.appendChild(sin);
-      if (/^https?:\/\//.test(r.source || "")) { var go = el("a", "chip", "Open"); go.href = r.source; go.target = "_blank"; go.rel = "noopener"; src.appendChild(go); }
-      meta.appendChild(src);
-      if (r.decision !== "Undecided" && r.reason) meta.appendChild(el("span", "reqwhy", "Why: " + r.reason));
-      card.appendChild(meta);
-
-      var secs = el("div", "reqsecs");
-      [["bottleneck", "Current bottleneck", "What happens today, who does it, how often, how long it takes."],
-       ["need", "Business need", "Why it matters to them: what it costs, what it blocks, what changes if it is solved."],
-       ["solution", "Possible solution", "Build, integrate with what they use, partner, or nothing. First take, not a commitment."]].forEach(function (s) {
-        var sec = el("div", "reqsec");
-        sec.appendChild(el("div", "lab", s[1]));
-        sec.appendChild(richEditor(r[s[0]], function (h) { r[s[0]] = h; r.updated = Date.now(); touchPilot(p); save(); }, s[2], "small dnote"));
-        secs.appendChild(sec);
-      });
-      card.appendChild(secs);
-
-      var foot = el("div", "dfeats");
-      var lf = r.feature ? feature(r.feature) : null;
-      if (lf) {
-        var chip = el("span", "dchip " + stateClass(lf.state));
-        var b = el("button", null, "Feature: " + lf.name); b.onclick = function () { open(lf.id); };
-        chip.appendChild(el("i", "sd " + stateClass(lf.state))); chip.appendChild(b);
-        chip.appendChild(pill(lf.state, "st " + stateClass(lf.state)));
-        foot.appendChild(chip);
-      } else {
-        var promote = el("button", "chip", "↑ Promote to a Proposed feature");
-        promote.onclick = function () {
-          askConfirm("Promote “" + r.title + "” to a feature?", "It starts as Proposed, carries the bottleneck, need and solution as its description, and joins this pilot's asks. Nothing is agreed until you move it to Planned.", { ok: "Promote" }).then(function (yes) {
-            if (!yes) return;
-            var note = "<p><b>From " + escapeHtml(p.name) + "'s request.</b></p>" +
-              (r.bottleneck ? "<h4>Current bottleneck</h4>" + richHtml(r.bottleneck) : "") +
-              (r.need ? "<h4>Business need</h4>" + richHtml(r.need) : "") +
-              (r.solution ? "<h4>Possible solution</h4>" + richHtml(r.solution) : "");
-            var f = create([], { name: r.title, state: "Proposed", note: note }, true);
-            r.feature = f.id; if (r.decision === "Undecided") r.decision = "Build";
-            if ((p.wants || []).indexOf(f.id) === -1) p.wants = (p.wants || []).concat([f.id]);
-            r.updated = Date.now(); touchPilot(p); save();
-            toast(r.title + " is now a Proposed feature. Give it a space and a division.");
-            open(f.id);
-          });
-        };
-        foot.appendChild(promote);
-      }
-      card.appendChild(foot);
-      foldable(card, "r:" + r.id, true, ".dhead", [r.fit, peekText(r.bottleneck || r.need || r.solution, "No details yet")].filter(Boolean).join(" · "));
-      wrap.appendChild(card);
-    });
-    dir.appendChild(wrap);
-
-    var addR = el("button", "btn ghost rowbtn", "+ Add a request");
-    addR.style.marginTop = "14px";
-    addR.onclick = function () {
-      askText("New request", { placeholder: "For example: automated retainer and power of attorney prepopulation", ok: "Add" }).then(function (t) {
-        if (!t) return;
-        p.requests = (p.requests || []).concat([{ id: uid(), title: t, bottleneck: "", need: "", solution: "", fit: "", decision: "Undecided", reason: "", source: "", feature: "", created: Date.now(), updated: Date.now() }]);
-        touchPilot(p); render(); save();
-      });
-    };
-    dir.appendChild(addR);
-    pad.appendChild(dir);
-    host.appendChild(pad);
-  }
 
   /* --- software and partners: what the pilot uses today and who they work with --- */
   var STACK_KINDS = ["Software", "Partner"];

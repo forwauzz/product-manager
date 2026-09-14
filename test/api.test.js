@@ -285,3 +285,55 @@ test("research items keep an experiment plan and the document keeps the R&D fold
   assert.equal(patch.status, 200);
   assert.equal(patch.body.rndPlan, "<p>Shorter.</p>");
 });
+
+test("a pilot keeps its discovery record: sessions, evidence with provenance, workflow steps, fit, actions, recaps", async () => {
+  const st = await api("GET", "/api/state");
+  const s = st.body.state;
+  const f = s.features[0];
+  s.pilots = [{ id: "p9", name: "Le Cabinet M", status: "Discovery", objective: "Learn how they reason.",
+    people: [{ id: "u1", name: "Amélie", role: "Paralegal", side: "Client" }],
+    sessions: [{ id: "s1", date: "2026-09-08", title: "Onsite with Amélie", participants: "Amélie, Uzziel", purpose: "Case workflow", draft: true }],
+    evidence: [{ id: "e1", text: "trouve-moi tous les rapports", kind: "Direct quote", session: "s1", source: "CM-20260908-01", speaker: "Amélie" }, { id: "e2", text: "they probably want X", kind: "Product inference" }, { id: "e3", text: "raw", kind: "nope", session: "ghost" }],
+    steps: [{ id: "w1", title: "Build the chronology", version: "current", actor: "Amélie", evidence: ["e1", "ghost"] }],
+    questions: [{ id: "q1", text: "Who uses it next?", step: "w1", session: "s1" }],
+    actions: [{ id: "a1", title: "Send the map", owner: "Uzziel", side: "Internal", due: "2026-09-20", links: { session: "s1" } }],
+    fit: { [f.id]: { fit: "Simplify", supports: "step 1", evidence: ["e1"] }, ghost: { fit: "Keep" } },
+    recaps: [{ id: "r1", week: "2026-09-08", internal: "<p>x</p>", client: "<p>y</p>", clientReviewed: true }],
+    deliverables: [{ id: "d1", title: "Clean file", status: "Ready for client testing", validation: { status: "Client validated", note: "Amélie ok" } }],
+    requests: [{ id: "rq1", title: "Batch email", evidence: ["e1"], validation: { status: "weird" } }]
+  }];
+  const put = await api("PUT", "/api/state", { version: st.body.version, state: s, who: "Uzziel" });
+  assert.equal(put.status, 200);
+  const p = put.body.state.pilots[0];
+  assert.equal(p.status, "Discovery");
+  assert.equal(p.sessions[0].draft, true);
+  assert.equal(p.evidence[1].kind, "Product inference");
+  assert.equal(p.evidence[2].kind, "Unsorted", "unknown kinds fall back to Unsorted");
+  assert.equal(p.evidence[2].session, "", "a missing session link is cleared");
+  assert.deepEqual(p.steps[0].evidence, ["e1"], "evidence links to unknown items are dropped");
+  assert.equal(p.questions[0].step, "w1");
+  assert.equal(p.actions[0].links.session, "s1");
+  assert.equal(p.fit[f.id].fit, "Simplify");
+  assert.equal(p.recaps[0].clientReviewed, true);
+  assert.equal(p.deliverables[0].status, "Ready for client testing");
+  assert.equal(p.deliverables[0].validation.status, "Client validated");
+  assert.equal(p.requests[0].validation.status, "Not validated", "an unknown validation status is not validated");
+  assert.deepEqual(p.requests[0].evidence, ["e1"]);
+});
+
+test("an older pilot record gains empty discovery collections and keeps everything it had", async () => {
+  const st = await api("GET", "/api/state");
+  const s = st.body.state;
+  s.pilots = [{ id: "p10", name: "Old", status: "Piloting", contact: "Sarah", notes: "<p>kept</p>", wants: ["x"], deliverables: [{ id: "d", title: "D", tag: "Quick win", features: [] }], requests: [{ id: "r", title: "R" }], stack: [{ id: "s", name: "Outlook" }] }];
+  const put = await api("PUT", "/api/state", { version: st.body.version, state: s, who: "Uzziel" });
+  const p = put.body.state.pilots[0];
+  assert.equal(p.status, "Piloting");
+  assert.equal(p.notes, "<p>kept</p>");
+  assert.equal(p.contact, "Sarah");
+  assert.equal(p.deliverables[0].status, "Proposed");
+  assert.equal(p.deliverables[0].validation.status, "Not validated");
+  assert.equal(p.requests[0].decision, "Undecided");
+  assert.equal(p.stack[0].name, "Outlook");
+  ["sessions", "evidence", "steps", "questions", "actions", "recaps", "artifacts", "decisions", "people"].forEach(k => assert.deepEqual(p[k], [], k));
+  assert.deepEqual(p.fit, {});
+});
