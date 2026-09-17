@@ -2412,7 +2412,7 @@
   var SIDES = ["Client", "Internal"];
 
   function ensurePilot(p) {
-    ["people", "sessions", "evidence", "steps", "workflowHistory", "questions", "actions", "recaps", "artifacts", "decisions", "problems", "wants", "needs", "deliverables", "requests", "stack"].forEach(function (k) { if (!Array.isArray(p[k])) p[k] = []; });
+    ["people", "sessions", "evidence", "steps", "workflowHistory", "questions", "actions", "recaps", "artifacts", "decisions", "problems", "reviews", "wants", "needs", "deliverables", "requests", "stack"].forEach(function (k) { if (!Array.isArray(p[k])) p[k] = []; });
     if (!p.fit || typeof p.fit !== "object") p.fit = {};
     if (!p.nextTouch || typeof p.nextTouch !== "object") p.nextTouch = { date: "", note: "" };
     if (typeof p.objective !== "string") p.objective = "";
@@ -2577,7 +2577,7 @@
 
   /* ---------- page ---------- */
   var PILOT_LEVELS = [["overview", "Overview"], ["discovery", "Discovery"], ["delivery", "Delivery"]];
-  var PILOT_SUBS = { discovery: [["sessions", "Sessions"], ["workflow", "Workflow"], ["problems", "Problems"], ["inbox", "Inbox"]],
+  var PILOT_SUBS = { discovery: [["sessions", "Sessions"], ["workflow", "Workflow"], ["problems", "Problems"], ["reviews", "Client reviews"], ["inbox", "Inbox"]],
                      delivery: [["requests", "Requests"], ["deliverables", "Deliverables"], ["fit", "Feature fit"], ["decisions", "Decisions"], ["artifacts", "Artifacts"], ["validation", "Validation"], ["recaps", "Recaps"]] };
   function renderPilotPage(host, p) {
     ensurePilot(p);
@@ -2652,7 +2652,7 @@
     }
     var body = el("div", "pbody");
     if (ui.pilotTab === "overview") renderOverview(body, p);
-    else if (ui.pilotTab === "discovery") ({ sessions: renderSessions, workflow: renderWorkflow, problems: renderProblems, inbox: renderInbox })[ui.pilotSub](body, p);
+    else if (ui.pilotTab === "discovery") ({ sessions: renderSessions, workflow: renderWorkflow, problems: renderProblems, reviews: renderReviews, inbox: renderInbox })[ui.pilotSub](body, p);
     else ({ requests: renderRequestsLevel, deliverables: renderDeliverablesLevel, fit: renderFit, decisions: renderDecisions, artifacts: renderArtifacts, validation: renderValidation, recaps: renderRecaps })[ui.pilotSub](body, p);
     col.appendChild(body);
     host.appendChild(col);
@@ -2664,6 +2664,7 @@
       case "workflow": return p.steps.length;
       case "inbox": return unsortedCount(p);
       case "problems": return (p.problems || []).length;
+      case "reviews": return (p.reviews || []).reduce(function (n, r) { return n + (window.ALIE_REVIEWS ? window.ALIE_REVIEWS.feedbackCounts(r).open : 0); }, 0);
       case "requests": return p.requests.length;
       case "deliverables": return p.deliverables.length;
       case "fit": return pilotFeatureSet(p).length;
@@ -4186,6 +4187,173 @@
       var c = el("span", "cnode " + x[2]); c.appendChild(el("b", null, x[0])); c.appendChild(el("span", null, x[1])); line.appendChild(c);
     });
     return line;
+  }
+  /* =====================================================================
+     Client reviews: a curated "what I understand about your business" document, published as one link the client
+     opens without an account, reads in ten short pages, and corrects in place. Corrections come back here as
+     proposals; nothing becomes evidence, a requirement or an accepted deliverable on its own.
+     ===================================================================== */
+  function RV() { if (!window.ALIE_REVIEWS) { toast("Reviews module not loaded yet. Reload the page.", true); throw new Error("reviews module missing"); } return window.ALIE_REVIEWS; }
+  var REVIEW_SECTIONS = ["Start here", "How a matter moves", "How the team works", "Where work is difficult", "What we should clarify"];
+  function reviewLink(rev) { return location.origin + "/r/" + rev.token; }
+  function reviewCurrent(r) { return r.revisions.length ? r.revisions[r.revisions.length - 1] : null; }
+  function reviewCardTitle(r, id) { var c = r.cards.filter(function (x) { return x.id === id; })[0]; if (c) return c.title; var rv = reviewCurrent(r); var sc = rv && rv.snapshot ? RV().snapshotCards(rv.snapshot).filter(function (x) { return x.id === id; })[0] : null; return sc ? sc.title : "(page removed)"; }
+  function renderReviews(body, p) {
+    var list = p.reviews.slice().sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
+    var sec = secHead("Client reviews", list.length || null, "One link, no account: the firm reads what we think we understand and corrects it in place. What comes back stays a proposal until you apply it; it never becomes evidence or a requirement on its own.", [primaryBtn("+ Create review link", function () { newReview(p); })]);
+    if (!list.length) sec.appendChild(emptyNote("No review yet. Create one to draft the pages, preview exactly what the firm will see, then publish a fixed revision and copy the link."));
+    list.forEach(function (r) { sec.appendChild(reviewRow(p, r)); });
+    body.appendChild(sec);
+  }
+  function reviewRow(p, r) {
+    var R = RV(), cur = reviewCurrent(r), open = cur && R.revisionOpen(cur), counts = R.feedbackCounts(r);
+    var meta = [r.subtitle, cur ? "revision " + cur.n + " · published " + stamp(cur.publishedAt.slice(0, 10)) : "not published yet", r.cards.length + " pages", counts.total ? counts.open + " open of " + counts.total + " feedback" : "no feedback yet", counts.finished ? "finished by " + (counts.finished.name || "the reader") + " on " + stamp(new Date(counts.finished.created).toISOString().slice(0, 10)) : (cur ? "not finished" : ""), r.lang === "fr" ? "French" : "English"];
+    var side = [quietPill(r.status, r.status === "Published" ? "st-live" : r.status === "Disabled" ? "st-needs-work" : "")];
+    if (open) side.push(chipBtn("Copy link", function (e) { e.stopPropagation(); copyReviewLink(cur); }));
+    side.push(chipBtn("Open preview", function (e) { e.stopPropagation(); window.open("/review.html?preview=" + encodeURIComponent(p.id + "/" + r.id), "_blank", "noopener"); }));
+    return xrow({ key: "rv:" + r.id, title: r.title || "Untitled review", meta: metaLine(meta), side: side, open: true, details: function (det) {
+      var acts = el("div", "rowacts");
+      acts.appendChild(chipBtn("Edit draft", function () { editReview(p, r, false); }));
+      acts.appendChild(chipBtn(cur ? "Publish new revision" : "Publish", function () { publishReview(p, r); }));
+      if (cur) acts.appendChild(chipBtn(cur.disabled ? "Re-enable link" : "Disable link", function () { toggleReviewLink(p, r, cur); }));
+      var del = chipBtn("Delete", function () { askConfirm("Delete this review?", "Its feedback goes with it. Published links stop working.", { danger: true, ok: "Delete" }).then(function (y) { if (!y) return; p.reviews = p.reviews.filter(function (x) { return x.id !== r.id; }); touchPilot(p); render(); save(); }); }, "danger");
+      acts.appendChild(del);
+      det.appendChild(acts);
+      if (cur) {
+        var share = el("div", "rvshare");
+        share.appendChild(el("div", "lab", "Share"));
+        var inp = el("input", "rvlink"); inp.readOnly = true; inp.value = reviewLink(cur); inp.onclick = function () { inp.select(); };
+        share.appendChild(inp);
+        var srow = el("div", "row");
+        srow.appendChild(chipBtn("Copy link", function () { copyReviewLink(cur); }));
+        var exp = el("div", "fld inline"); exp.appendChild(el("label", null, "Expires")); var ed = txtIn(cur.expires || "", "", function (v) { cur.expires = v; r.updated = Date.now(); touchPilot(p); save(); }, "date"); exp.appendChild(ed); srow.appendChild(exp);
+        share.appendChild(srow);
+        share.appendChild(el("p", "note", "Anyone who has this link can read this revision. Having the link is not proof that the reader is " + (p.people.filter(function (x) { return x.side === "Client"; })[0] || { name: "the client" }).name + ". Comments carry a self-reported name only. The page is marked noindex and loads no third-party scripts." + (cur.disabled ? " This link is disabled." : cur.expires ? " It expires on " + stamp(cur.expires) + "." : "")));
+        det.appendChild(share);
+      }
+      det.appendChild(el("div", "lab", "Feedback"));
+      var fbs = r.feedback.slice().sort(function (a, b) { return b.created - a.created; });
+      if (!fbs.length) det.appendChild(emptyNote(cur ? "Nothing yet. Comments and suggested corrections appear here as soon as they are saved." : "Publish and share the link to receive feedback."));
+      fbs.forEach(function (fb) { det.appendChild(feedbackRow(p, r, fb)); });
+    } });
+  }
+  function copyReviewLink(rev) {
+    var url = reviewLink(rev);
+    var done = function () { toast("Link copied. Anyone with it can read this revision."); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { window.prompt("Copy this link", url); });
+    else window.prompt("Copy this link", url);
+  }
+  function toggleReviewLink(p, r, cur) {
+    var off = !cur.disabled;
+    askConfirm(off ? "Disable this link?" : "Re-enable this link?", off ? "The page shows “This link is no longer active” to anyone who opens it. Feedback already received stays here." : "The same link works again.", { danger: off, ok: off ? "Disable" : "Enable" }).then(function (y) {
+      if (!y) return; cur.disabled = off; r.status = off ? "Disabled" : "Published"; r.updated = Date.now(); touchPilot(p); render(); save();
+    });
+  }
+  function publishReview(p, r) {
+    if (!r.cards.length) { toast("Add at least one page first.", true); return; }
+    var cur = reviewCurrent(r);
+    askConfirm(cur ? "Publish revision " + (cur.n + 1) + "?" : "Publish this review?", cur ? "The current link stops working and a new link is created for the new revision. Earlier feedback keeps its quotes; anchors that no longer match are flagged, never moved." : "A fixed copy of the pages is frozen behind a new link. Later edits need a new revision.", { ok: "Publish" }).then(function (y) {
+      if (!y) return;
+      flush().then(function () { return fetch("/api/reviews/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pilot: p.id, review: r.id, who: ME }) }); })
+        .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, j: j }; }); })
+        .then(function (x) {
+          if (!x.ok || !x.j.ok) { toast("Could not publish: " + (x.j.error || "server error"), true); return; }
+          S = x.j.state; VERSION = x.j.version; dirty = false;
+          render(); toast("Revision " + x.j.revision.n + " published. Copy the link to share it.");
+        }).catch(function () { toast("Could not reach the server.", true); });
+    });
+  }
+  function feedbackRow(p, r, fb) {
+    var R = RV();
+    var row = el("div", "rvfb");
+    var head = el("div", "rvfb-head");
+    head.appendChild(quietPill(fb.kind === "suggestion" ? "suggested correction" : fb.kind === "finish" ? "finished review" : "comment", fb.kind === "suggestion" ? "st-planned" : fb.kind === "finish" ? "st-live" : ""));
+    var rev = r.revisions.filter(function (x) { return x.id === fb.revision; })[0];
+    head.appendChild(el("span", "note", [fb.name || "unnamed", new Date(fb.created).toLocaleString(), rev ? "revision " + rev.n : "", fb.card ? reviewCardTitle(r, fb.card) : ""].filter(Boolean).join(" · ")));
+    var anchor = R.anchorStatus(r, fb);
+    if (anchor === "changed" || anchor === "card missing" || anchor === "ambiguous") head.appendChild(quietPill(anchor === "changed" ? "passage changed since" : anchor === "ambiguous" ? "passage appears twice" : "page removed", "st-needs-work"));
+    if (fb.kind !== "finish") {
+      var stateSel = selIn(R.FEEDBACK_STATES, fb.state, function (v) { fb.state = v; r.updated = Date.now(); touchPilot(p); save(); });
+      stateSel.className = "selbox"; head.appendChild(stateSel);
+    }
+    row.appendChild(head);
+    if (fb.quote) { var q = el("blockquote", "rvquote", fb.quote); row.appendChild(q); }
+    if (fb.suggestion) { var sg = el("div", "rvsug"); sg.appendChild(el("span", "lab", "Proposed wording")); sg.appendChild(el("p", null, fb.suggestion)); row.appendChild(sg); }
+    if (fb.text) row.appendChild(el("p", "readtext", fb.text));
+    if (fb.applied) row.appendChild(el("p", "note", "Applied to the draft on " + new Date(fb.applied.at).toLocaleString() + "; it reaches the firm with the next revision."));
+    if (fb.kind !== "finish") {
+      var acts = el("div", "rowacts");
+      if (fb.kind === "suggestion" && fb.state !== "Applied" && anchor === "intact") acts.appendChild(chipBtn("Apply to draft", function () {
+        askConfirm("Apply this wording to the draft?", "The published revision does not change. The draft page is edited and this correction is marked Applied; publish a new revision when you are ready.", { ok: "Apply" }).then(function (y) {
+          if (!y) return; var out = R.applySuggestion(r, fb, Date.now()); if (!out.ok) { toast(out.error, true); return; } touchPilot(p); render(); save(); toast("Draft updated.");
+        });
+      }));
+      var steps = p.steps.slice().sort(function (a, b) { return a.order - b.order; }).map(function (s) { return [s.id, s.title]; });
+      var qs = p.questions.filter(function (x) { return x.status !== "Answered"; }).map(function (x) { return [x.id, x.text.slice(0, 80)]; });
+      var lk = el("div", "rvlinks");
+      var stepSel = selIn([["", "Link to a workflow step…"]].concat(steps), fb.links.step, function (v) { fb.links.step = v; r.updated = Date.now(); touchPilot(p); save(); }); stepSel.className = "selbox"; lk.appendChild(stepSel);
+      var qSel = selIn([["", "Link to an open question…"]].concat(qs), fb.links.question, function (v) { fb.links.question = v; r.updated = Date.now(); touchPilot(p); save(); }); qSel.className = "selbox"; lk.appendChild(qSel);
+      acts.appendChild(lk);
+      row.appendChild(acts);
+    }
+    return row;
+  }
+  function newReview(p) {
+    var R = RV();
+    var r = /cabinet\s*m/i.test(p.name) ? R.cabinetMDraft() : R.emptyReview({ title: p.name, subtitle: "What I understand about your business so far", cards: REVIEW_SECTIONS.map(function (s, i) { return { id: uid(), section: s, title: "", body: "" }; }) });
+    p.reviews = p.reviews.concat([r]); touchPilot(p); save();
+    editReview(p, r, true);
+  }
+  function editReview(p, r, isNew) {
+    var d = JSON.parse(JSON.stringify(r));
+    sideDrawer(isNew ? "Draft the review" : d.title || "Review", function (body, close) {
+      body.appendChild(el("p", "note", "Write for the firm, not for us: short pages, one idea each, “my understanding” and “to confirm” where you are not sure. No case names, client details or internal notes. Publishing freezes a copy; edits here need a new revision."));
+      var r1 = el("div", "fld two");
+      r1.appendChild(fld("Title", txtIn(d.title, "Le Cabinet M", function (v) { d.title = v; })));
+      r1.appendChild(fld("Subtitle", txtIn(d.subtitle, "What I understand about your business so far", function (v) { d.subtitle = v; })));
+      body.appendChild(r1);
+      var r2 = el("div", "fld two");
+      r2.appendChild(fld("Prepared by", txtIn(d.author, "", function (v) { d.author = v; })));
+      r2.appendChild(fld("Date shown", txtIn(d.date, "", function (v) { d.date = v; }, "date")));
+      body.appendChild(r2);
+      body.appendChild(fld("Language of the pages", selIn([["en", "English"], ["fr", "Français"]], d.lang, function (v) { d.lang = v; }), "Sets the reader's buttons and labels. Comments keep the language and revision they were written against."));
+      body.appendChild(fld("Welcome text", areaIn(d.intro, "Why this exists and how to correct it.", function (v) { d.intro = v; }, 3)));
+      body.appendChild(fld("Closing text", areaIn(d.closing, "Shown on the last page above Finish review.", function (v) { d.closing = v; }, 2)));
+      body.appendChild(el("div", "lab", "Pages"));
+      body.appendChild(el("p", "note", "Blank line between blocks. “## ” a subheading, “> ” a callout, “1. ” numbered steps, “- ” bullets, “| left | right |” rows for a two-column comparison (first row is the headings), **bold** and *italic*. Aim for 60 to 160 words a page."));
+      var list = el("div", "rvcards");
+      function draw() {
+        list.innerHTML = "";
+        d.cards.forEach(function (c, i) {
+          var box = el("div", "rvcard-edit");
+          var top = el("div", "row between");
+          top.appendChild(el("b", null, "Page " + (i + 1)));
+          var mv = el("div", "row");
+          mv.appendChild(chipBtn("↑", function () { if (i > 0) { d.cards.splice(i - 1, 0, d.cards.splice(i, 1)[0]); draw(); } }));
+          mv.appendChild(chipBtn("↓", function () { if (i < d.cards.length - 1) { d.cards.splice(i + 1, 0, d.cards.splice(i, 1)[0]); draw(); } }));
+          mv.appendChild(chipBtn("Remove", function () { d.cards.splice(i, 1); draw(); }, "danger"));
+          top.appendChild(mv); box.appendChild(top);
+          var rr = el("div", "fld two");
+          var secIn = txtIn(c.section, "Section", function (v) { c.section = v; }); secIn.setAttribute("list", "rvsections"); rr.appendChild(fld("Section", secIn));
+          rr.appendChild(fld("Page title", txtIn(c.title, "", function (v) { c.title = v; })));
+          box.appendChild(rr);
+          var words = c.body.split(/\s+/).filter(Boolean).length;
+          var wc = el("span", "note", words + " words");
+          box.appendChild(fld("Text", areaIn(c.body, "", function (v) { c.body = v; wc.textContent = v.split(/\s+/).filter(Boolean).length + " words"; }, 9)));
+          box.appendChild(wc);
+          list.appendChild(box);
+        });
+      }
+      draw();
+      var dl = el("datalist"); dl.id = "rvsections"; REVIEW_SECTIONS.forEach(function (s) { var o = el("option"); o.value = s; dl.appendChild(o); }); body.appendChild(dl);
+      body.appendChild(list);
+      body.appendChild(chipBtn("+ Page", function () { d.cards.push({ id: uid(), section: d.cards.length ? d.cards[d.cards.length - 1].section : REVIEW_SECTIONS[0], title: "", body: "" }); draw(); }));
+      body.appendChild(drawerActs(function () {
+        d.title = d.title.trim(); d.updated = Date.now();
+        d.cards = d.cards.filter(function (c) { return c.title.trim() || c.body.trim(); });
+        Object.assign(r, d); touchPilot(p); close(); render(); save();
+      }, close));
+    }, { eyebrow: "CLIENT REVIEW", wide: true });
   }
   function renderProblems(body, p) {
     var list = problemsOf(p);

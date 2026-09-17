@@ -1,6 +1,8 @@
 /* Runtime-neutral core: data model, seed, normalisation, and the HTTP API handler.
    Used by the local Express server and by the Cloudflare Worker. No Node or Workers APIs here. */
 
+import { normalizeReview, snapshotOf, revisionOpen, validateSubmission, LIMITS as REVIEW_LIMITS } from "../public/reviews.js";
+
 export const STATES = ["Proposed", "Research", "Planned", "Building", "Live", "Needs work", "Feature flag"];
 /* States that mean the thing exists in the product. Reaching one of them without ever being Planned is drift. */
 export const BUILT_STATES = ["Building", "Live", "Needs work", "Feature flag"];
@@ -217,6 +219,8 @@ export function normalize(state) {
       audience: oneOf(["Internal", "Client", "Both"], x.audience, "Internal"), version: str(x.version), status: oneOf(ART_STATUS, x.status, "Draft"), owner: str(x.owner), session: str(x.session), origin: x.origin === "Received" ? "Received" : "Created", step: str(x.step), evidence: strIds(x.evidence), decision: str(x.decision), problem: str(x.problem),
       loop: oneOf(LOOP, x.loop, "Received"), loopOwner: str(x.loopOwner), loopDue: str(x.loopDue), drive: drv(x.drive), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
     decisions: arr(p.decisions).map(x => ({ id: str(x.id || uid()), title: str(x.title || "Untitled decision"), decision: str(x.decision), reason: str(x.reason), date: str(x.date), links: links(x.links), created: num(x.created, Date.now()), updated: num(x.updated, Date.now()) })),
+    /* client reviews: curated documents the client corrects through a link; feedback and published revisions are kept as they were */
+    reviews: arr(p.reviews).map(normalizeReview),
     /* customer problems: evidence-backed, framed in seven steps; neither a request nor a product decision */
     problems: arr(p.problems).map(x => {
       const frame = {}, prov = {}; FRAME_KEYS.forEach(k => { frame[k] = str(x.frame && x.frame[k]); prov[k] = oneOf(PROV, x.provenance && x.provenance[k], ""); });
@@ -406,6 +410,79 @@ async function mutate(store, fn, who) {
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
 const EFFORT_UNITS = ["days", "weeks", "months"];
+
+/* ---- client reviews: the anonymous side ----
+   A whole-document save from the app carries a copy of each pilot; feedback and revisions written on the server
+   between two saves must survive that copy, so they are unioned back in by id. */
+function keepServerSideReviewData(currentState, next) {
+  (currentState.pilots || []).forEach(cp => {
+    const np = (next.pilots || []).find(x => x.id === cp.id);
+    if (!np) return;
+    (cp.reviews || []).forEach(cr => {
+      const nr = np.reviews.find(x => x.id === cr.id);
+      if (!nr) return;
+      cr.feedback.forEach(f => { if (!nr.feedback.some(x => x.id === f.id)) nr.feedback.push(f); });
+      cr.revisions.forEach(rv => { if (!nr.revisions.some(x => x.id === rv.id)) nr.revisions.push(rv); });
+      nr.revisions.sort((a, b) => a.n - b.n);
+    });
+  });
+}
+function randomToken() {
+  const bytes = new Uint8Array(24);
+  globalThis.crypto.getRandomValues(bytes);
+  let s = ""; bytes.forEach(b => { s += String.fromCharCode(b); });
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function findRevisionByToken(state, token) {
+  if (!token || token.length < 20) return null;
+  for (const p of state.pilots || []) for (const r of p.reviews || []) for (const rev of r.revisions) if (rev.token && rev.token.length === token.length && timingEqual(rev.token, token)) return { p, r, rev };
+  return null;
+}
+function timingEqual(a, b) { let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
+const publicRate = new Map();
+function rateLimited(key) {
+  const now = Date.now();
+  const list = (publicRate.get(key) || []).filter(t => now - t < REVIEW_LIMITS.windowMs);
+  if (list.length >= REVIEW_LIMITS.perWindow) { publicRate.set(key, list); return true; }
+  list.push(now); publicRate.set(key, list);
+  if (publicRate.size > 5000) publicRate.clear();
+  return false;
+}
+/* Requests under /api/public/review/<token>: read one frozen revision, or leave feedback inside its scope. Nothing else. */
+export async function handlePublic(req, store) {
+  const method = String(req.method || "GET").toUpperCase();
+  const seg = String(req.path || "").split("/").filter(Boolean).map(decodeURIComponent);
+  const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" };
+  if (seg[0] !== "public" || seg[1] !== "review" || !seg[2]) return json(404, { error: "unknown endpoint" }, noStore);
+  const token = seg[2];
+  const ip = String(req.ip || "");
+  if (rateLimited("r:" + ip)) return json(429, { error: "Too many requests. Try again in a few minutes." }, noStore);
+  const doc = await store.load();
+  const hit = findRevisionByToken(doc.state, token);
+  if (!hit || !revisionOpen(hit.rev)) return json(404, { error: "This link is not active." }, noStore);
+  if (seg.length === 3 && method === "GET") {
+    return json(200, { ok: true, revisionId: hit.rev.id, snapshot: hit.rev.snapshot, expires: hit.rev.expires || "" }, noStore);
+  }
+  if (seg.length === 4 && (seg[3] === "feedback" || seg[3] === "finish") && method === "POST") {
+    if (rateLimited("w:" + ip)) return json(429, { error: "Too many submissions. Try again in a few minutes." }, noStore);
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    if (seg[3] === "finish") body.kind = "finish";
+    const v = validateSubmission(body, hit.rev, Date.now());
+    if (!v.ok) return json(400, { error: v.error }, noStore);
+    const out = await mutate(store, state => {
+      const again = findRevisionByToken(state, token);
+      if (!again || !revisionOpen(again.rev)) return { error: "This link is not active." };
+      const existing = again.r.feedback.find(f => f.revision === again.rev.id && f.submission === v.feedback.submission);
+      if (existing) return { result: { id: existing.id, duplicate: true } };
+      again.r.feedback.push(v.feedback);
+      again.r.updated = Date.now(); again.p.updated = Date.now();
+      return { result: { id: v.feedback.id } };
+    }, "client review link");
+    if (out.error) return json(404, { error: out.error }, noStore);
+    return json(200, Object.assign({ ok: true }, out.result), noStore);
+  }
+  return json(404, { error: "unknown endpoint" }, noStore);
+}
 const EDITABLE = ["name", "state", "owner", "spaces", "period", "effort", "effortUnit", "agreed", "note", "link", "rnd", "rndStage", "student", "rndQuestion", "rndPlan", "rndFindings", "project", "icps", "parent", "thumb", "image", "sections", "decisionRef"];
 
 /* Handle one API request. `req` = { method, path, query, body } where `path` is relative to /api
@@ -433,6 +510,7 @@ export async function handleApi(req, store) {
       try {
         const current = await store.load();
         const next = normalize(JSON.parse(JSON.stringify(incoming)));
+        keepServerSideReviewData(current.state, next);
         next.log = applyLog(current.state, next, body.who);
         return json(200, await store.save(next, expected));
       } catch (e) {
@@ -559,6 +637,32 @@ export async function handleApi(req, store) {
   }
 
   /* Ideal client profiles (market segments) */
+  /* client reviews: publishing freezes a snapshot behind a fresh link; preview shows the draft to a signed-in user */
+  if (seg[0] === "reviews" && seg[1] === "publish" && method === "POST") {
+    const out = await mutate(store, state => {
+      const p = (state.pilots || []).find(x => x.id === body.pilot);
+      const r = p && p.reviews.find(x => x.id === body.review);
+      if (!r) return { error: "Review not found." };
+      if (!r.cards.length) return { error: "Add at least one page before publishing." };
+      const now = new Date();
+      const rev = { id: uid(), n: r.revisions.length + 1, publishedAt: now.toISOString(), expires: /^\d{4}-\d{2}-\d{2}$/.test(String(body.expires || "")) ? body.expires : "", disabled: false, token: randomToken(), by: String(body.who || currentWho || ""), snapshot: snapshotOf(r, p, r.revisions.length + 1) };
+      r.revisions.forEach(x => { x.disabled = true; });
+      r.revisions.push(rev);
+      r.status = "Published"; r.updated = now.getTime(); p.updated = now.getTime();
+      return { result: { revision: { id: rev.id, n: rev.n, publishedAt: rev.publishedAt, token: rev.token } } };
+    }, body.who);
+    if (out.error) return json(400, { error: out.error });
+    return json(200, Object.assign({ ok: true }, out.result, { version: out.snapshot.version, state: out.snapshot.state }));
+  }
+  if (seg[0] === "reviews" && seg[1] === "preview" && method === "GET") {
+    const doc = await store.load();
+    const p = (doc.state.pilots || []).find(x => x.id === query.pilot);
+    const r = p && p.reviews.find(x => x.id === query.review);
+    if (!r) return json(404, { error: "Review not found." });
+    return json(200, { ok: true, preview: true, snapshot: snapshotOf(r, p, r.revisions.length + 1) });
+  }
+  if (seg[0] === "public") return handlePublic(req, store);
+
   if (seg[0] === "icps") {
     const ICP_FIELDS = ["name", "kind", "avatar", "description", "tam", "sam", "som", "notes", "image"];
     const ICP_LISTS = ["regimes", "facts"];

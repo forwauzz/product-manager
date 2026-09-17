@@ -1,6 +1,6 @@
 /* Cloudflare Worker: serves the static app from the ASSETS binding, runs the shared API
    against D1, and gates everything behind a passcode when APP_PASSCODE is set. */
-import { handleApi } from "../shared/core.js";
+import { handleApi, handlePublic } from "../shared/core.js";
 import { D1Store } from "./store-d1.js";
 import { syncAll as driveSyncAll, status as driveStatus, configured as driveConfigured, oauthReady as driveOauthReady, authUrl as driveAuthUrl, finishConnect as driveFinishConnect, disconnect as driveDisconnect, connectedAccount as driveAccount, pushRecord as drivePush, calendarConnected } from "./drive.js";
 import { syncCalendar, status as calendarStatus, pushSession as calendarPush } from "./calendar.js";
@@ -114,6 +114,22 @@ export default {
     }
     if (path === "/api/logout" && request.method === "POST") {
       return jsonResponse(204, null, { "Set-Cookie": setCookie("", 0) });
+    }
+
+    /* Client review links: no sign-in. The handler can read one published revision and add feedback to it, nothing else. */
+    if (path.startsWith("/api/public/")) {
+      if (!env.DB) return jsonResponse(500, { error: "D1 binding DB is not configured." });
+      let pbody = null;
+      if (request.method === "POST") { const text = await request.text(); if (text.length > 64000) return jsonResponse(413, { error: "Too large." }); try { pbody = text.trim() ? JSON.parse(text) : {}; } catch (_) { return jsonResponse(400, { error: "Body must be JSON." }); } }
+      try {
+        const out = await handlePublic({ method: request.method, path: path.replace(/^\/api/, ""), body: pbody, ip: request.headers.get("CF-Connecting-IP") || "" }, new D1Store(env.DB));
+        return jsonResponse(out.status, out.body, out.headers);
+      } catch (e) { return jsonResponse(500, { error: "Server error" }); }
+    }
+    if (/^\/r\/[A-Za-z0-9_-]{20,}$/.test(path) && request.method === "GET") {
+      const page = await env.ASSETS.fetch(new Request(url.origin + "/review.html", request));
+      const h = new Headers(page.headers); h.set("Cache-Control", "no-store"); h.set("X-Robots-Tag", "noindex, nofollow"); h.set("Referrer-Policy", "no-referrer");
+      return new Response(page.body, { status: page.status, headers: h });
     }
 
     const authed = await isAuthed(request, env);
