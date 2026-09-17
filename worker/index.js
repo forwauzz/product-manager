@@ -252,6 +252,7 @@ async function stampHtml(res, env) {
   const v = buildId(env);
   const html = (await res.text())
     .replace('<link rel="stylesheet" href="/styles.css">', '<link rel="stylesheet" href="/styles.css?v=' + v + '">')
+    .replace('<link rel="stylesheet" href="/simple.css">', '<link rel="stylesheet" href="/simple.css?v=' + v + '">')
     .replace('<script src="/app.js"></script>', '<meta name="build" content="' + v + '"><script src="/app.js?v=' + v + '"></script>');
   const h = new Headers(res.headers);
   h.set("Cache-Control", "no-cache");

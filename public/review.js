@@ -54,13 +54,14 @@ function render() {
   const sections = cur.sections;
   const langs = snapshotLangs(snap);
   const other = langs.find(x => x !== lang);
-  const langBtn = other ? '<button class="rv-lang" data-lang="' + other + '" lang="' + other + '" title="' + (other === "fr" ? "Lire en français" : "Read in English") + '">' + (other === "fr" ? "Français" : "English") + "</button>" : "";
+  const langBtn = other ? '<div class="rv-langs" role="group" aria-label="Language / Langue">' + ["fr", "en"].filter(x => langs.includes(x)).map(x => x === lang ? '<button aria-pressed="true" lang="' + x + '">' + x.toUpperCase() + "</button>" : '<button aria-pressed="false" data-lang="' + x + '" lang="' + x + '" title="' + (x === "fr" ? "Lire en français" : "Read in English") + '">' + x.toUpperCase() + "</button>").join("") + "</div>" : "";
   const seenCount = Object.keys(seen).length;
-  let side = '<div class="rv-brandrow"><a class="rv-brand" href="#" data-go="0"><span class="sq">A</span>ALIE<span class="chev">⌄</span></a>' + langBtn + "</div>";
+  const DOC = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/><path d="M14 3v4h4M9 13h6M9 17h4"/></svg>';
+  let side = '<div class="rv-brandrow"><a class="rv-brand" href="#" data-go="0"><span class="wm">ALIE</span><span class="who">' + esc(cur.title) + "</span></a></div>";
   let n = 0;
   sections.forEach((s, si) => {
     side += '<button class="rv-sec"><span class="ic">' + (si + 1) + '</span><span class="t">' + esc(s.title) + '</span><span class="ch">⌃</span></button>';
-    s.cards.forEach(c => { n++; const m = (mine[c.id] || []).length; side += '<button class="rv-item" data-go="' + n + '" aria-current="' + (idx === n && !done) + '"><span class="box' + (seen[c.id] ? " on" : "") + '"></span><span class="t">' + esc(c.title) + "</span>" + (m ? '<span class="dot">' + m + "</span>" : "") + "</button>"; });
+    s.cards.forEach(c => { n++; const m = (mine[c.id] || []).length; side += '<button class="rv-item" data-go="' + n + '" aria-current="' + (idx === n && !done) + '"><span class="box' + (seen[c.id] ? " on" : "") + '">' + DOC + '</span><span class="t">' + esc(c.title) + "</span>" + (m ? '<span class="dot">' + m + "</span>" : "") + "</button>"; });
   });
   side += '<div class="foot"><span class="clock"></span><span>' + seenCount + " " + esc(T.of) + " " + N + " " + esc(lang === "fr" ? "pages lues" : "pages read") + "</span></div>";
 
@@ -76,7 +77,7 @@ function render() {
     const c = cards[idx - 1];
     const sec = sections.find(s => s.cards.some(x => x.id === c.id));
     const layout = c.layout || "article";
-    const commentBtn = '<button class="rv-cbtn" data-page-comment title="' + esc(T.prompt) + '">✎ ' + esc(T.comment) + "</button>";
+    const commentBtn = '<button class="rv-cbtn" data-page-comment title="' + esc(T.prompt) + '"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span>' + esc(T.comment) + "</span></button>";
     if (layout === "visual" || layout === "visual-right") {
       card = '<div class="rv-card visual' + (layout === "visual-right" ? " right" : "") + '">' + menuBtn + commentBtn + '<img class="rv-visual" src="' + visualSrc(c.visual || (idx % 6) + 1) + '" alt=""><div class="rv-text"><h1>' + esc(c.title) + '</h1><div class="rv-body" data-card="' + esc(c.id) + '">' + c.blocks.map(b => renderBlock(b, true)).join("") + (idx === N && cur.closing ? '<p class="closing">' + inline(cur.closing) + "</p>" : "") + "</div>" + renderMine(c.id) + "</div>" + controls(N) + "</div>";
     } else {
@@ -86,7 +87,7 @@ function render() {
     }
   }
   root.setAttribute("data-panel", panel ? "open" : "closed");
-  root.innerHTML = '<aside class="rv-side" id="side">' + side + "</aside>" + (preview ? '<div class="rv-preview">Preview · comments are off</div>' : "") + card;
+  root.innerHTML = '<aside class="rv-side" id="side">' + side + "</aside>" + langBtn + (preview ? '<div class="rv-preview">Preview · comments are off</div>' : "") + card;
   const cardEl = root.querySelector(".rv-card");
   if (panel && cardEl) { const pn = document.createElement("aside"); pn.className = "rv-panel"; pn.id = "panel"; pn.innerHTML = renderPanel(); cardEl.appendChild(pn); }
   if (cardEl) { const bg = document.createElement("div"); bg.className = "rv-bar-bg"; cardEl.appendChild(bg); }
@@ -94,12 +95,11 @@ function render() {
   if (hooks.afterRender) hooks.afterRender();
 }
 function controls(N) {
-  const isVisual = idx === 0 || ((cards[idx - 1] || {}).layout || "article") !== "article";
-  const back = '<button class="rv-back" data-go="' + (idx - 1) + '"' + (idx <= 0 ? " disabled" : "") + ' aria-label="' + esc(T.back) + '">' + ARROW_L + "</button>";
+  const back = '<button class="rv-back" data-go="' + (idx - 1) + '"' + (idx <= 0 ? " disabled" : "") + ' aria-label="' + esc(T.back) + '">' + ARROW_L + '<span class="lb">' + esc(T.back) + "</span></button>";
   const count = idx ? '<span class="rv-count">' + idx + " " + esc(T.of) + " " + N + "</span>" : "";
   let next;
   if (idx === 0) next = '<button class="rv-next pill hero" data-go="1">' + esc(T.start) + " " + ARROW_R + "</button>";
-  else if (idx < N) next = isVisual ? '<button class="rv-next" data-go="' + (idx + 1) + '" aria-label="' + esc(T.next) + '">' + ARROW_R + "</button>" : '<button class="rv-next pill" data-go="' + (idx + 1) + '">' + esc(T.next) + " " + ARROW_R + "</button>";
+  else if (idx < N) next = '<button class="rv-next pill" data-go="' + (idx + 1) + '">' + esc(T.next) + " " + ARROW_R + "</button>";
   else next = preview ? "" : '<button class="rv-next pill dark" data-finish>' + esc(T.finish) + "</button>";
   return back + count + next;
 }

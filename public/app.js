@@ -553,211 +553,7 @@
 
   /* ---------- routing (hash keeps the view across reloads) ---------- */
 
-  function writeHash() {
-    var h = "#/" + ui.view;
-    if (ui.feature) h = "#/feature/" + ui.feature;
-    else if (ui.view === "icp" && ui.icpOpen) h = "#/icp/" + ui.icpOpen;
-    else if (ui.view === "space" && ui.space) h = "#/space/" + encodeURIComponent(ui.space) + (ui.spaceSel ? "/" + ui.spaceSel : "");
-    if (location.hash !== h) history.replaceState(null, "", h);
-  }
-  function readHash() {
-    var m = (location.hash || "").replace(/^#\/?/, "").split("/");
-    if (!m[0]) return;
-    if (m[0] === "feature" && m[1] && feature(m[1])) { ui.feature = m[1]; S.current = feature(m[1]).project; return; }
-    if (m[0] === "icp" && m[1] && S.icps.some(function (x) { return x.id === m[1]; })) { ui.view = "icp"; ui.icpOpen = m[1]; return; }
-    if (m[0] === "space" && m[1]) { var sp = decodeURIComponent(m[1]); if (S.spaces.indexOf(sp) !== -1) { ui.view = "space"; ui.space = sp; if (m[2] && feature(m[2])) ui.spaceSel = m[2]; } return; }
-    if (["home", "decisions", "roadmap", "features", "parallel", "timeline", "rnd", "icp", "changes", "pilots"].indexOf(m[0]) !== -1) ui.view = m[0];
-  }
-
   /* ---------- nav ---------- */
-
-  function render() { renderNav(); renderView(); writeHash(); }
-
-  function renderNav() {
-    var nav = document.getElementById("nav");
-    nav.innerHTML = "";
-
-    var brand = el("div", "brand");
-    brand.appendChild(el("div", "sq", "A"));
-    brand.appendChild(el("b", null, "ALIE"));
-    var col = el("button", "col", "«");
-    col.setAttribute("aria-label", "Collapse navigation");
-    col.onclick = function () { document.getElementById("app").dataset.nav = "closed"; document.getElementById("scrim").style.display = "none"; };
-    brand.appendChild(col);
-    nav.appendChild(brand);
-
-    var p = project();
-    var wsWrap = el("div", "ws-wrap");
-    var ws = el("button", "ws");
-    ws.setAttribute("aria-haspopup", "true");
-    ws.appendChild(el("span", "dot"));
-    var txt = el("div", "txt");
-    txt.appendChild(el("b", null, p.name));
-    txt.appendChild(el("span", null, p.kind || "Project"));
-    ws.appendChild(txt);
-    ws.appendChild(el("span", "car", "⌄"));
-    ws.title = "Switch project";
-    var wm = el("div", "wsmenu");
-    wm.style.display = "none";
-    S.projects.forEach(function (pr) {
-      var b = el("button");
-      b.setAttribute("aria-current", String(pr.id === S.current));
-      b.appendChild(el("span", null, pr.name));
-      b.appendChild(el("span", "k", String(S.features.filter(function (f) { return f.project === pr.id; }).length)));
-      b.onclick = function (e) {
-        e.stopPropagation(); wm.style.display = "none";
-        if (pr.id === S.current) return;
-        S.current = pr.id; ui.feature = null; ui.space = null; ui.spaceFilter = null;
-        if (ui.view === "space") ui.view = "roadmap";
-        render(); save();
-      };
-      wm.appendChild(b);
-    });
-    wm.appendChild(el("div", "sep"));
-    var np = el("button", null, "+  New project");
-    np.onclick = function (e) {
-      e.stopPropagation(); wm.style.display = "none";
-      askProject("New project").then(function (v) {
-        if (!v) return;
-        var pr = { id: uid(), name: v.name, kind: v.kind };
-        S.projects.push(pr); S.current = pr.id; ui.feature = null; ui.space = null; ui.view = "roadmap";
-        render(); save(); toast("Project " + pr.name + " created.");
-      });
-    };
-    wm.appendChild(np);
-    var rp = el("button", null, "Rename " + p.name);
-    rp.onclick = function (e) {
-      e.stopPropagation(); wm.style.display = "none";
-      askProject("Edit project", p).then(function (v) {
-        if (!v) return;
-        p.name = v.name; p.kind = v.kind; render(); save();
-      });
-    };
-    wm.appendChild(rp);
-    if (S.projects.length > 1) {
-      var dp = el("button", "warn", "Delete " + p.name);
-      dp.onclick = function (e) {
-        e.stopPropagation(); wm.style.display = "none";
-        var n = feats().length;
-        askConfirm("Delete " + p.name + "?", n ? "Its " + n + " feature" + (n === 1 ? "" : "s") + " will be deleted too. This cannot be undone." : "This cannot be undone.", { danger: true, ok: "Delete project" })
-          .then(function (yes) {
-            if (!yes) return;
-            S.features.forEach(function (f) { if (f.project === p.id) tombstones[f.id] = true; });
-            tombstones[p.id] = true;
-            S.features = S.features.filter(function (f) { return f.project !== p.id; });
-            S.projects = S.projects.filter(function (x) { return x.id !== p.id; });
-            S.current = S.projects[0].id; ui.feature = null; ui.space = null; ui.view = "roadmap";
-            render(); save(); toast("Project deleted.");
-          });
-      };
-      wm.appendChild(dp);
-    }
-    ws.onclick = function (e) {
-      e.stopPropagation();
-      var open = wm.style.display !== "none";
-      closeMenus();
-      wm.style.display = open ? "none" : "block";
-    };
-    wsWrap.style.position = "relative";
-    wsWrap.appendChild(ws); wsWrap.appendChild(wm);
-    nav.appendChild(wsWrap);
-
-    var scroll = el("div", "navscroll");
-
-    function navItem(it) {
-      var b = el("button", "navitem" + (it[0] === "rnd" ? " rnd" : ""));
-      b.setAttribute("aria-current", String(ui.view === it[0] && !ui.feature));
-      b.dataset.view = it[0];
-      b.appendChild(el("span", "ic", it[2]));
-      b.appendChild(el("span", "nm", it[1]));
-      if (it[3] !== null && it[3] !== undefined) b.appendChild(el("span", "ct", String(it[3])));
-      b.onclick = function () { ui.view = it[0]; ui.feature = null; ui.space = null; ui.icpOpen = null; ui.pilot = null; if (it[0] === "features") ui.fmode = "cards"; closeNavIfNarrow(); render(); };
-      if (it[0] === "rnd") {
-        b.title = "Drop a feature here to push it to R&D";
-        b.addEventListener("dragover", function (e) { e.preventDefault(); b.classList.add("dragover"); });
-        b.addEventListener("dragleave", function () { b.classList.remove("dragover"); });
-        b.addEventListener("drop", function (e) {
-          e.preventDefault(); b.classList.remove("dragover");
-          var f = feature(e.dataTransfer.getData("text/plain"));
-          if (!f || f.rnd) return;
-          setRnd(f, true); render(); save(); toast(f.name + " pushed to R&D.");
-        });
-      }
-      return b;
-    }
-    var needDec = decisions().filter(function (d) { return d.state === "Proposed" || decisionBlocked(d); }).length + undecidedRequestsAll().length;
-    scroll.appendChild(el("div", "navlabel", "MAIN"));
-    [["home", "Home", ICONS.home, null],
-     ["pilots", "Pilots", ICONS.pilots, (S.pilots || []).length || null],
-     ["decisions", "Decisions", ICONS.decisions, needDec || null],
-     ["features", "Features", ICONS.features, feats().length]].forEach(function (it) { scroll.appendChild(navItem(it)); });
-
-    var lab = el("div", "navlabel", "SPACES");
-    var add = el("button", null, "+");
-    add.title = "New space";
-    add.setAttribute("aria-label", "New space");
-    add.onclick = function (e) { e.stopPropagation(); newSpace(); };
-    lab.appendChild(add);
-    scroll.appendChild(lab);
-
-    S.spaces.forEach(function (sp) {
-      var b = el("button", "navitem");
-      b.setAttribute("aria-current", String(ui.view === "space" && ui.space === sp && !ui.feature));
-      b.appendChild(el("span", "ic", ICONS.space));
-      b.appendChild(el("span", "nm", sp));
-      b.appendChild(el("span", "ct", String(inSpace(sp).length)));
-      b.onclick = function () { ui.view = "space"; ui.space = sp; ui.feature = null; closeNavIfNarrow(); render(); };
-      b.addEventListener("dragover", function (e) { e.preventDefault(); b.classList.add("dragover"); });
-      b.addEventListener("dragleave", function () { b.classList.remove("dragover"); });
-      b.addEventListener("drop", function (e) {
-        e.preventDefault(); b.classList.remove("dragover");
-        var f = feature(e.dataTransfer.getData("text/plain"));
-        if (!f) return;
-        f.spaces = f.spaces || [];
-        if (f.spaces.indexOf(sp) === -1) f.spaces.push(sp);
-        touch(f); render(); save();
-      });
-      scroll.appendChild(b);
-    });
-    if (!S.spaces.length) {
-      var hint = el("div", "note", "No spaces yet. Press + to add one.");
-      hint.style.cssText = "padding:6px 22px;color:rgba(240,237,229,.5);font-size:12px;";
-      scroll.appendChild(hint);
-    }
-
-    scroll.appendChild(el("div", "navlabel", "PLANNING"));
-    [["roadmap", "Product Roadmap", ICONS.roadmap, null],
-     ["rnd", "Research & Development", ICONS.rnd, rndFeats().length],
-     ["icp", "Market / ICP", ICONS.icp, S.icps.length],
-     ["changes", "What changed", ICONS.changes, (S.log || []).filter(function (e) { return e.t > Date.now() - 7 * 86400000; }).length || null]].filter(function (it) { return !HIDDEN_NAV[it[0]]; }).forEach(function (it) { scroll.appendChild(navItem(it)); });
-    nav.appendChild(scroll);
-
-    var foot = el("div", "navfoot");
-    foot.appendChild(el("div", "av", "UT"));
-    var who = el("div");
-    who.appendChild(el("b", null, "Uzziel Tamon"));
-    who.appendChild(el("span", null, "Chief Product Officer · Product Manager"));
-    foot.appendChild(who);
-    var gear = menu("⚙", [
-      ["Team members", function () { managePeople("people"); }],
-      ["Students", function () { managePeople("students"); }],
-      "-",
-      ["Export data (JSON)", function () { window.open("/api/export", "_blank"); }],
-      ["Import data (JSON)", importData],
-      "-",
-      ["Reset to sample data", function () {
-        askConfirm("Reset everything?", "All projects, features and research will be replaced by the sample data.", { danger: true, ok: "Reset" })
-          .then(function (yes) { if (yes) resetSample(); });
-      }, true],
-      SESSION.required ? "-" : null,
-      SESSION.required ? ["Sign out", function () {
-        fetch("/api/logout", { method: "POST" }).then(function () { location.href = "/login.html"; });
-      }] : null
-    ], "gear");
-    gear.querySelector("button").setAttribute("aria-label", "Settings");
-    foot.appendChild(gear);
-    nav.appendChild(foot);
-  }
 
   function resetSample() {
     fetch("/api/reset", { method: "POST" }).then(function (r) {
@@ -953,26 +749,44 @@
     var host = document.getElementById("scroll");
     host.innerHTML = "";
     host.scrollTop = 0;
+    host.className = "scroll";
     if (!S.projects.length) { host.appendChild(el("div", "empty", "No projects.")); return; }
     if (ui.query.trim()) return renderSearch(host);
-    if (ui.feature) { var f = feature(ui.feature); if (f) return renderFeature(host, f); ui.feature = null; }
+    if (ui.feature) {
+      var f = feature(ui.feature);
+      if (f) {
+        var lib = navGroup() === "library";
+        zLegacyBar(host, [[lib ? "Library" : "Work", function () { go(lib ? "library" : "work"); }], f.name]);
+        return renderFeature(host, f);
+      }
+      ui.feature = null;
+    }
     if (ui.view === "home") return renderHome(host);
-    if (ui.view === "decisions") return renderDecisionsView(host);
-    if (ui.view === "roadmap") return renderRoadmap(host);
-    if (ui.view === "changes") return renderChanges(host);
     if (ui.view === "pilots") return renderPilots(host);
-    if (ui.view === "features") return renderFeatures(host);
-    if (ui.view === "parallel") return renderParallel(host);
-    if (ui.view === "timeline") return renderTimeline(host);
-    if (ui.view === "rnd") return renderRnd(host);
+    if (ui.view === "work") return renderWork(host);
+    if (ui.view === "library") return renderLibrary(host);
+    if (ui.view === "settings") return renderSettings(host);
+    function work(name) { zLegacyBar(host, [["Work", function () { go("work"); }], name]); }
+    function library(name) { zLegacyBar(host, [["Library", function () { go("library"); }], name]); }
+    if (ui.view === "decisions") { work("Decisions"); return renderDecisionsView(host); }
+    if (ui.view === "roadmap") { work("Timeline"); return renderRoadmap(host); }
+    if (ui.view === "changes") { work("Activity history"); return renderChanges(host); }
+    if (ui.view === "parallel") { work("Parallel work"); return renderParallel(host); }
+    if (ui.view === "timeline") { work("Timeline"); return renderTimeline(host); }
+    if (ui.view === "rnd") { work("Research and student work"); return renderRnd(host); }
+    if (ui.view === "features") { library("Catalogue tools"); return renderFeatures(host); }
     if (ui.view === "icp") {
-      if (ui.icpOpen) { var ic = icpById(ui.icpOpen); if (ic) return renderIcpPage(host, ic); ui.icpOpen = null; }
+      if (ui.icpOpen) { var ic = icpById(ui.icpOpen); if (ic) { zLegacyBar(host, [["Library", function () { go("library"); }], ["Market", function () { go("icp"); }], ic.name]); return renderIcpPage(host, ic); } ui.icpOpen = null; }
+      var lh = el("div", "zpage zlibhead");
+      var head = el("div", "zpagehead"); var hl = el("div"); hl.appendChild(el("h1", "zh1", "Product library")); hl.appendChild(el("p", "zlead", "What ALIE offers and what we know about our market.")); head.appendChild(hl); lh.appendChild(head);
+      lh.appendChild(zLibTabs("icp"));
+      host.appendChild(lh);
       return renderIcp(host);
     }
     if (ui.view === "space") {
-      if (S.spaces.indexOf(ui.space) !== -1) return renderSpace(host, ui.space);
-      ui.view = "features";
-      return renderFeatures(host);
+      if (S.spaces.indexOf(ui.space) !== -1) { library(ui.space); return renderSpace(host, ui.space); }
+      ui.view = "library";
+      return renderLibrary(host);
     }
     renderHome(host);
   }
@@ -2289,56 +2103,6 @@
     });
   }
 
-  function renderPilots(host) {
-    if (ui.pilot) { var cur = pilotById(ui.pilot); if (cur) return renderPilotPage(host, cur); ui.pilot = null; }
-    host.appendChild(header("PILOTS", project().name + " · who we are piloting with", [newBtn("NEW PILOT", newPilot)]));
-    var pad = el("div", "pad");
-    var dir = el("div", "dir");
-    dir.appendChild(driveStatusLine());
-    var list = pilots().slice().sort(function (a, b) { return PILOT_STATUS.indexOf(a.status) - PILOT_STATUS.indexOf(b.status) || a.name.localeCompare(b.name); });
-    if (!list.length) {
-      dir.appendChild(el("div", "empty", "No pilots yet. Add the firm or clinic you are piloting with, then list what they asked for."));
-    }
-    var tiles = el("div", "cattiles");
-    list.forEach(function (p) {
-      var t = el("button", "cattile pilot");
-      var icp = p.icp ? icpById(p.icp) : null;
-      t.appendChild(avatarEl(icp ? icp.avatar : "law-firm", "lg"));
-      var tx = el("div", "tx");
-      var nm = el("b"); nm.appendChild(document.createTextNode(p.name + " ")); nm.appendChild(pilotStatusPill(p));
-      tx.appendChild(nm);
-      var w = pilotFeats(p, "wants").length, l = pilotLive(p).length;
-      var dl = p.deliverables || [];
-      var next = dl.filter(function (d) { var pr = delivProgress(d); return d.tag !== "Blocked" && !(pr && pr.live === pr.total); })[0];
-      var blocked = dl.filter(function (d) { return d.tag === "Blocked"; }).length;
-      var rqU = (p.requests || []).filter(function (r) { return r.decision === "Undecided"; }).length;
-      ensurePilot(p);
-      var ls = lastSession(p), oa = openActions(p), oq = openQuestions(p), un = unsortedCount(p);
-      var since = daysSince(ls && ls.date ? new Date(ls.date + "T12:00:00").getTime() : p.updated);
-      var first = p.objective ? plain(p.objective).slice(0, 110) : next ? "Next: " + next.title : dl.length ? "Every deliverable is shipped" : "No deliverables outlined yet";
-      tx.appendChild(el("span", null, first));
-      var l2 = [];
-      if (p.nextTouch && p.nextTouch.date) l2.push("next touch " + stamp(p.nextTouch.date));
-      if (oa.length) l2.push(oa.length + (oa.length === 1 ? " open action" : " open actions"));
-      if (oq.length) l2.push(oq.length + (oq.length === 1 ? " open question" : " open questions"));
-      if (rqU) l2.push(rqU + (rqU === 1 ? " request to decide" : " requests to decide"));
-      if (blocked) l2.push(blocked + " blocked");
-      if (un) l2.push(un + " unsorted");
-      if (!l2.length) l2.push(w ? l + " of " + w + " asks live" : "Nothing asked for yet");
-      tx.appendChild(el("span", "sub", l2.join(" · ")));
-      t.appendChild(tx);
-      var nn = el("div", "n" + (since >= 14 ? " stale" : ""));
-      nn.appendChild(el("b", null, since === 0 ? "Today" : since + "d"));
-      nn.appendChild(el("span", null, since === 0 ? "last touched" : "since last touch"));
-      t.appendChild(nn);
-      t.onclick = function () { ui.pilot = p.id; ui.pilotTab = "overview"; renderView(); };
-      tiles.appendChild(t);
-    });
-    dir.appendChild(tiles);
-    pad.appendChild(dir);
-    host.appendChild(pad);
-  }
-
   /* collapsible cards and panels: remembered per item on this device; everything starts open */
   var folds = {};
   var FOLD_KEY = "alie.fold.v2";
@@ -2589,88 +2353,6 @@
   function richBlock(html, p, cls) { var v = richView(html, cls || "readtext"); linkSources(v, p); return v; }
 
   /* ---------- page ---------- */
-  var PILOT_LEVELS = [["overview", "Overview"], ["discovery", "Discovery"], ["delivery", "Delivery"]];
-  var PILOT_SUBS = { discovery: [["sessions", "Sessions"], ["workflow", "Workflow"], ["problems", "Problems"], ["reviews", "Client reviews"], ["inbox", "Inbox"]],
-                     delivery: [["requests", "Requests"], ["deliverables", "Deliverables"], ["fit", "Feature fit"], ["decisions", "Decisions"], ["artifacts", "Artifacts"], ["validation", "Validation"], ["recaps", "Recaps"]] };
-  function renderPilotPage(host, p) {
-    ensurePilot(p);
-    /* older links */
-    if (ui.pilotTab === "requests" || ui.pilotTab === "deliverables") { ui.pilotSub = ui.pilotTab; ui.pilotTab = "delivery"; }
-    if (ui.pilotTab === "stack") { ui.pilotTab = "overview"; setTimeout(function () { contextPane(p); }, 0); }
-    if (["overview", "discovery", "delivery"].indexOf(ui.pilotTab) === -1) ui.pilotTab = "overview";
-    if (ui.pilotTab !== "overview" && !PILOT_SUBS[ui.pilotTab].some(function (s) { return s[0] === ui.pilotSub; })) ui.pilotSub = PILOT_SUBS[ui.pilotTab][0][0];
-
-    var col = el("div", "pilotcol");
-    /* compact head */
-    var head = el("div", "phead");
-    var crumbs = el("div", "pcrumb");
-    var back = el("button", null, "Pilots"); back.onclick = function () { ui.pilot = null; renderView(); };
-    crumbs.appendChild(back);
-    crumbs.appendChild(el("span", null, "›"));
-    crumbs.appendChild(el("span", null, p.name));
-    head.appendChild(crumbs);
-    var row = el("div", "prow2");
-    var h1 = el("h1", null, p.name);
-    row.appendChild(h1);
-    var acts = el("div", "pacts");
-    var ctx = el("button", "btn ghost small", "Context");
-    ctx.title = "Software, partners and people around the firm";
-    ctx.onclick = function () { contextPane(p); };
-    acts.appendChild(ctx);
-    if (p.driveDoc) { var dd = el("a", "btn ghost small", "Drive copy ↗"); dd.href = "https://docs.google.com/document/d/" + p.driveDoc + "/edit"; dd.target = "_blank"; dd.rel = "noopener"; acts.appendChild(dd); }
-    acts.appendChild(menu("More", [
-      ["Edit overview", function () { editOverview(p); }],
-      ["Software, partners and people", function () { contextPane(p); }],
-      ["Push pilot record to Drive now", function () { fetch("/api/drive/sync", { method: "POST" }).then(function (r) { return r.json(); }).then(function (j) { toast(j.ok ? "Drive copy updated." : "Drive: " + (j.error || "failed"), !j.ok); }).catch(function () { toast("Could not reach the server.", true); }); }],
-      ["Rename", function () { askText("Rename pilot", { value: p.name, ok: "Rename" }).then(function (n) { if (n) { p.name = n; touchPilot(p); render(); save(); } }); }],
-      ["Expand all rows", function () { Array.prototype.forEach.call(document.querySelectorAll(".xrow"), function (r) { if (!r.classList.contains("open")) r.querySelector(".fchev").click(); }); }],
-      ["Collapse all rows", function () { Array.prototype.forEach.call(document.querySelectorAll(".xrow.open"), function (r) { r.querySelector(".fchev").click(); }); }],
-      "-",
-      ["Delete pilot", function () { deletePilot(p); }, true]
-    ]));
-    row.appendChild(acts);
-    head.appendChild(row);
-    var sub = el("div", "psub");
-    sub.appendChild(pilotStatusPill(p));
-    if (p.since) sub.appendChild(el("span", "note", "since " + mLong(p.since)));
-    if (!p.objective) { var so = el("button", "chip", "Set the discovery objective"); so.onclick = function () { editOverview(p); }; sub.appendChild(so); }
-    head.appendChild(sub);
-    col.appendChild(head);
-
-    /* levels */
-    var tabs = el("div", "ptabs");
-    PILOT_LEVELS.forEach(function (m) {
-      var b = el("button", null, m[1]);
-      b.setAttribute("aria-pressed", String(ui.pilotTab === m[0]));
-      if (m[0] === "discovery" && unsortedCount(p)) b.appendChild(el("i", "dotn", String(unsortedCount(p))));
-      b.onclick = function () { ui.pilotTab = m[0]; renderView(); };
-      tabs.appendChild(b);
-    });
-    col.appendChild(tabs);
-    if (PILOT_SUBS[ui.pilotTab] && narrow()) {
-      var psel = selIn(PILOT_SUBS[ui.pilotTab].map(function (s2) { var n = subCount(p, s2[0]); return [s2[0], s2[1] + (n ? " · " + n : "")]; }), ui.pilotSub, function (v) { ui.pilotSub = v; ui.inboxQ = ""; renderView(); });
-      psel.className = "psubsel"; psel.setAttribute("aria-label", "Section");
-      col.appendChild(psel);
-    } else if (PILOT_SUBS[ui.pilotTab]) {
-      var subs = el("div", "psubs");
-      PILOT_SUBS[ui.pilotTab].forEach(function (s) {
-        var b = el("button", null, s[1]);
-        var n = subCount(p, s[0]);
-        if (n) b.appendChild(el("em", null, String(n)));
-        b.setAttribute("aria-pressed", String(ui.pilotSub === s[0]));
-        b.onclick = function () { ui.pilotSub = s[0]; ui.inboxQ = ""; renderView(); };
-        subs.appendChild(b);
-      });
-      col.appendChild(subs);
-    }
-    var body = el("div", "pbody");
-    if (ui.pilotTab === "overview") renderOverview(body, p);
-    else if (ui.pilotTab === "discovery") ({ sessions: renderSessions, workflow: renderWorkflow, problems: renderProblems, reviews: renderReviews, inbox: renderInbox })[ui.pilotSub](body, p);
-    else ({ requests: renderRequestsLevel, deliverables: renderDeliverablesLevel, fit: renderFit, decisions: renderDecisions, artifacts: renderArtifacts, validation: renderValidation, recaps: renderRecaps })[ui.pilotSub](body, p);
-    col.appendChild(body);
-    host.appendChild(col);
-    host.appendChild(captureBar(p));
-  }
   function subCount(p, key) {
     switch (key) {
       case "sessions": return p.sessions.length;
@@ -3540,58 +3222,6 @@
     c.onclick = onOpen;
     return c;
   }
-  function renderHome(host) {
-    var col = el("div", "pilotcol home");
-    var head = el("div", "phead");
-    head.appendChild(el("div", "pcrumb", new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })));
-    var row = el("div", "prow2"); row.appendChild(el("h1", null, "What needs my attention"));
-    var acts = el("div", "pacts");
-    acts.appendChild(menu("More", [
-      ["Plan a session", function () { var p = pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "discovery"; ui.pilotSub = "sessions"; render(); editSession(p, null); }],
-      ["New decision", function () { editDecision(null); }],
-      ["Product roadmap", function () { ui.view = "roadmap"; render(); }],
-      ["What changed", function () { ui.view = "changes"; render(); }]
-    ]));
-    row.appendChild(acts); head.appendChild(row);
-    col.appendChild(head);
-    var grid = el("div", "homegrid");
-    var nm = nextMeeting();
-    if (nm) grid.appendChild(homeCard("Next pilot meeting", stamp(nm.s.date) + (nm.s.time ? " · " + nm.s.time : ""), [nm.p.name + " · " + (nm.s.title || nm.s.purpose), nm.p.questions.filter(function (q) { return q.session === nm.s.id && q.state !== "Confirmed by client" && q.state !== "Superseded"; }).length + " questions to ask", nm.s.agenda ? "agenda ready" : "no agenda yet"], function () { ui.view = "pilots"; ui.pilot = nm.p.id; ui.pilotTab = "discovery"; ui.pilotSub = "sessions"; foldSet("s:" + nm.s.id, true); render(); }, "gold"));
-    else grid.appendChild(homeCard("Next pilot meeting", "None planned", ["Plan the next session so its questions are ready."], function () { var p = pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "discovery"; ui.pilotSub = "sessions"; render(); editSession(p, null); }));
-    var proposed = decisions().filter(function (d) { return d.state === "Proposed"; }), blocked = decisions().filter(decisionBlocked), rq = undecidedRequestsAll(), pf = askedProposedFeatures();
-    var nd = proposed.length + rq.length + pf.length;
-    grid.appendChild(homeCard("Needs my decision", String(nd), [proposed.length + " proposed decisions", rq.length + " requests undecided", pf.length + " asked-for features without a decision"], function () { ui.view = "decisions"; render(); }, nd ? "warn" : ""));
-    grid.appendChild(homeCard("Alignment needed", String(blocked.length), blocked.slice(0, 3).map(function (d) { return d.title; }).concat(blocked.length ? [] : ["No decision is waiting on the cofounders."]), function () { ui.view = "decisions"; render(); }, blocked.length ? "warn" : ""));
-    var oq = 0, cand = 0, uns = 0, waitFirm = [], waitUs = [], perPilot = [];
-    pilots().forEach(function (p) { ensurePilot(p); var q = p.questions.filter(function (x) { return x.state !== "Confirmed by client" && x.state !== "Superseded"; }); oq += q.length; cand += q.filter(function (x) { return x.state === "Candidate answer from transcript"; }).length; var u = unsortedCount(p); uns += u; perPilot.push(p.name + ": " + q.length + " open" + (u ? ", " + u + " unsorted" : "")); openActions(p).forEach(function (a) { (a.side === "Client" ? waitFirm : waitUs).push({ p: p, a: a }); }); });
-    grid.appendChild(homeCard("Open questions", String(oq), (cand ? [cand + " candidate answers to review"] : []).concat(perPilot), function () { var p = pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "discovery"; ui.pilotSub = "sessions"; render(); }));
-    grid.appendChild(homeCard("Unsorted evidence", String(uns), uns ? ["Sort it into quotes, observations, requests or inferences."] : ["Inbox is clear."], function () { var p = pilots().filter(function (x) { return unsortedCount(x); })[0] || pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "discovery"; ui.pilotSub = "inbox"; ui.inboxKind = "Unsorted"; render(); }, uns ? "info" : ""));
-    var over = waitFirm.concat(waitUs).filter(function (x) { return x.a.due && x.a.due < today(); }).length;
-    grid.appendChild(homeCard("Waiting on the firm", String(waitFirm.length), waitFirm.slice(0, 3).map(function (x) { return x.a.title + (x.a.due ? " · due " + stamp(x.a.due) : ""); }), function () { var p = waitFirm[0] ? waitFirm[0].p : pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "overview"; render(); }));
-    grid.appendChild(homeCard("Waiting on us", String(waitUs.length) + (over ? " · " + over + " overdue" : ""), waitUs.slice(0, 3).map(function (x) { return x.a.title + (x.a.owner ? " · " + x.a.owner : "") + (x.a.due ? " · due " + stamp(x.a.due) : ""); }), function () { var p = waitUs[0] ? waitUs[0].p : pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "overview"; render(); }, over ? "warn" : ""));
-    var npf = problemsNeedingFraming();
-    grid.appendChild(homeCard("Problems needing framing", String(npf), npf ? ["Customer problems still Draft or with framing gaps."] : ["Every customer problem is framed."], function () { var p = pilots().filter(function (x) { return problemsOf(x).some(function (pr) { return pr.status !== "Superseded" && problemNeedsFraming(pr); }); })[0] || pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "discovery"; ui.pilotSub = "problems"; render(); }, npf ? "info" : ""));
-    var since = Date.now() - 7 * 86400000;
-    var logN = (S.log || []).filter(function (e) { return e.t > since; }).length;
-    var changed = [];
-    pilots().forEach(function (p) { var ns = p.sessions.filter(function (s) { return s.created > since; }).length, ne = p.evidence.filter(function (e) { return e.created > since; }).length, nq = p.questions.filter(function (q) { return q.updated > since && q.state === "Confirmed by client"; }).length; if (ns || ne || nq) changed.push(p.name + ": " + [ns ? ns + " sessions" : "", ne ? ne + " evidence" : "", nq ? nq + " questions answered" : ""].filter(Boolean).join(", ")); });
-    var nd7 = decisions().filter(function (d) { return d.updated > since; }).length;
-    grid.appendChild(homeCard("Changed since last week", String(logN + nd7), [logN + " feature changes", nd7 + " decisions touched"].concat(changed), function () { ui.view = "changes"; render(); }));
-    col.appendChild(grid);
-    /* what the week looks like: planned sessions */
-    var planned = [];
-    pilots().forEach(function (p) { p.sessions.forEach(function (s) { if (s.stage === "Planned" && s.date >= today()) planned.push({ p: p, s: s }); }); });
-    planned.sort(function (a, b) { return a.s.date < b.s.date ? -1 : 1; });
-    var s1 = secHead("Coming up", planned.length || null, null, [chipBtn("+ Plan a session", function () { var p = pilots()[0]; if (!p) return; ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "discovery"; ui.pilotSub = "sessions"; render(); editSession(p, null); })]);
-    if (!planned.length) s1.appendChild(emptyNote("No planned sessions."));
-    planned.forEach(function (x) { var b = el("button", "linkrow"); b.appendChild(el("b", null, stamp(x.s.date) + (x.s.time ? " " + x.s.time : "") + " · " + (x.s.title || x.s.purpose))); b.appendChild(el("span", null, x.p.name + (x.s.participants ? " · " + x.s.participants : ""))); b.onclick = function () { ui.view = "pilots"; ui.pilot = x.p.id; ui.pilotTab = "discovery"; ui.pilotSub = "sessions"; foldSet("s:" + x.s.id, true); render(); }; s1.appendChild(b); });
-    col.appendChild(s1);
-    host.appendChild(col);
-    var cp = ui.homePilot ? pilotById(ui.homePilot) : null;
-    if (!cp) cp = pilots().slice().sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); })[0];
-    if (cp) { ui.homePilot = cp.id; host.appendChild(captureBar(cp, true)); }
-  }
-
   /* ---------- Now / Next / Later / Watching ---------- */
   function renderPlanBoard(host) {
     var list = feats().filter(passes);
@@ -3924,11 +3554,12 @@
 
   /* ---------- artifacts and prototypes ---------- */
   var ART_STATUS = ["Draft", "Shared", "Reviewed", "Final", "Retired"];
-  function editArtifact(p, a) {
+  function editArtifact(p, a, preset) {
     var isNew = !a;
-    var d = a ? JSON.parse(JSON.stringify(a)) : { id: uid(), title: "", link: "", kind: "Prototype", note: "", feature: "", request: "", audience: "Internal", version: "", status: "Draft", owner: ME, session: ui.pilotSession || "", origin: "Created", step: "", evidence: [], decision: "", loop: "Received", loopOwner: "", loopDue: "", drive: { fileId: "", status: "Not in Drive", syncedAt: "", error: "" }, created: Date.now(), updated: Date.now() };
+    var d = a ? JSON.parse(JSON.stringify(a)) : Object.assign({ id: uid(), title: "", link: "", kind: "Prototype", note: "", feature: "", request: "", audience: "Internal", version: "", status: "Draft", owner: ME, session: ui.pilotSession || "", origin: "Created", step: "", evidence: [], decision: "", loop: "Received", loopOwner: "", loopDue: "", drive: { fileId: "", status: "Not in Drive", syncedAt: "", error: "" }, created: Date.now(), updated: Date.now() }, preset || {});
     d.evidence = d.evidence || [];
-    sideDrawer(isNew ? "New artifact" : d.title, function (body, close) {
+    if (isNew && d.link && !(d.drive && d.drive.fileId)) d.drive = { fileId: "", status: "Linked", syncedAt: "", error: "" };
+    sideDrawer(isNew ? "New file or link" : d.title, function (body, close) {
       body.appendChild(fld("Title", txtIn(d.title, "Portal prototype", function (v) { d.title = v; })));
       var r0 = el("div", "fld two");
       r0.appendChild(fld("Origin", selIn([["Created", "Created by us"], ["Received", "Received from the firm"]], d.origin, function (v) { d.origin = v; })));
@@ -4080,7 +3711,7 @@
       inp.value = ""; try { localStorage.removeItem(capKey(p)); } catch (err) {}
       grow();
       toast("Captured to " + p.name + "'s Inbox as Unsorted.");
-      if (ui.view === "pilots" && ui.pilotTab === "discovery" && ui.pilotSub === "inbox") renderView();
+      if (ui.view === "pilots" && ui.pilotSub === "inbox") renderView();
       else { var c = document.querySelector(".capcount"); if (c) c.textContent = unsortedCount(p) ? unsortedCount(p) + " unsorted" : ""; }
       inp.focus();
     }
@@ -4092,7 +3723,7 @@
     bar.appendChild(form);
     var foot = el("div", "capfoot");
     var cnt = el("button", "capcount", unsortedCount(p) ? unsortedCount(p) + " unsorted" : "");
-    cnt.onclick = function () { ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "discovery"; ui.pilotSub = "inbox"; ui.inboxKind = "Unsorted"; ui.inboxQ = ""; render(); };
+    cnt.onclick = function () { closeSideDrawer(); ui.view = "pilots"; ui.pilot = p.id; ui.pilotTab = "discovery"; ui.pilotSub = "inbox"; ui.inboxKind = "Unsorted"; ui.inboxQ = ""; render(); };
     foot.appendChild(cnt);
     foot.appendChild(el("span", "note", ui.pilotSession && sessionById(p, ui.pilotSession) ? "Linked to " + sessionLabel(p, ui.pilotSession) : "Saved as Unsorted with today's date, kept on this device until the server confirms."));
     bar.appendChild(foot);
@@ -7320,9 +6951,17 @@
     var hits = S.features.filter(function (f) {
       return (f.name + " " + plain(f.note) + " " + f.owner + " " + f.state + " " + f.student + " " + plain(f.rndQuestion) + " " + (f.spaces || []).join(" ") + " " + icpsOf(f).map(function (i) { return i.name; }).join(" ") + (f.rnd ? " r&d research" : "")).toLowerCase().indexOf(q) !== -1;
     });
-    host.appendChild(header("SEARCH", hits.length + (hits.length === 1 ? " result" : " results") + " for “" + ui.query.trim() + "”", []));
+    var ph = zPilotHits(q);
+    host.appendChild(header("SEARCH", (hits.length + ph.length) + (hits.length + ph.length === 1 ? " result" : " results") + " for “" + ui.query.trim() + "”", []));
     var pad = el("div", "pad");
-    if (!hits.length) pad.appendChild(el("div", "empty", "No match."));
+    if (!hits.length && !ph.length) pad.appendChild(el("div", "empty", "No match."));
+    if (ph.length) {
+      pad.appendChild(sectionTitle("In pilots · " + ph.length, 4));
+      var pbox = el("div", "zcard zsearchhits");
+      ph.slice(0, 40).forEach(function (x) { var b = el("button", "zrowlink"); b.type = "button"; b.appendChild(zIcon(x.icon, 22)); var t = el("span", "t"); t.appendChild(el("b", null, x.title)); t.appendChild(el("span", null, x.sub)); b.appendChild(t); b.appendChild(zIcon("chevR", 18)); b.onclick = x.open; pbox.appendChild(b); });
+      pad.appendChild(pbox);
+      if (hits.length) pad.appendChild(sectionTitle("In work and the library · " + hits.length));
+    }
     var rows = el("div", "rows");
     hits.forEach(function (f) {
       var r = featureRow(f, null, f.period ? laneOfPeriod(f, keys()) : "none");
@@ -7359,6 +6998,1509 @@
     if (n && f && (f.name === "New feature" || f.name === "New research item" || f.name === "New sub-feature")) { n.focus(); n.select(); }
   }
 
+
+  /* =====================================================================
+     Simplified shell: four destinations (Today, Pilots, Work, Library), four pilot tabs
+     (Overview, Meetings, Their business, Improvements) and a pilot-wide Files & links view.
+     Presentation only: every view below reads and writes the same records as before, and the
+     earlier detailed views stay reachable as secondary pages. Nothing is migrated or copied.
+     ===================================================================== */
+  var ZI = {
+    home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    work: '<path d="M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+    book: '<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    pin: '<path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+    list: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
+    doc: '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/><path d="M14 3v4h4M9 13h6M9 17h4"/>',
+    scale: '<path d="M12 4v16M7 20h10M5 7h14"/><path d="M5 7l-3 7a3 3 0 0 0 6 0z"/><path d="M19 7l-3 7a3 3 0 0 0 6 0z"/>',
+    chevR: '<path d="M9 6l6 6-6 6"/>', chevD: '<path d="M6 9l6 6 6-6"/>', chevL: '<path d="M15 6l-6 6 6 6"/>',
+    arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>', arrowL: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+    eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/>',
+    message: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+    external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+    flask: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3M7.5 15h9"/>',
+    folder: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2.5h9a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
+    diagram: '<circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="19" r="2.2"/><circle cx="19" cy="19" r="2.2"/><path d="M12 7.2V12M12 12l-5.6 5M12 12l5.6 5"/>',
+    window: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    building: '<path d="M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17M3 21h18M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>',
+    alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+    laptop: '<path d="M5 5h14a1 1 0 0 1 1 1v10H4V6a1 1 0 0 1 1-1z"/><path d="M2 19h20"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    play: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/>',
+    share: '<path d="M12 15V3M8 7l4-4 4 4"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/>',
+    more: '<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="2.8"/>',
+    board: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/>',
+    check: '<path d="M5 12l5 5 9-10"/>',
+    question: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7M12 17h.01"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+    inbox: '<path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 13h5l1.5 3h5L16 13h5"/>'
+  };
+  function zIcon(name, size) {
+    var s = el("span", "zi");
+    s.setAttribute("aria-hidden", "true");
+    s.innerHTML = '<svg viewBox="0 0 24 24" width="' + (size || 20) + '" height="' + (size || 20) + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + (ZI[name] || ZI.doc) + "</svg>";
+    return s;
+  }
+  function zBtn(label, icon, cls, fn, iconAfter) {
+    var b = el("button", "zbtn" + (cls ? " " + cls : ""));
+    b.type = "button";
+    if (icon && !iconAfter) b.appendChild(zIcon(icon, 18));
+    b.appendChild(el("span", null, label));
+    if (icon && iconAfter) b.appendChild(zIcon(icon, 18));
+    if (fn) b.onclick = fn;
+    return b;
+  }
+  function zLinkBtn(label, icon, cls, href) {
+    var a = el("a", "zbtn" + (cls ? " " + cls : ""));
+    a.href = href; a.target = "_blank"; a.rel = "noopener";
+    if (icon) a.appendChild(zIcon(icon, 18));
+    a.appendChild(el("span", null, label));
+    return a;
+  }
+  function zCard(cls) { return el("section", "zcard" + (cls ? " " + cls : "")); }
+  function zCardHead(title, icon, actions) {
+    var h = el("div", "zcardhead");
+    if (icon) { var i = zIcon(icon, 20); i.classList.add("gold"); h.appendChild(i); }
+    h.appendChild(el("h2", null, title));
+    if (actions && actions.length) { var a = el("div", "zcardacts"); actions.forEach(function (x) { a.appendChild(x); }); h.appendChild(a); }
+    return h;
+  }
+  function zQuiet(label, fn) { var b = el("button", "zquiet", label); b.type = "button"; b.onclick = fn; return b; }
+  function zInitials(name) {
+    var parts = String(name || "").replace(/\(.*?\)/g, "").trim().split(/[\s-]+/).filter(Boolean);
+    return ((parts[0] || "?").charAt(0) + (parts.length > 1 ? parts[1].charAt(0) : "")).toUpperCase();
+  }
+  function zAvatar(name, tone) { var a = el("span", "zav" + (tone ? " t" + tone : ""), zInitials(name)); a.setAttribute("aria-hidden", "true"); return a; }
+  function zCrumbs(parts) {
+    var c = el("nav", "zcrumbs"); c.setAttribute("aria-label", "Breadcrumb");
+    parts.forEach(function (x, i) {
+      if (i) c.appendChild(el("span", "sep", "/"));
+      if (Array.isArray(x)) { var b = el("button", null, x[0]); b.type = "button"; b.onclick = x[1]; c.appendChild(b); }
+      else { var s = el("span", "here", x); s.setAttribute("aria-current", "page"); c.appendChild(s); }
+    });
+    return c;
+  }
+  function zBack(label, fn) { var b = el("button", "zback"); b.type = "button"; b.appendChild(zIcon("arrowL", 18)); b.appendChild(el("span", null, label)); b.onclick = fn; return b; }
+  function zEmpty(text, action) { var e = el("div", "zempty"); e.appendChild(el("p", null, text)); if (action) e.appendChild(action); return e; }
+  function zPlain(s) { var t = plain(s); if (!/&[a-z#0-9]+;/i.test(t)) return t; var d = new DOMParser().parseFromString("<div>" + t.replace(/</g, "&lt;") + "</div>", "text/html"); return (d.body.textContent || "").replace(/\s+/g, " ").trim(); }
+  function zClampText(text, max) { var t = String(text || "").trim(); return t.length > max ? t.slice(0, max - 1).replace(/\s+\S*$/, "") + "…" : t; }
+  function zFirstSentence(text, max) {
+    var t = String(text || "").replace(/\s+/g, " ").trim();
+    var m = /^(.{20,}?[.!?])(\s|$)/.exec(t);
+    return zClampText(m ? m[1] : t, max || 160);
+  }
+  /* long text: a short reading first, the full wording one press away */
+  function zExpandable(html, p, max, emptyText) {
+    var w = el("div", "zexp");
+    var full = zPlain(html || "");
+    if (!full) { w.appendChild(el("p", "zmuted", emptyText || "Nothing written yet.")); return w; }
+    var short = zClampText(full, max || 320);
+    var view = el("p", "zread", short);
+    w.appendChild(view);
+    if (short !== full || isHtml(html)) {
+      var open = false, rich = null;
+      var t = zQuiet("Show the full text", function () {
+        open = !open;
+        if (open) { if (!rich) { rich = p ? richBlock(html, p) : richView(html, "readtext"); rich.classList.add("zfull"); } view.replaceWith(rich); t.textContent = "Show less"; }
+        else { rich.replaceWith(view); t.textContent = "Show the full text"; }
+      });
+      if (short !== full) w.appendChild(t);
+    }
+    return w;
+  }
+  function zLongDate(d) { return d ? new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "No date yet"; }
+  function zDueLabel(d) {
+    if (!d) return "No date";
+    var t = today(), tm = dKey(new Date(Date.now() + 86400000));
+    if (d === t) return "Today";
+    if (d === tm) return "Tomorrow";
+    var s = new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    return d < t ? "Overdue · " + s : s;
+  }
+
+  /* ---------- navigation model ---------- */
+  var NAV_GROUP = { home: "today", pilots: "pilots", work: "work", roadmap: "work", rnd: "work", decisions: "work", changes: "work", parallel: "work", timeline: "work", library: "library", features: "library", icp: "library", space: "library", settings: "settings" };
+  function navGroup() {
+    if (ui.feature) { var f = feature(ui.feature); return f && ["Live", "Needs work", "Feature flag"].indexOf(f.state) !== -1 ? "library" : "work"; }
+    return NAV_GROUP[ui.view] || "today";
+  }
+  function go(view, more) {
+    ui.view = view; ui.feature = null; ui.space = null; ui.icpOpen = null; ui.pilot = null; ui.pilotTab = "overview"; ui.pilotSub = ""; ui.pilotItem = "";
+    ui.query = ""; var fi = document.getElementById("find"); if (fi) fi.value = "";
+    if (more) Object.keys(more).forEach(function (k) { ui[k] = more[k]; });
+    closeSideDrawer(); closeNavIfNarrow(); render();
+  }
+  function goPilot(p, tab, sub, item) { go("pilots", { pilot: p.id, pilotTab: tab || "overview", pilotSub: sub || "", pilotItem: item || "" }); }
+  function navKey() { return JSON.stringify([ui.view, ui.feature, ui.space, ui.icpOpen, ui.pilot, ui.pilotTab, ui.pilotSub, ui.pilotItem, ui.wmode, ui.libSel]); }
+
+  function writeHash() {
+    var h;
+    if (ui.feature) h = "#/feature/" + ui.feature;
+    else if (ui.view === "icp" && ui.icpOpen) h = "#/icp/" + ui.icpOpen;
+    else if (ui.view === "space" && ui.space) h = "#/space/" + encodeURIComponent(ui.space) + (ui.spaceSel ? "/" + ui.spaceSel : "");
+    else if (ui.view === "pilots") {
+      h = "#/pilots";
+      if (ui.pilot) {
+        h += "/" + ui.pilot + "/" + (ui.pilotTab || "overview");
+        if (ui.pilotSub || ui.pilotItem) h += "/" + (ui.pilotSub || "-");
+        if (ui.pilotItem) h += "/" + encodeURIComponent(ui.pilotItem);
+      }
+    } else {
+      h = "#/" + ({ home: "today", work: "work" + (ui.wmode === "list" ? "/list" : ""), roadmap: "work/timeline", rnd: "work/research", decisions: "work/decisions", changes: "work/activity",
+                    library: "library" + (ui.libSel ? "/capability/" + ui.libSel : ""), icp: "library/market", features: "library/catalogue", settings: "settings" }[ui.view] || ui.view);
+    }
+    if (location.hash !== h) history.replaceState(null, "", h);
+  }
+  /* every earlier address keeps working: #/home, #/decisions, #/roadmap, #/features, #/rnd, #/icp, #/changes, #/space/…, #/feature/… */
+  function readHash() {
+    var m = (location.hash || "").replace(/^#\/?/, "").split(/[?&]/)[0].split("/");
+    if (!m[0]) return;
+    ui.feature = null;
+    if (m[0] === "feature" && m[1] && feature(m[1])) { ui.feature = m[1]; S.current = feature(m[1]).project; return; }
+    if (m[0] === "icp" && m[1] && S.icps.some(function (x) { return x.id === m[1]; })) { ui.view = "icp"; ui.icpOpen = m[1]; return; }
+    if (m[0] === "space" && m[1]) { var sp = decodeURIComponent(m[1]); if (S.spaces.indexOf(sp) !== -1) { ui.view = "space"; ui.space = sp; if (m[2] && feature(m[2])) ui.spaceSel = m[2]; } return; }
+    if (m[0] === "pilots") {
+      ui.view = "pilots"; ui.pilot = null; ui.pilotSub = ""; ui.pilotItem = "";
+      if (m[1] && pilotById(m[1])) { ui.pilot = m[1]; ui.pilotTab = m[2] || "overview"; ui.pilotSub = m[3] && m[3] !== "-" ? m[3] : ""; ui.pilotItem = m[4] ? decodeURIComponent(m[4]) : ""; }
+      return;
+    }
+    if (m[0] === "today") { ui.view = "home"; return; }
+    if (m[0] === "settings") { ui.view = "settings"; return; }
+    if (m[0] === "work") { ui.view = ({ timeline: "roadmap", research: "rnd", decisions: "decisions", activity: "changes" })[m[1]] || "work"; if (ui.view === "work") ui.wmode = m[1] === "list" ? "list" : "board"; return; }
+    if (m[0] === "library") {
+      ui.icpOpen = null;
+      if (m[1] === "market") { ui.view = "icp"; return; }
+      if (m[1] === "catalogue") { ui.view = "features"; return; }
+      ui.view = "library"; ui.libSel = m[1] === "capability" && m[2] && feature(m[2]) ? m[2] : null; return;
+    }
+    if (["home", "decisions", "roadmap", "features", "parallel", "timeline", "rnd", "icp", "changes"].indexOf(m[0]) !== -1) { ui.view = m[0]; ui.icpOpen = null; }
+  }
+
+  function render() { renderNav(); renderTopbar(); renderView(); writeHash(); }
+
+  function renderNav() {
+    var nav = document.getElementById("nav");
+    nav.innerHTML = "";
+    var brand = el("button", "zbrand", "ALIE");
+    brand.type = "button"; brand.setAttribute("aria-label", "ALIE, open Today");
+    brand.onclick = function () { go("home"); };
+    nav.appendChild(brand);
+    var list = el("div", "znavlist");
+    var group = navGroup();
+    [["today", "Today", "home", "home"], ["pilots", "Pilots", "users", "pilots"], ["work", "Work", "work", "work"], ["library", "Library", "book", "library"]].forEach(function (it) {
+      var b = el("button", "znav");
+      b.type = "button";
+      b.setAttribute("aria-current", group === it[0] ? "page" : "false");
+      b.dataset.view = it[0];
+      b.appendChild(zIcon(it[2], 22));
+      b.appendChild(el("span", "nm", it[1]));
+      b.onclick = function () { go(it[3]); };
+      list.appendChild(b);
+    });
+    nav.appendChild(list);
+    var foot = el("div", "znavfoot");
+    var st = el("button", "znav small");
+    st.type = "button";
+    st.setAttribute("aria-current", group === "settings" ? "page" : "false");
+    st.appendChild(zIcon("settings", 20));
+    st.appendChild(el("span", "nm", "Settings"));
+    st.onclick = function () { go("settings"); };
+    foot.appendChild(st);
+    nav.appendChild(foot);
+  }
+
+  function renderTopbar() {
+    var find = document.getElementById("find");
+    find.placeholder = narrow() ? "Search ALIE…" : "Search across pilots, meetings, work and the library…";
+    var me = document.getElementById("tbme");
+    if (!me) return;
+    me.innerHTML = "";
+    var w = menu("UT", [
+      ["Settings", function () { go("settings"); }],
+      ["Activity history", function () { go("changes"); }],
+      S.projects.length > 1 ? "-" : null
+    ].concat(S.projects.length > 1 ? S.projects.map(function (pr) {
+      return [(pr.id === S.current ? "✓  " : "     ") + pr.name, function () { if (pr.id === S.current) return; S.current = pr.id; ui.feature = null; ui.libSel = null; render(); save(); toast("Showing " + pr.name + "."); }];
+    }) : []).concat([
+      SESSION.required ? "-" : null,
+      SESSION.required ? ["Sign out", function () { fetch("/api/logout", { method: "POST" }).then(function () { location.href = "/login.html"; }); }] : null
+    ]), "zme");
+    w.querySelector("button").setAttribute("aria-label", "Uzziel Tamon, account menu");
+    me.appendChild(w);
+  }
+
+  /* one capture entry point, reachable from every page */
+  function openCapture() {
+    var list = pilots();
+    if (!list.length) { toast("Add a pilot first, then capture into it.", true); return; }
+    var cur = (ui.view === "pilots" && ui.pilot && pilotById(ui.pilot)) || (ui.homePilot && pilotById(ui.homePilot)) || list.slice().sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); })[0];
+    sideDrawer("Capture", function (body) {
+      function draw() {
+        body.innerHTML = "";
+        ensurePilot(cur);
+        if (list.length > 1) body.appendChild(fld("Pilot", selIn(list.map(function (x) { return [x.id, x.name]; }), cur.id, function (v) { cur = pilotById(v); ui.homePilot = v; draw(); })));
+        var planned = cur.sessions.slice().sort(byDateDesc).slice(0, 8);
+        if (planned.length) body.appendChild(fld("Link to a meeting", selIn([["", "No meeting"]].concat(planned.map(function (s) { return [s.id, sessionLabel(cur, s.id)]; })), ui.pilotSession || "", function (v) { ui.pilotSession = v; draw(); }), "Optional. The note keeps its meeting."));
+        body.appendChild(el("div", "lab", "A quick note"));
+        body.appendChild(captureBar(cur, false));
+        body.appendChild(el("div", "lab", "Or add something structured"));
+        var g = el("div", "zcapgrid");
+        [["Next action", "check", function () { editAction(cur, null); }],
+         ["Question", "question", function () { editQuestion(cur, null, ui.pilotSession ? { session: ui.pilotSession } : null); }],
+         ["Meeting", "calendar", function () { editSession(cur, null); }],
+         ["Improvement", "flask", function () { editRequest(cur, null); }],
+         ["File or link", "link", function () { editArtifact(cur, null); }],
+         ["Decision", "scale", function () { editDecision(null, { pilot: cur.id }); }]].forEach(function (x) {
+          var b = el("button", "zcapopt"); b.type = "button"; b.appendChild(zIcon(x[1], 20)); b.appendChild(el("span", null, x[0])); b.onclick = x[2]; g.appendChild(b);
+        });
+        body.appendChild(g);
+      }
+      draw();
+    }, { eyebrow: "ONE PLACE TO ADD ANYTHING", cls: "zcapture" });
+  }
+
+  /* a slim location bar above the earlier detailed views, so they sit inside the four destinations */
+  function zLegacyBar(host, parts, tabs) {
+    var bar = el("div", "zlegacy");
+    bar.appendChild(zCrumbs(parts));
+    if (tabs) bar.appendChild(tabs);
+    host.appendChild(bar);
+  }
+
+  /* ---------- Today ---------- */
+  function zAllOpenActions() {
+    var out = [];
+    pilots().forEach(function (p) { ensurePilot(p); openActions(p).forEach(function (a) { out.push({ p: p, a: a }); }); });
+    return out.sort(function (x, y) { return (x.a.due || "9999") < (y.a.due || "9999") ? -1 : (x.a.due || "9999") > (y.a.due || "9999") ? 1 : 0; });
+  }
+  function zActionLine(p, a, showPilot) {
+    var r = el("div", "zaction" + (a.status === "Done" ? " done" : ""));
+    var tick = el("button", "zcheck" + (a.status === "Done" ? " on" : ""));
+    tick.type = "button";
+    tick.setAttribute("role", "checkbox"); tick.setAttribute("aria-checked", String(a.status === "Done"));
+    tick.setAttribute("aria-label", (a.status === "Done" ? "Reopen: " : "Mark done: ") + a.title);
+    if (a.status === "Done") tick.appendChild(zIcon("check", 14));
+    tick.onclick = function () { a.status = a.status === "Done" ? "Open" : "Done"; a.updated = Date.now(); touchPilot(p); render(); save(); };
+    r.appendChild(tick);
+    var t = el("button", "ztext"); t.type = "button";
+    t.appendChild(el("b", null, a.title));
+    var sub = [showPilot ? p.name : "", a.owner && a.owner !== ME ? a.owner : "", a.side === "Client" ? "waiting on the firm" : "", a.status === "Blocked" ? "blocked" : ""].filter(Boolean).join(" · ");
+    if (sub) t.appendChild(el("span", null, sub));
+    t.onclick = function () { editAction(p, a); };
+    r.appendChild(t);
+    var due = el("span", "zdue" + (a.due && a.due < today() && a.status !== "Done" ? " late" : ""));
+    due.appendChild(zIcon("calendar", 16)); due.appendChild(el("span", null, zDueLabel(a.due)));
+    r.appendChild(due);
+    var go2 = el("button", "zgo"); go2.type = "button"; go2.setAttribute("aria-label", "Open " + a.title); go2.appendChild(zIcon("chevR", 18)); go2.onclick = function () { editAction(p, a); };
+    r.appendChild(go2);
+    return r;
+  }
+  function zDecisionItems() {
+    var out = [];
+    decisions().filter(function (d) { return d.state === "Proposed"; }).forEach(function (d) { out.push({ title: d.title, text: "Proposed decision" + (d.pilot && pilotById(d.pilot) ? " for " + pilotById(d.pilot).name : "") + ". Waiting for your call.", open: function () { editDecision(d); } }); });
+    decisions().filter(decisionBlocked).forEach(function (d) { out.push({ title: d.title, text: "Decided by you, not yet aligned with the cofounders.", open: function () { editDecision(d); } }); });
+    undecidedRequestsAll().forEach(function (x) { out.push({ title: x.r.title, text: x.pilot.name + " asked for this. No decision yet.", open: function () { goPilot(x.pilot, "improvements", "", "r:" + x.r.id); } }); });
+    askedProposedFeatures().forEach(function (x) { out.push({ title: x.f.name, text: x.pilot.name + " asked for it. Proposed feature with no product decision.", open: function () { editDecision(null, { title: "Build " + x.f.name + "?", pilot: x.pilot.id, links: { feature: x.f.id } }); } }); });
+    return out;
+  }
+  function zRecentWork() {
+    var out = [];
+    pilots().forEach(function (p) {
+      ensurePilot(p);
+      p.reviews.forEach(function (r) { if (r.status !== "Disabled") out.push({ t: r.updated || r.created || 0, title: p.name + " · " + (r.subtitle || "client review"), kind: "Client review", icon: "doc", open: function () { goPilot(p, "business", "reviews"); } }); });
+      p.sessions.forEach(function (s) { out.push({ t: s.updated || s.created || 0, title: s.title || s.purpose || "Meeting", kind: "Meeting · " + p.name, icon: "calendar", open: function () { goPilot(p, "meetings", "", s.id); } }); });
+      p.requests.forEach(function (r) { out.push({ t: r.updated || r.created || 0, title: r.title, kind: "Improvement · " + p.name, icon: "flask", open: function () { goPilot(p, "improvements", "", "r:" + r.id); } }); });
+    });
+    feats().forEach(function (f) { out.push({ t: f.updated || 0, title: f.name, kind: (f.rnd ? "Research" : "Feature") + " · " + f.state, icon: "work", open: function () { open(f.id); } }); });
+    return out.sort(function (a, b) { return b.t - a.t; }).slice(0, 5);
+  }
+  function renderHome(host) {
+    var page = el("div", "zpage ztoday");
+    var hr = new Date().getHours();
+    var head = el("div", "zpagehead");
+    var hl = el("div");
+    hl.appendChild(el("h1", "zh1", (hr < 12 ? "Good morning, " : hr < 18 ? "Good afternoon, " : "Good evening, ") + ME));
+    hl.appendChild(el("p", "zlead", "Your next steps, in one place."));
+    head.appendChild(hl);
+    var tag = el("div", "ztagline"); tag.appendChild(el("span", null, new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }))); tag.appendChild(el("i"));
+    head.appendChild(tag);
+    page.appendChild(head);
+
+    var grid = el("div", "ztodaygrid");
+    var main = el("div", "zcol");
+    /* next visit */
+    var nm = nextMeeting();
+    var nv = zCard("znext");
+    var nvb = el("div", "znextbody");
+    var k = el("div", "zkicker"); k.appendChild(zIcon("calendar", 20)); k.appendChild(el("b", null, "Next visit")); if (nm) { k.appendChild(el("span", "dot", "·")); k.appendChild(el("span", null, nm.p.name)); }
+    nvb.appendChild(k);
+    if (nm) {
+      nvb.appendChild(el("h2", "znexttitle", nm.s.title || nm.s.purpose || "Planned meeting"));
+      var meta = el("div", "zmeta");
+      var m1 = el("span"); m1.appendChild(zIcon("calendar", 17)); m1.appendChild(el("span", null, zLongDate(nm.s.date))); meta.appendChild(m1);
+      var m2 = el("span"); m2.appendChild(zIcon("clock", 17)); m2.appendChild(el("span", null, nm.s.time || "Time to confirm")); meta.appendChild(m2);
+      if (nm.s.participants) { var m3 = el("span"); m3.appendChild(zIcon("users", 17)); m3.appendChild(el("span", null, nm.s.participants)); meta.appendChild(m3); }
+      nvb.appendChild(meta);
+      if (nm.s.purpose) nvb.appendChild(el("p", "zread", zClampText(nm.s.purpose, 220)));
+      nvb.appendChild(zBtn("Open meeting", "arrowR", "gold", function () { goPilot(nm.p, "meetings", "", nm.s.id); }, true));
+    } else {
+      nvb.appendChild(el("h2", "znexttitle", "No visit planned"));
+      nvb.appendChild(el("p", "zread", "Plan the next meeting so its questions are ready before you walk in."));
+      if (pilots().length) nvb.appendChild(zBtn("Plan a meeting", "plus", "gold", function () { var p = pilots()[0]; goPilot(p, "meetings"); editSession(p, null); }));
+    }
+    nv.appendChild(nvb);
+    var art = el("div", "znextart"); art.setAttribute("aria-hidden", "true");
+    nv.appendChild(art);
+    main.appendChild(nv);
+
+    /* actions */
+    var ac = zCard();
+    var all = zAllOpenActions();
+    ac.appendChild(zCardHead("Your next actions", "list", all.length > 6 ? [zQuiet("All " + all.length, function () { ui.todayAll = !ui.todayAll; renderView(); })] : []));
+    if (!all.length) ac.appendChild(zEmpty("Nothing is waiting. Add what happens next from a meeting or an improvement."));
+    (ui.todayAll ? all : all.slice(0, 6)).forEach(function (x) { ac.appendChild(zActionLine(x.p, x.a, pilots().length > 1)); });
+    main.appendChild(ac);
+
+    /* recent */
+    var rc = zCard();
+    rc.appendChild(zCardHead("Recent work", "doc", [zQuiet("Activity history", function () { go("changes"); })]));
+    var rec = zRecentWork();
+    if (!rec.length) rc.appendChild(zEmpty("Nothing has been touched yet."));
+    rec.forEach(function (x) {
+      var b = el("button", "zrowlink"); b.type = "button";
+      b.appendChild(zIcon(x.icon, 22));
+      var t = el("span", "t"); t.appendChild(el("b", null, x.title)); t.appendChild(el("span", null, x.kind + " · Updated " + stamp(dKey(new Date(x.t || Date.now()))))); b.appendChild(t);
+      b.appendChild(zIcon("chevR", 18));
+      b.onclick = x.open;
+      rc.appendChild(b);
+    });
+    main.appendChild(rc);
+    grid.appendChild(main);
+
+    /* decisions */
+    var side = zCard("zdecide");
+    var items = zDecisionItems();
+    side.appendChild(zCardHead("Needs a decision", "scale"));
+    if (!items.length) side.appendChild(zEmpty("Nothing is waiting on you."));
+    items.slice(0, 7).forEach(function (x) {
+      var b = el("button", "zdecision"); b.type = "button";
+      var t = el("span", "t"); t.appendChild(el("b", null, x.title)); t.appendChild(el("span", null, x.text)); b.appendChild(t);
+      b.appendChild(zIcon("chevR", 18));
+      b.onclick = x.open;
+      side.appendChild(b);
+    });
+    var more = el("div", "zcardfoot");
+    more.appendChild(zQuiet(items.length > 7 ? "See all " + items.length + " in Decisions" : "Open Decisions", function () { go("decisions"); }));
+    side.appendChild(more);
+    /* quiet signals that used to be cards */
+    var uns = 0, npf = problemsNeedingFraming(), firstUns = null;
+    pilots().forEach(function (p) { var n = unsortedCount(p); uns += n; if (n && !firstUns) firstUns = p; });
+    if (uns || npf) {
+      var sig = el("div", "zsignals");
+      sig.appendChild(el("div", "lab", "Also worth a look"));
+      if (uns) sig.appendChild(zQuiet(uns + (uns === 1 ? " captured note to sort" : " captured notes to sort"), function () { ui.inboxKind = "Unsorted"; goPilot(firstUns, "business", "inbox"); }));
+      if (npf) sig.appendChild(zQuiet(npf + (npf === 1 ? " problem still in draft" : " problems still in draft"), function () { var p = pilots().filter(function (x) { return problemsOf(x).some(function (pr) { return pr.status !== "Superseded" && problemNeedsFraming(pr); }); })[0]; if (p) goPilot(p, "business", "problems"); }));
+      side.appendChild(sig);
+    }
+    grid.appendChild(side);
+    page.appendChild(grid);
+    host.appendChild(page);
+  }
+
+  /* ---------- Pilots ---------- */
+  function zNextPlanned(p) { return plannedSessions(p).filter(function (s) { return s.date; })[0] || plannedSessions(p)[0] || null; }
+  function zStatusPill(p) { var s = el("span", "zstatus"); s.appendChild(el("i")); s.appendChild(el("span", null, p.status)); return s; }
+  function renderPilots(host) {
+    if (ui.pilot) { var cur = pilotById(ui.pilot); if (cur) return renderPilotPage(host, cur); ui.pilot = null; }
+    var page = el("div", "zpage");
+    var head = el("div", "zpagehead");
+    var hl = el("div"); hl.appendChild(el("h1", "zh1", "Pilots")); hl.appendChild(el("p", "zlead", "The firms and clinics we are learning with.")); head.appendChild(hl);
+    head.appendChild(zBtn("New pilot", "plus", "gold", newPilot));
+    page.appendChild(head);
+    var list = pilots().slice().sort(function (a, b) { return PILOT_STATUS.indexOf(a.status) - PILOT_STATUS.indexOf(b.status) || a.name.localeCompare(b.name); });
+    if (!list.length) page.appendChild(zEmpty("No pilots yet. Add the firm or clinic you are working with."));
+    var grid = el("div", "zpilotgrid");
+    list.forEach(function (p) {
+      ensurePilot(p);
+      var c = el("button", "zcard zpilotcard"); c.type = "button";
+      var top = el("div", "top"); top.appendChild(el("span", "zmono", zInitials(p.name))); var tt = el("div"); tt.appendChild(el("h2", null, p.name)); tt.appendChild(zStatusPill(p)); top.appendChild(tt); c.appendChild(top);
+      c.appendChild(el("p", "zread", p.objective ? zFirstSentence(zPlain(p.objective).replace(/^Draft:\s*/i, ""), 170) : "No objective written yet."));
+      var np = zNextPlanned(p), oa = openActions(p);
+      var facts = el("div", "zfacts");
+      [["calendar", np ? "Next meeting " + (np.date ? zDueLabel(np.date).replace(/^Overdue · /, "") : "undated") : "No meeting planned"],
+       ["list", oa.length + (oa.length === 1 ? " open action" : " open actions")],
+       ["flask", p.requests.length + (p.requests.length === 1 ? " improvement" : " improvements")]].forEach(function (x) { var s = el("span"); s.appendChild(zIcon(x[0], 16)); s.appendChild(el("span", null, x[1])); facts.appendChild(s); });
+      c.appendChild(facts);
+      c.onclick = function () { goPilot(p, "overview"); };
+      grid.appendChild(c);
+    });
+    page.appendChild(grid);
+    var drive = el("div", "zdriveline"); drive.appendChild(driveStatusLine()); page.appendChild(drive);
+    host.appendChild(page);
+  }
+
+  /* ---------- one pilot ---------- */
+  var PILOT_TABS = [["overview", "Overview"], ["meetings", "Meetings"], ["business", "Their business"], ["improvements", "Improvements"]];
+  var BUSINESS_SUBS = { workflow: "Workflow", problems: "Customer problems", reviews: "Client reviews", inbox: "Captured notes and evidence" };
+  var IMPROVE_SUBS = { requests: "Requests", deliverables: "Deliverables", fit: "Feature fit", decisions: "Decisions", artifacts: "Artifacts", validation: "Validation", recaps: "Weekly recaps" };
+  /* earlier code still says "discovery / inbox" or "delivery / requests": translate, never break */
+  function zNormalizePilotRoute() {
+    if (ui.pilotTab === "requests" || ui.pilotTab === "deliverables") { ui.pilotSub = ui.pilotTab; ui.pilotTab = "improvements"; }
+    if (ui.pilotTab === "overview") { ui.pilotSub = ""; ui.pilotItem = ""; }
+    if (ui.pilotSub === "sessions") { ui.pilotTab = "meetings"; ui.pilotSub = "records"; }
+    else if (BUSINESS_SUBS[ui.pilotSub]) ui.pilotTab = "business";
+    else if (IMPROVE_SUBS[ui.pilotSub]) ui.pilotTab = "improvements";
+    if (ui.pilotSub) ui.pilotItem = "";
+    if (ui.pilotTab === "discovery") ui.pilotTab = "business";
+    if (ui.pilotTab === "delivery") ui.pilotTab = "improvements";
+    if (["overview", "meetings", "business", "improvements", "files"].indexOf(ui.pilotTab) === -1) ui.pilotTab = "overview";
+  }
+  function zPrimaryReview(p) {
+    var list = p.reviews.filter(function (r) { return r.status !== "Disabled"; }).sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
+    return list[0] || null;
+  }
+  function zReviewReader(p, r) {
+    if (r && r.reader) return r.reader;
+    var c = p.people.filter(function (x) { return x.side !== "Internal"; })[0];
+    return c ? c.name.split(/\s+/)[0] : "the client";
+  }
+  function zReviewPreviewUrl(p, r) { return "/review?preview=" + encodeURIComponent(p.id) + "/" + encodeURIComponent(r.id); }
+  function zReviewState(r) {
+    var cur = reviewCurrent(r);
+    if (r.status === "Published" && cur && RV().revisionOpen(cur)) return "Published · revision " + cur.n + " · link active";
+    if (r.status === "Disabled") return "Disabled · link switched off";
+    if (cur) return "Draft changes · revision " + cur.n + " was shared earlier";
+    return "Draft · not shared";
+  }
+  function zShareReview(p, r) {
+    var cur = reviewCurrent(r), openRev = cur && RV().revisionOpen(cur) && r.status === "Published";
+    if (openRev) { copyReviewLink(cur); return; }
+    dialog(function (box, close) {
+      box.appendChild(el("h2", null, "No link yet"));
+      box.appendChild(el("p", null, "This review is a draft. Nobody outside can open it. A link exists only after you publish a revision, and publishing is always your decision."));
+      var acts = el("div", "acts");
+      var c = el("button", "btn ghost", "Keep as draft"); c.onclick = function () { close(null); }; acts.appendChild(c);
+      var pv = el("button", "btn ghost", "Preview first"); pv.onclick = function () { close(null); window.open(zReviewPreviewUrl(p, r), "_blank", "noopener"); }; acts.appendChild(pv);
+      var pb = el("button", "btn", "Publish and get the link…"); pb.onclick = function () { close(null); publishReview(p, r); }; acts.appendChild(pb);
+      box.appendChild(acts);
+    });
+  }
+  function renderPilotPage(host, p) {
+    ensurePilot(p);
+    if (ui.pilotTab === "stack") { ui.pilotTab = "overview"; setTimeout(function () { contextPane(p); }, 0); }
+    zNormalizePilotRoute();
+    var tab = ui.pilotTab, sub = ui.pilotSub, item = ui.pilotItem;
+    var page = el("div", "zpage zpilot");
+    var inner = (tab === "files") || (tab === "improvements" && item) ;
+    var files = zPilotFiles(p), nFiles = files.reduce(function (n, g) { return n + g.items.length; }, 0);
+
+    if (tab === "files") {
+      page.appendChild(zBack("Back to overview", function () { goPilot(p, "overview"); }));
+      page.appendChild(zCrumbs([["Pilots", function () { go("pilots"); }], [p.name, function () { goPilot(p, "overview"); }], "Files & links"]));
+      zRenderFiles(page, p, files);
+      host.appendChild(page); return;
+    }
+    if (tab === "improvements" && item) {
+      var imp = zImprovementByKey(p, item);
+      if (imp) { zRenderImprovement(page, p, imp); host.appendChild(page); return; }
+      ui.pilotItem = ""; item = "";
+    }
+    void inner;
+    page.appendChild(zCrumbs([["Pilots", function () { go("pilots"); }], p.name]));
+    var head = el("div", "zpilothead");
+    var hl = el("div", "ttl"); hl.appendChild(el("h1", "zh1", p.name)); hl.appendChild(zStatusPill(p)); head.appendChild(hl);
+    var acts = el("div", "zheadacts");
+    acts.appendChild(zBtn("Files & links" + (nFiles ? " (" + nFiles + ")" : ""), "doc", "", function () { goPilot(p, "files"); }));
+    var rv = zPrimaryReview(p);
+    var share = menu("Share update", [
+      rv ? ["Review with " + zReviewReader(p, rv), function () { goPilot(p, "business"); }] : ["Create a client review", function () { goPilot(p, "business", "reviews"); newReview(p); }],
+      ["Weekly recaps", function () { goPilot(p, "improvements", "recaps"); }],
+      p.driveDoc ? ["Open the pilot record in Drive", function () { window.open("https://docs.google.com/document/d/" + p.driveDoc + "/edit", "_blank", "noopener"); }] : null,
+      ["Push the pilot record to Drive now", function () { fetch("/api/drive/sync", { method: "POST" }).then(function (r) { return r.json(); }).then(function (j) { toast(j.ok ? "Drive copy updated." : "Drive: " + (j.error || "failed"), !j.ok); }).catch(function () { toast("Could not reach the server.", true); }); }]
+    ], "zbtn zshare");
+    var sb = share.querySelector("button"); sb.insertBefore(zIcon("share", 18), sb.firstChild);
+    acts.appendChild(share);
+    var moreM = menu("", [
+      ["Edit phase, objective and dates", function () { editOverview(p); }],
+      ["People, tools and partners", function () { contextPane(p); }],
+      ["Rename", function () { askText("Rename pilot", { value: p.name, ok: "Rename" }).then(function (n) { if (n) { p.name = n; touchPilot(p); render(); save(); } }); }],
+      "-",
+      ["Delete pilot", function () { deletePilot(p); }, true]
+    ], "zbtn zicononly");
+    var mb = moreM.querySelector("button"); mb.appendChild(zIcon("more", 20)); mb.setAttribute("aria-label", "More for " + p.name);
+    acts.appendChild(moreM);
+    head.appendChild(acts);
+    page.appendChild(head);
+
+    var tabs = el("div", "ztabs"); tabs.setAttribute("role", "tablist");
+    PILOT_TABS.forEach(function (m) {
+      var b = el("button", null, m[1]); b.type = "button"; b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", String(tab === m[0]));
+      b.onclick = function () { goPilot(p, m[0]); };
+      tabs.appendChild(b);
+    });
+    page.appendChild(tabs);
+
+    var body = el("div", "ztabbody");
+    if (tab === "overview") zRenderOverview(body, p);
+    else if (tab === "meetings") zRenderMeetings(body, p);
+    else if (tab === "business") zRenderBusiness(body, p);
+    else zRenderImprovements(body, p);
+    page.appendChild(body);
+    host.appendChild(page);
+  }
+
+  /* --- overview --- */
+  function zRenderOverview(body, p) {
+    var grid = el("div", "zovergrid");
+    var main = el("div", "zcol"), side = el("div", "zcol");
+    var c1 = zCard();
+    c1.appendChild(zCardHead("What we are learning", null, [zQuiet("Edit", function () { editOverview(p); })]));
+    c1.appendChild(zExpandable(p.objective, p, 260, "No objective yet. What must we learn before this firm can start?"));
+    main.appendChild(c1);
+
+    var np = zNextPlanned(p);
+    var c2 = zCard();
+    c2.appendChild(zCardHead("Next meeting"));
+    if (np) {
+      var row = el("div", "znextmeet");
+      var ic = el("span", "zround"); ic.appendChild(zIcon("calendar", 24)); row.appendChild(ic);
+      var t = el("div", "t");
+      t.appendChild(el("b", null, zLongDate(np.date)));
+      t.appendChild(el("span", null, np.time || "Time to confirm"));
+      t.appendChild(el("span", "ttl", np.title || np.purpose || "Planned meeting"));
+      if (np.participants) { var w = el("span", "with"); w.appendChild(zIcon("users", 16)); w.appendChild(el("span", null, np.participants)); t.appendChild(w); }
+      row.appendChild(t);
+      row.appendChild(zBtn("Prepare visit", null, "gold", function () { goPilot(p, "meetings", "", np.id); }));
+      c2.appendChild(row);
+    } else c2.appendChild(zEmpty("No meeting planned.", zBtn("Plan a meeting", "plus", "", function () { editSession(p, null); })));
+    main.appendChild(c2);
+
+    var oa = openActions(p);
+    var c3 = zCard();
+    c3.appendChild(zCardHead("Next actions", null, [zQuiet("+ Action", function () { editAction(p, null); })]));
+    if (!oa.length) c3.appendChild(zEmpty("Nothing scheduled. Add what happens next, who owns it and by when."));
+    (ui.overAll ? oa : oa.slice(0, 5)).forEach(function (a) { c3.appendChild(zActionLine(p, a, false)); });
+    if (oa.length > 5) { var f = el("div", "zcardfoot"); f.appendChild(zQuiet(ui.overAll ? "Show fewer" : "Show all " + oa.length, function () { ui.overAll = !ui.overAll; renderView(); })); c3.appendChild(f); }
+    main.appendChild(c3);
+
+    var c4 = zCard();
+    c4.appendChild(zCardHead("Team"));
+    var ppl = p.people.filter(function (x) { return x.side !== "Internal"; });
+    if (!ppl.length) c4.appendChild(zEmpty(p.contact ? "Contact as recorded before: " + p.contact : "Nobody listed yet."));
+    ppl.slice(0, 4).forEach(function (x, i) {
+      var b = el("button", "zperson"); b.type = "button";
+      b.appendChild(zAvatar(x.name, (i % 3) + 1));
+      var t2 = el("span", "t"); t2.appendChild(el("b", null, x.name)); t2.appendChild(el("span", null, x.role || "Role to confirm")); b.appendChild(t2);
+      b.onclick = function () { editPerson(p, x); };
+      c4.appendChild(b);
+    });
+    var vf = el("div", "zcardfoot line"); var vt = el("button", "zlink"); vt.type = "button"; vt.appendChild(el("span", null, ppl.length > 4 ? "View all " + ppl.length + " people" : "View team")); vt.appendChild(zIcon("arrowR", 16)); vt.onclick = function () { contextPane(p); }; vf.appendChild(vt); c4.appendChild(vf);
+    side.appendChild(c4);
+
+    var c5 = zCard();
+    c5.appendChild(zCardHead("Progress", null, [zQuiet("All improvements", function () { goPilot(p, "improvements"); })]));
+    var imps = zImprovements(p).filter(function (x) { return x.kind === "request"; }).sort(function (a, b) { return zBuildRank(b) - zBuildRank(a); });
+    if (!imps.length) c5.appendChild(zEmpty("No improvements yet. They appear once a request or an idea is recorded."));
+    imps.slice(0, 4).forEach(function (x) {
+      var b = el("button", "zprogress"); b.type = "button";
+      var ring = el("span", "zring s" + zBuildRank(x)); b.appendChild(ring);
+      var t3 = el("span", "t");
+      t3.appendChild(el("b", null, x.title));
+      t3.appendChild(el("span", null, x.build.label + " · " + x.outcome.short + (x.next ? " · Next: " + zClampText(x.next.title, 60) : "")));
+      b.appendChild(t3);
+      b.onclick = function () { goPilot(p, "improvements", "", x.key); };
+      c5.appendChild(b);
+    });
+    side.appendChild(c5);
+    grid.appendChild(main); grid.appendChild(side);
+    body.appendChild(grid);
+  }
+
+  /* --- meetings --- */
+  function zMeetingOneLine(s) { return zClampText(zPlain(s.summary || "") || s.purpose || s.participants || "No notes yet.", 120); }
+  function zRenderMeetings(body, p) {
+    p.sessions.forEach(ensureSession);
+    if (ui.pilotSub === "records") {
+      body.appendChild(zBack("Back to meetings", function () { goPilot(p, "meetings"); }));
+      renderSessions(body, p);
+      return;
+    }
+    var next = zNextPlanned(p);
+    var past = p.sessions.filter(function (s) { return !next || s.id !== next.id; }).sort(byDateDesc);
+    var sel = ui.pilotItem ? sessionById(p, ui.pilotItem) : null;
+    if (!sel && !narrow()) sel = past.filter(function (s) { return s.stage !== "Planned"; })[0] || next || null;
+    var split = el("div", "zsplit" + (ui.pilotItem && sel ? " hasitem" : ""));
+    var left = el("div", "zsplitmain");
+    var hd = el("div", "zsechead");
+    var hl = el("div"); hl.appendChild(el("h2", "zh2", "Meetings")); hl.appendChild(el("p", "zlead small", "Plan, review and turn conversations into progress.")); hd.appendChild(hl);
+    hd.appendChild(zBtn("Plan a meeting", "plus", "", function () { editSession(p, null); }));
+    left.appendChild(hd);
+
+    if (next) {
+      var nv = zCard("znextvisit");
+      var top = el("div", "top");
+      top.appendChild(el("b", "gold", "Next visit"));
+      var when = el("span", "when"); when.appendChild(zIcon("calendar", 16)); when.appendChild(el("span", null, zLongDate(next.date) + (next.time ? " · " + next.time : ""))); top.appendChild(when);
+      if (next.participants) { var wh = el("span", "when"); wh.appendChild(zIcon("users", 16)); wh.appendChild(el("span", null, zClampText(next.participants, 48))); top.appendChild(wh); }
+      nv.appendChild(top);
+      nv.appendChild(el("h3", null, next.title || next.purpose || "Planned meeting"));
+      var qs = p.questions.filter(function (q) { return q.session === next.id && q.state !== "Confirmed by client" && q.state !== "Superseded"; });
+      var lines = qs.length ? qs.map(function (q) { return q.text; }) : String(next.agenda || "").split(/\n+/).filter(Boolean);
+      var ul = el("ul", "zasks");
+      lines.slice(0, 3).forEach(function (l) { var li = el("li"); li.appendChild(el("i")); li.appendChild(el("span", null, zClampText(l.replace(/^\s*[-*\d.)]+\s*/, ""), 150))); ul.appendChild(li); });
+      if (lines.length) nv.appendChild(ul);
+      if (lines.length > 3) nv.appendChild(el("p", "zmuted", "And " + (lines.length - 3) + " more " + (qs.length ? "questions" : "agenda items") + "."));
+      if (!lines.length) nv.appendChild(el("p", "zmuted", "No questions or agenda yet."));
+      nv.appendChild(zBtn("Open agenda", "arrowR", "gold", function () { goPilot(p, "meetings", "", next.id); }, true));
+      left.appendChild(nv);
+    }
+    left.appendChild(el("h3", "zh3", "Past meetings"));
+    if (!past.length) left.appendChild(zEmpty("No past meetings yet."));
+    var listEl = el("div", "zmeetlist");
+    past.forEach(function (s) {
+      var b = el("button", "zmeet" + (sel && sel.id === s.id ? " on" : "")); b.type = "button";
+      var d = s.date ? new Date(s.date + "T12:00:00") : null;
+      var dt = el("span", "date"); dt.appendChild(el("span", null, d ? d.toLocaleDateString(undefined, { month: "short" }).toUpperCase() : "—")); dt.appendChild(el("b", null, d ? String(d.getDate()) : "?")); b.appendChild(dt);
+      var t = el("span", "t"); t.appendChild(el("b", null, s.title || s.purpose || "Meeting")); t.appendChild(el("span", null, zMeetingOneLine(s))); b.appendChild(t);
+      b.appendChild(zIcon("chevR", 18));
+      b.onclick = function () { goPilot(p, "meetings", "", s.id); };
+      listEl.appendChild(b);
+    });
+    left.appendChild(listEl);
+    var allr = el("div", "zcardfoot"); allr.appendChild(zQuiet("All meeting records, with transcripts, files and Drive tools", function () { goPilot(p, "meetings", "records"); })); left.appendChild(allr);
+    split.appendChild(left);
+
+    if (sel) split.appendChild(zMeetingPanel(p, sel));
+    body.appendChild(split);
+  }
+  function zMeetingPanel(p, s) {
+    var pn = el("aside", "zsplitside");
+    pn.appendChild(zBack("Back to meetings", function () { goPilot(p, "meetings"); }));
+    pn.appendChild(el("h2", "zh2", s.title || s.purpose || "Meeting"));
+    var meta = [zLongDate(s.date), s.time, s.participants].filter(Boolean).join("  ·  ");
+    pn.appendChild(el("p", "zmuted", meta));
+    var pills = el("div", "zpillrow"); pills.appendChild(quietPill(s.stage, STAGE_CLASS[s.stage])); if (s.draft) pills.appendChild(quietPill("draft", "st-feature-flag")); var cp = calendarPill(p, s); if (cp) pills.appendChild(cp); pn.appendChild(pills);
+
+    var qs = p.questions.filter(function (q) { return q.session === s.id; });
+    if (s.stage === "Planned") {
+      pn.appendChild(el("h3", "zh3", "Agenda"));
+      var ag = String(s.agenda || "").split(/\n+/).filter(Boolean);
+      if (s.purpose) pn.appendChild(el("p", "zread", s.purpose));
+      if (ag.length) { var ol = el("ol", "zagenda"); ag.forEach(function (l) { ol.appendChild(el("li", null, l.replace(/^\s*[-*\d.)]+\s*/, ""))); }); pn.appendChild(ol); }
+      else pn.appendChild(el("p", "zmuted", "No agenda yet."));
+    } else {
+      pn.appendChild(el("h3", "zh3", "Notes"));
+      var nb = el("div", "znotes");
+      if (s.summary) nb.appendChild(zExpandable(s.summary, p, 520)); else nb.appendChild(el("p", "zmuted", "No summary written yet."));
+      if (s.findings) { nb.appendChild(el("div", "lab", "What we now believe")); nb.appendChild(zExpandable(s.findings, p, 360)); }
+      pn.appendChild(nb);
+    }
+    pn.appendChild(el("h3", "zh3", "Questions" + (qs.length ? " · " + qs.length : "")));
+    if (!qs.length) pn.appendChild(el("p", "zmuted", "None attached to this meeting."));
+    else {
+      pn.appendChild(questionSummary(p, qs));
+      var qwrap = el("div", "zqs");
+      var showQ = ui.meetQ === s.id ? qs : qs.slice(0, 3);
+      showQ.forEach(function (q) { qwrap.appendChild(questionRow(p, q)); });
+      pn.appendChild(qwrap);
+      if (qs.length > 3) pn.appendChild(zQuiet(ui.meetQ === s.id ? "Show fewer" : "Show all " + qs.length + " questions", function () { ui.meetQ = ui.meetQ === s.id ? "" : s.id; renderView(); }));
+    }
+
+    pn.appendChild(el("h3", "zh3", "Recording & transcript"));
+    var rr = el("div", "zbtnrow");
+    var drv = s.drive || {};
+    if (drv.recording) rr.appendChild(zLinkBtn("Watch recording", "play", "", drv.recording));
+    if (drv.transcript) rr.appendChild(zLinkBtn("View transcript", "doc", "", drv.transcript));
+    else if (s.transcript) rr.appendChild(zBtn("Transcript is in the record", "doc", "", function () { foldSet("s:" + s.id, true); goPilot(p, "meetings", "records"); }));
+    if (drv.folder) rr.appendChild(zLinkBtn("Meeting folder", "folder", "", drv.folder));
+    if (s.doc && s.doc.fileId) rr.appendChild(zLinkBtn("Meeting document", "doc", "", "https://docs.google.com/document/d/" + s.doc.fileId + "/edit"));
+    if (!rr.children.length) rr.appendChild(el("p", "zmuted", "Nothing linked yet."));
+    pn.appendChild(rr);
+
+    var as = p.actions.filter(function (a) { return a.links && a.links.session === s.id; });
+    pn.appendChild(el("h3", "zh3", "Follow-ups"));
+    if (!as.length) pn.appendChild(el("p", "zmuted", "No follow-ups from this meeting."));
+    as.forEach(function (a) { pn.appendChild(zActionLine(p, a, false)); });
+    var ev = p.evidence.filter(function (e) { return e.session === s.id; }).length;
+    var foot = el("div", "zbtnrow foot");
+    foot.appendChild(zBtn("Edit meeting", "edit", "", function () { editSession(p, s); }));
+    foot.appendChild(zBtn("+ Follow-up", null, "", function () { editAction(p, null, { links: { session: s.id } }); }));
+    foot.appendChild(zBtn("+ Question", null, "", function () { editQuestion(p, null, { session: s.id }); }));
+    pn.appendChild(foot);
+    pn.appendChild(zQuiet("Open the full record" + (ev ? " (" + ev + " pieces of evidence, files, transcript tools)" : " (files, transcript tools)"), function () { foldSet("s:" + s.id, true); goPilot(p, "meetings", "records"); }));
+    return pn;
+  }
+
+  /* --- their business --- */
+  function zStepIcon(s) {
+    var t = (s.title || "").toLowerCase();
+    if (/intake|request arrives|contact/.test(t)) return "mail";
+    if (/call|phone/.test(t)) return "phone";
+    if (/consult/.test(t)) return "message";
+    if (/opening|file open|sorting|folder/.test(t)) return "folder";
+    if (/chronolog/.test(t)) return "clock";
+    if (/tribunal|contestation|expert/.test(t)) return "scale";
+    if (/marketing|communication/.test(t)) return "share";
+    if (/order|record/.test(t)) return "inbox";
+    return "doc";
+  }
+  function zRenderBusiness(body, p) {
+    var sub = ui.pilotSub;
+    if (BUSINESS_SUBS[sub]) {
+      body.appendChild(zBack("Back to their business", function () { goPilot(p, "business"); }));
+      ({ workflow: renderWorkflow, problems: renderProblems, reviews: renderReviews, inbox: renderInbox })[sub](body, p);
+      return;
+    }
+    var hd = el("div", "zsechead");
+    var hl = el("div"); hl.appendChild(el("h2", "zh2 big", "Their business")); hl.appendChild(el("p", "zlead small", "Our understanding so far. Updated after each visit.")); hd.appendChild(hl);
+    body.appendChild(hd);
+
+    /* the review entry: always first, always honest about its state */
+    var r = zPrimaryReview(p);
+    var banner = el("section", "zreview");
+    var ic = el("span", "zround big"); ic.appendChild(zIcon("user", 30)); banner.appendChild(ic);
+    var t = el("div", "t");
+    if (r) {
+      var who = zReviewReader(p, r), counts = RV().feedbackCounts(r);
+      t.appendChild(el("h3", null, "Review with " + who));
+      t.appendChild(el("p", null, "Let " + who + " confirm the workflow and leave feedback."));
+      var stt = el("span", "state" + (r.status === "Published" ? " live" : "")); stt.appendChild(el("i")); stt.appendChild(el("span", null, zReviewState(r))); t.appendChild(stt);
+      banner.appendChild(t);
+      var acts = el("div", "acts");
+      acts.appendChild(zLinkBtn("Preview review", "eye", "gold", zReviewPreviewUrl(p, r)));
+      acts.appendChild(zBtn("Share link", "link", "", function () { zShareReview(p, r); }));
+      acts.appendChild(zBtn("Feedback" + (counts.open ? " (" + counts.open + ")" : ""), "message", "", function () { foldSet("rv:" + r.id, true); goPilot(p, "business", "reviews"); }));
+      banner.appendChild(acts);
+      var ed = el("div", "under");
+      var ea = el("a", "zlink", "Edit the pages directly"); ea.href = zReviewPreviewUrl(p, r) + "&edit=1"; ea.target = "_blank"; ea.rel = "noopener"; ed.appendChild(ea);
+      ed.appendChild(zQuiet("Review settings and versions", function () { goPilot(p, "business", "reviews"); }));
+      banner.appendChild(ed);
+    } else {
+      t.appendChild(el("h3", null, "Review with " + zReviewReader(p, null)));
+      t.appendChild(el("p", null, "Write what we think we understand, then let the client correct it through one link. Nothing is shared until you publish."));
+      banner.appendChild(t);
+      var a2 = el("div", "acts"); a2.appendChild(zBtn("Create the review", "plus", "gold", function () { goPilot(p, "business", "reviews"); newReview(p); })); banner.appendChild(a2);
+    }
+    body.appendChild(banner);
+
+    /* workflow strip */
+    var steps = p.steps.filter(function (s) { return (s.version || "current") === "current"; }).sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    var wf = zCard("zflow");
+    wf.appendChild(zCardHead("End-to-end workflow", null, [zQuiet(steps.length ? "Open all " + steps.length + " steps" : "Add the first step", function () { goPilot(p, "business", "workflow"); })]));
+    if (!steps.length) wf.appendChild(zEmpty("No workflow mapped yet."));
+    else {
+      var strip = el("div", "zflowstrip"); strip.setAttribute("tabindex", "0"); strip.setAttribute("aria-label", "Workflow steps, scroll sideways");
+      steps.forEach(function (s, i) {
+        if (i) { var ar = el("span", "arrow"); ar.appendChild(zIcon("arrowR", 20)); strip.appendChild(ar); }
+        var b = el("button", "zstep"); b.type = "button";
+        var ro = el("span", "zround"); ro.appendChild(zIcon(zStepIcon(s), 24)); b.appendChild(ro);
+        b.appendChild(el("b", null, s.title));
+        b.appendChild(el("span", null, zClampText(s.actor || "Who does it: to confirm", 64)));
+        if (s.draft) b.appendChild(el("em", null, "to confirm"));
+        b.onclick = function () { foldSet("w:" + s.id, true); goPilot(p, "business", "workflow"); };
+        strip.appendChild(b);
+      });
+      wf.appendChild(strip);
+    }
+    body.appendChild(wf);
+
+    var two = el("div", "ztwo");
+    var pt = zCard();
+    pt.appendChild(zCardHead("People & tools"));
+    var sw = p.stack.filter(function (x) { return x.kind === "Software"; }), par = p.stack.filter(function (x) { return x.kind === "Partner"; });
+    [["users", "People", p.people.length ? p.people.map(function (x) { return x.name.split(/\s+/)[0]; }).slice(0, 4).join(", ") + (p.people.length > 4 ? " and " + (p.people.length - 4) + " more" : "") : "Nobody listed yet."],
+     ["laptop", "Tools", sw.length ? sw.length + " systems: " + sw.slice(0, 3).map(function (x) { return x.name; }).join(", ") + (sw.length > 3 ? "…" : "") : "No software listed yet."],
+     ["settings", "Partners", par.length ? par.map(function (x) { return x.name; }).slice(0, 3).join(", ") : "No outside firms listed yet."]].forEach(function (x) {
+      var b = el("button", "zlistrow"); b.type = "button"; b.appendChild(zIcon(x[0], 22)); b.appendChild(el("b", null, x[1])); b.appendChild(el("span", null, x[2])); b.appendChild(zIcon("chevR", 16));
+      b.onclick = function () { contextPane(p); };
+      pt.appendChild(b);
+    });
+    two.appendChild(pt);
+
+    var df = zCard();
+    var pbs = problemsOf(p).filter(function (x) { return x.status !== "Superseded"; });
+    df.appendChild(zCardHead("Where work gets difficult", null, pbs.length ? [zQuiet("All " + pbs.length + " problems", function () { goPilot(p, "business", "problems"); })] : []));
+    if (!pbs.length) df.appendChild(zEmpty("No customer problems framed yet.", zBtn("Open problems", null, "", function () { goPilot(p, "business", "problems"); })));
+    else {
+      var byStep = {};
+      pbs.forEach(function (pr) { (pr.steps && pr.steps.length ? pr.steps : ["-"]).forEach(function (id) { (byStep[id] = byStep[id] || []).push(pr); }); });
+      var rows = Object.keys(byStep).filter(function (id) { return id !== "-" && p.steps.some(function (s) { return s.id === id; }); }).map(function (id) { return { step: p.steps.filter(function (s) { return s.id === id; })[0], list: byStep[id] }; }).sort(function (a, b) { return b.list.length - a.list.length; });
+      rows.slice(0, 3).forEach(function (x) {
+        var b = el("button", "zlistrow"); b.type = "button"; b.appendChild(zIcon("alert", 22)); b.appendChild(el("b", null, x.step.title));
+        b.appendChild(el("span", null, x.list.length + (x.list.length === 1 ? " problem: " : " problems, such as: ") + zClampText(x.list[0].title, 70))); b.appendChild(zIcon("chevR", 16));
+        b.onclick = function () { goPilot(p, "business", "problems"); };
+        df.appendChild(b);
+      });
+      if (!rows.length) pbs.slice(0, 3).forEach(function (pr) { var b = el("button", "zlistrow"); b.type = "button"; b.appendChild(zIcon("alert", 22)); b.appendChild(el("b", null, zClampText(pr.title, 60))); b.appendChild(el("span", null, pr.status + " · confidence " + (pr.confidence || "not set"))); b.appendChild(zIcon("chevR", 16)); b.onclick = function () { goPilot(p, "business", "problems"); }; df.appendChild(b); });
+    }
+    two.appendChild(df);
+    body.appendChild(two);
+
+    var two2 = el("div", "ztwo");
+    var uq = zCard();
+    var oq = p.questions.filter(function (q) { return q.state !== "Confirmed by client" && q.state !== "Superseded" && q.status !== "Answered"; });
+    uq.appendChild(zCardHead("What we still do not know", null, [zQuiet("+ Question", function () { editQuestion(p, null); })]));
+    if (!oq.length) uq.appendChild(zEmpty("No open questions."));
+    oq.slice(0, 3).forEach(function (q) {
+      var b = el("button", "zlistrow q"); b.type = "button"; b.appendChild(zIcon("question", 22)); b.appendChild(el("b", null, zClampText(q.text, 120)));
+      b.appendChild(el("span", null, q.state === "Candidate answer from transcript" ? "A possible answer is waiting for your review" : (q.session && sessionById(p, q.session) ? "For " + sessionLabel(p, q.session) : "Not planned into a meeting yet"))); b.appendChild(zIcon("chevR", 16));
+      b.onclick = function () { editQuestion(p, q); };
+      uq.appendChild(b);
+    });
+    if (oq.length > 3) { var f1 = el("div", "zcardfoot"); f1.appendChild(zQuiet("All " + oq.length + " open questions, by meeting", function () { goPilot(p, "meetings", "records"); })); uq.appendChild(f1); }
+    two2.appendChild(uq);
+
+    var src = zCard();
+    src.appendChild(zCardHead("Sources behind this picture"));
+    var un = unsortedCount(p);
+    [["inbox", "Captured notes and evidence", p.evidence.length + " pieces, in the words they came in" + (un ? " · " + un + " to sort" : ""), function () { goPilot(p, "business", "inbox"); }],
+     ["calendar", "Meetings", p.sessions.length + " on record, with transcripts where we have them", function () { goPilot(p, "meetings"); }],
+     ["doc", "Files & links", "Documents, diagrams and prototypes for this pilot", function () { goPilot(p, "files"); }]].forEach(function (x) {
+      var b = el("button", "zlistrow"); b.type = "button"; b.appendChild(zIcon(x[0], 22)); b.appendChild(el("b", null, x[1])); b.appendChild(el("span", null, x[2])); b.appendChild(zIcon("chevR", 16)); b.onclick = x[3]; src.appendChild(b);
+    });
+    two2.appendChild(src);
+    body.appendChild(two2);
+  }
+
+  /* ---------- improvements: one page per request or deliverable, assembled from the records that already exist ---------- */
+  var Z_URL = /https?:\/\/[^\s<>"')\]]+/g;
+  /* links written inside descriptions: shown with where they were found, never copied into new records on their own */
+  function zUrlsIn(text) {
+    var out = [], seen = {};
+    var flat = zPlain(text || "");
+    var m; Z_URL.lastIndex = 0;
+    while ((m = Z_URL.exec(flat))) {
+      var url = m[0].replace(/[.,;:!?]+$/, "");
+      if (seen[url]) continue; seen[url] = true;
+      var before = flat.slice(Math.max(0, m.index - 48), m.index);
+      var lab = /(?:^|[.;!?\n]\s*|\s{2,})([A-Za-zÀ-ÿ][^.:;!?\n]{1,40}):\s*$/.exec(before);
+      out.push({ url: url, label: lab ? lab[1].trim() : "" });
+    }
+    if (isHtml(text)) {
+      var doc = new DOMParser().parseFromString("<div>" + text + "</div>", "text/html");
+      Array.prototype.forEach.call(doc.querySelectorAll("a[href]"), function (a) {
+        var url = a.getAttribute("href"); if (!/^https?:\/\//.test(url) || seen[url]) return; seen[url] = true;
+        var txt = (a.textContent || "").trim(); out.push({ url: url, label: txt && txt !== url ? txt : "" });
+      });
+    }
+    return out;
+  }
+  function zLinkKind(url, hint) {
+    var u = String(url || "").toLowerCase(), h = String(hint || "").toLowerCase();
+    if (/workers\.dev|vercel\.app|netlify\.app|pages\.dev|figma\.com\/proto/.test(u) || /prototype/.test(h)) return "Prototype";
+    if (/figma\.com|miro\.com|lucid\.app|whimsical|excalidraw|draw\.io|diagrams\.net/.test(u) || /diagram|flowchart|workflow map/.test(h)) return "Diagram";
+    if (/docs\.google\.com\/presentation/.test(u)) return "Presentation";
+    if (/\.mp4|\.m4a|\.mp3/.test(u) || /recording/.test(h)) return "Recording";
+    return "Document";
+  }
+  function zPrettyUrl(url) { return String(url).replace(/^https?:\/\//, "").replace(/\/$/, ""); }
+  function zKindIcon(kind) { return ({ Prototype: "window", Diagram: "diagram", Document: "doc", Presentation: "doc", Recording: "play", Folder: "folder", Other: "link" })[kind] || "doc"; }
+  function zArtifactFile(p, a, impKey) {
+    return { id: "a:" + a.id, title: a.title + (a.version ? " v" + a.version : ""), kind: a.kind === "Other" ? zLinkKind(a.link, a.title) : a.kind, url: a.link || "", status: a.status || "", where: a.origin === "Received" ? "Received from the firm" : "", artifact: a, imp: impKey || "" };
+  }
+  function zBuildRank(x) { return x.build.rank; }
+  function zRequestImprovement(p, r) {
+    var f = r.feature ? feature(r.feature) : null;
+    var key = "r:" + r.id;
+    var files = [], seen = {};
+    function add(x) { var k = x.url || x.id; if (seen[k]) return; seen[k] = true; files.push(x); }
+    var linkedProblems = problemsOf(p).filter(function (x) { return (x.requests || []).indexOf(r.id) !== -1; });
+    p.artifacts.forEach(function (a) {
+      var viaProblem = linkedProblems.some(function (pr) { return (pr.artifacts || []).indexOf(a.id) !== -1 || a.problem === pr.id; });
+      if (a.request === r.id || (f && a.feature === f.id) || viaProblem) add(zArtifactFile(p, a, key));
+    });
+    [["solution", "the request's proposed approach"], ["bottleneck", "the request's bottleneck"], ["need", "the request's business need"], ["source", "the request's source line"], ["reason", "the request's decision note"]].forEach(function (k) {
+      zUrlsIn(r[k[0]]).forEach(function (u) { add({ id: "u:" + u.url, title: u.label || zPrettyUrl(u.url), kind: zLinkKind(u.url, u.label), url: u.url, status: "", where: "Found in " + k[1], artifact: null, imp: key }); });
+    });
+    if (f) {
+      if (/^https?:\/\//.test(f.link || "")) add({ id: "u:" + f.link, title: zPrettyUrl(f.link), kind: zLinkKind(f.link, ""), url: f.link, status: "", where: "The feature's link", artifact: null, imp: key });
+      zUrlsIn(f.note).forEach(function (u) { add({ id: "u:" + u.url, title: u.label || zPrettyUrl(u.url), kind: zLinkKind(u.url, u.label), url: u.url, status: "", where: "Found in the feature description", artifact: null, imp: key }); });
+      if (f.driveDoc) add({ id: "u:fd:" + f.id, title: f.name + " · feature document", kind: "Document", url: "https://docs.google.com/document/d/" + f.driveDoc + "/edit", status: "", where: "The feature's Drive document", artifact: null, imp: key });
+    }
+    var proto = files.filter(function (x) { return x.kind === "Prototype" && x.url; })[0] || null;
+    var build = !f ? (proto ? { label: "Prototype built", rank: 2, icon: "flask" } : { label: "Not started", rank: 0, icon: "clock" })
+      : f.state === "Live" ? { label: "Live in ALIE", rank: 4, icon: "check" }
+      : f.state === "Feature flag" ? { label: "Available behind a flag", rank: 4, icon: "check" }
+      : f.state === "Needs work" ? { label: "Live, needs work", rank: 3, icon: "edit" }
+      : f.state === "Building" ? { label: "In build", rank: 3, icon: "edit" }
+      : proto ? { label: "Prototype built", rank: 2, icon: "flask" }
+      : f.state === "Planned" ? { label: "Planned", rank: 2, icon: "calendar" }
+      : f.state === "Research" ? { label: "In research", rank: 1, icon: "flask" }
+      : { label: "Proposed", rank: 1, icon: "clock" };
+    var v = r.validation && r.validation.status ? r.validation.status : "Not validated";
+    var outcome = v === "Client validated" ? { label: "Client outcome: confirmed by the client", short: "confirmed by the client", cls: "good" } : v === "Rejected" ? { label: "Client outcome: rejected by the client", short: "rejected by the client", cls: "bad" } : { label: "Client outcome: not confirmed", short: "client outcome not confirmed", cls: "" };
+    var next = openActions(p).filter(function (a) { return a.links && a.links.request === r.id; })[0] || null;
+    return { kind: "request", key: key, rec: r, title: r.title, feature: f, files: files, proto: proto, build: build, outcome: outcome, next: next, problems: linkedProblems,
+             owner: f && f.owner && f.owner !== "Unassigned" ? f.owner : (next && next.owner) || "", evidence: evidenceOfRequest(p, r) };
+  }
+  function zDeliverableImprovement(p, d) {
+    var key = "d:" + d.id, fs = delivFeats(d), pr = delivProgress(d);
+    var files = [], seen = {};
+    p.artifacts.forEach(function (a) { if (a.feature && fs.some(function (f) { return f.id === a.feature; }) && !seen[a.id]) { seen[a.id] = true; files.push(zArtifactFile(p, a, key)); } });
+    zUrlsIn(d.note).forEach(function (u) { files.push({ id: "u:" + u.url, title: u.label || zPrettyUrl(u.url), kind: zLinkKind(u.url, u.label), url: u.url, status: "", where: "Found in the deliverable note", artifact: null, imp: key }); });
+    var st = d.status || "Proposed";
+    var rank = { "Proposed": 1, "Agreed": 2, "In delivery": 3, "Ready for client testing": 4, "Accepted": 4 }[st] || 1;
+    var v = d.validation && d.validation.status ? d.validation.status : "Not validated";
+    var outcome = v === "Client validated" ? { label: "Client outcome: confirmed by the client", short: "confirmed by the client", cls: "good" } : v === "Rejected" ? { label: "Client outcome: rejected by the client", short: "rejected by the client", cls: "bad" } : { label: "Client outcome: not confirmed", short: "client outcome not confirmed", cls: "" };
+    var next = openActions(p).filter(function (a) { return a.links && a.links.deliverable === d.id; })[0] || null;
+    return { kind: "deliverable", key: key, rec: d, title: d.title, features: fs, progress: pr, files: files, proto: files.filter(function (x) { return x.kind === "Prototype" && x.url; })[0] || null,
+             build: { label: st + (pr ? " · " + pr.live + " of " + pr.total + " features live" : ""), rank: rank, icon: "edit" }, outcome: outcome, next: next, problems: [], owner: (next && next.owner) || "", evidence: [] };
+  }
+  function zImprovements(p) { return p.requests.map(function (r) { return zRequestImprovement(p, r); }).concat(p.deliverables.map(function (d) { return zDeliverableImprovement(p, d); })); }
+  function zImprovementByKey(p, key) {
+    var id = String(key).slice(2);
+    if (key.indexOf("r:") === 0) { var r = p.requests.filter(function (x) { return x.id === id; })[0]; return r ? zRequestImprovement(p, r) : null; }
+    if (key.indexOf("d:") === 0) { var d = p.deliverables.filter(function (x) { return x.id === id; })[0]; return d ? zDeliverableImprovement(p, d) : null; }
+    return null;
+  }
+  function zStatePill(text, icon, cls) { var s = el("span", "zpill" + (cls ? " " + cls : "")); if (icon) s.appendChild(zIcon(icon, 16)); else s.appendChild(el("i")); s.appendChild(el("span", null, text)); return s; }
+
+  function zRenderImprovements(body, p) {
+    var sub = ui.pilotSub;
+    if (IMPROVE_SUBS[sub]) {
+      body.appendChild(zBack("Back to improvements", function () { goPilot(p, "improvements"); }));
+      ({ requests: renderRequestsLevel, deliverables: renderDeliverablesLevel, fit: renderFit, decisions: renderDecisions, artifacts: renderArtifacts, validation: renderValidation, recaps: renderRecaps })[sub](body, p);
+      return;
+    }
+    var hd = el("div", "zsechead");
+    var hl = el("div"); hl.appendChild(el("h2", "zh2 big", "Improvements")); hl.appendChild(el("p", "zlead small", "What we are changing for this firm, from the problem to the result. Built is not the same as confirmed by the client.")); hd.appendChild(hl);
+    hd.appendChild(zBtn("Improvement", "plus", "gold", function () { editRequest(p, null); }));
+    body.appendChild(hd);
+    var all = zImprovements(p);
+    var reqs = all.filter(function (x) { return x.kind === "request"; }), dels = all.filter(function (x) { return x.kind === "deliverable"; });
+    function cardOf(x) {
+      var c = el("button", "zcard zimp"); c.type = "button";
+      var top = el("div", "top"); top.appendChild(el("h3", null, x.title)); top.appendChild(zIcon("chevR", 18)); c.appendChild(top);
+      var txt = x.kind === "request" ? zFirstSentence(zPlain(x.rec.need || x.rec.bottleneck || ""), 170) : zFirstSentence(zPlain(x.rec.note || ""), 170);
+      if (txt) c.appendChild(el("p", "zread", txt));
+      var pills = el("div", "zpillrow");
+      pills.appendChild(zStatePill(x.build.label, x.build.icon, x.build.rank >= 2 ? "gold" : ""));
+      pills.appendChild(zStatePill(x.outcome.label, null, x.outcome.cls));
+      if (x.kind === "request" && x.rec.decision === "Undecided") pills.appendChild(zStatePill("Needs a decision", "scale", "warn"));
+      c.appendChild(pills);
+      var foot = el("div", "foot");
+      foot.appendChild(el("span", null, x.next ? "Next: " + zClampText(x.next.title, 80) : "No next step yet"));
+      var nf = x.files.length; if (nf) { var fl = el("span", "files"); fl.appendChild(zIcon("link", 15)); fl.appendChild(el("span", null, nf + (nf === 1 ? " file or link" : " files and links"))); foot.appendChild(fl); }
+      c.appendChild(foot);
+      c.onclick = function () { goPilot(p, "improvements", "", x.key); };
+      return c;
+    }
+    if (!all.length) body.appendChild(zEmpty("No improvements yet. Start from what the firm asked for, or from a problem you saw.", zBtn("Add the first improvement", "plus", "", function () { editRequest(p, null); })));
+    if (reqs.length) { body.appendChild(el("h3", "zh3", "From what the firm asked for or showed us")); var g1 = el("div", "zimpgrid"); reqs.forEach(function (x) { g1.appendChild(cardOf(x)); }); body.appendChild(g1); }
+    if (dels.length) { body.appendChild(el("h3", "zh3", "Outcomes we plan to deliver with existing ALIE features")); var g2 = el("div", "zimpgrid"); dels.forEach(function (x) { g2.appendChild(cardOf(x)); }); body.appendChild(g2); }
+    var det = el("div", "zdetailed");
+    det.appendChild(el("span", "lab", "Detailed records"));
+    Object.keys(IMPROVE_SUBS).forEach(function (k) { var n = subCount(p, k); det.appendChild(zQuiet(IMPROVE_SUBS[k] + (n ? " " + n : ""), function () { goPilot(p, "improvements", k); })); });
+    body.appendChild(det);
+  }
+
+  function zFileRow(p, x, showImp) {
+    var r = el("div", "zfile");
+    var ic = el("span", "zsq"); ic.appendChild(zIcon(zKindIcon(x.kind), 20)); r.appendChild(ic);
+    r.appendChild(el("span", "kind", x.kind));
+    var t = el("span", "t"); t.appendChild(el("b", null, x.title)); if (x.where) t.appendChild(el("span", null, x.where)); r.appendChild(t);
+    if (showImp) {
+      var rel = el("span", "rel");
+      if (x.imp && zImprovementByKey(p, x.imp)) { var rb = el("button", "zlink"); rb.type = "button"; rb.appendChild(el("span", null, zClampText(zImprovementByKey(p, x.imp).title, 38))); rb.appendChild(zIcon("arrowR", 15)); rb.onclick = function () { goPilot(p, "improvements", "", x.imp); }; rel.appendChild(rb); }
+      else if (x.rel) { var rb2 = el("button", "zlink"); rb2.type = "button"; rb2.appendChild(el("span", null, x.rel[0])); rb2.appendChild(zIcon("arrowR", 15)); rb2.onclick = x.rel[1]; rel.appendChild(rb2); }
+      else rel.appendChild(el("span", "zmuted", "—"));
+      r.appendChild(rel);
+      var st = el("span", "st"); if (x.status) st.appendChild(el("em", null, x.status)); else st.appendChild(el("span", "zmuted", "—")); r.appendChild(st);
+    }
+    var act = el("span", "act");
+    if (x.artifact) { var eb = el("button", "zquiet", "Details"); eb.type = "button"; eb.onclick = function () { editArtifact(p, x.artifact); }; act.appendChild(eb); }
+    else if (x.keep) { var kb = el("button", "zquiet", "Keep as a file"); kb.type = "button"; kb.title = "Store this link once as an artifact so it carries a status, an owner and a version"; kb.onclick = x.keep; act.appendChild(kb); }
+    if (x.url) { var a = el("a", "zopen"); a.href = x.url; a.target = "_blank"; a.rel = "noopener"; a.appendChild(el("span", null, x.openLabel || "Open")); a.appendChild(zIcon("external", 16)); a.setAttribute("aria-label", (x.openLabel || "Open") + " " + x.title); act.appendChild(a); }
+    else act.appendChild(el("span", "zmuted", "no link"));
+    r.appendChild(act);
+    return r;
+  }
+  /* opens the normal artifact form, pre-filled; nothing is stored until Save */
+  function zKeepLink(p, x, imp) {
+    return function () {
+      editArtifact(p, null, { title: x.title, link: x.url, kind: ARTIFACT_KINDS.indexOf(x.kind) !== -1 ? x.kind : "Document", note: x.where ? x.where + "." : "",
+        feature: imp && imp.feature ? imp.feature.id : "", request: imp && imp.kind === "request" ? imp.rec.id : "", loop: "Action/prototype created" });
+    };
+  }
+  function zNewArtifactFrom(p, pre) {
+    var clean = {}; Object.keys(pre).forEach(function (k) { if (pre[k]) clean[k] = pre[k]; });
+    editArtifact(p, null, clean);
+  }
+
+  function zRenderImprovement(page, p, x) {
+    var r = x.rec, isReq = x.kind === "request";
+    page.classList.add("zimprove");
+    page.appendChild(zCrumbs([[p.name, function () { goPilot(p, "overview"); }], ["Improvements", function () { goPilot(p, "improvements"); }], zClampText(x.title, 44)]));
+    var grid = el("div", "zimpgrid2");
+    var main = el("div", "zcol");
+    main.appendChild(el("h1", "zh1", x.title));
+    var lead = isReq ? zFirstSentence(zPlain(r.need || ""), 190) : zFirstSentence(zPlain(r.note || ""), 190);
+    if (lead) main.appendChild(el("p", "zlead", lead));
+    var bar = el("div", "zimpbar");
+    var pills = el("div", "zpillrow");
+    pills.appendChild(zStatePill(x.build.label, x.build.icon, "gold"));
+    pills.appendChild(zStatePill(x.outcome.label, null, x.outcome.cls));
+    bar.appendChild(pills);
+    var acts = el("div", "zheadacts");
+    if (x.proto) acts.appendChild(zLinkBtn("Open prototype", "external", "gold", x.proto.url));
+    var upd = menu("Add update", [
+      ["Next step", function () { editAction(p, null, { links: isReq ? { request: r.id } : { deliverable: r.id } }); }],
+      ["File or link", function () { zNewArtifactFrom(p, { title: "", kind: "Prototype", link: "", note: "", request: isReq ? r.id : "" }); }],
+      ["What the client said", function () { editValidation(p, r, isReq ? "request" : "deliverable"); }],
+      isReq ? ["Record a product decision", function () { editDecision(null, { title: "Build " + r.title + "?", pilot: p.id, links: x.feature ? { request: r.id, feature: x.feature.id } : { request: r.id } }); }] : null,
+      "-",
+      [isReq ? "Edit problem, approach and decision" : "Edit deliverable", function () { if (isReq) editRequest(p, r); else editDeliverable(p, r); }]
+    ], "zbtn");
+    var ub = upd.querySelector("button"); ub.insertBefore(zIcon("plus", 18), ub.firstChild);
+    acts.appendChild(upd);
+    bar.appendChild(acts);
+    main.appendChild(bar);
+
+    if (isReq) {
+      var c1 = zCard(); c1.appendChild(zCardHead("The problem")); c1.appendChild(zExpandable(r.bottleneck, p, 330, "The bottleneck is not written yet."));
+      if (x.problems.length) { var pr = el("div", "zchips"); pr.appendChild(el("span", "lab", "Customer problems behind it")); x.problems.forEach(function (pb) { pr.appendChild(problemChip(p, pb.id)); }); c1.appendChild(pr); }
+      main.appendChild(c1);
+      var c2 = zCard(); c2.appendChild(zCardHead("What we are trying")); c2.appendChild(zExpandable(r.solution, p, 330, "No approach written yet."));
+      main.appendChild(c2);
+    } else {
+      var c1b = zCard(); c1b.appendChild(zCardHead("What the firm gets")); c1b.appendChild(zExpandable(r.note, p, 330, "Nothing written yet."));
+      main.appendChild(c1b);
+      var c2b = zCard(); c2b.appendChild(zCardHead("ALIE features that deliver it", null, [zQuiet("+ Feature", function () { pickFeature(r.title, r.features || []).then(function (f) { if (!f) return; r.features = (r.features || []).concat([f.id]); touchPilot(p); render(); save(); }); })]));
+      if (!x.features.length) c2b.appendChild(zEmpty("None tagged yet."));
+      x.features.forEach(function (f) { c2b.appendChild(pilotFeatureRow(f)); });
+      main.appendChild(c2b);
+    }
+    var c3 = zCard(); c3.appendChild(zCardHead("Next step", null, [zQuiet("+ Add", function () { editAction(p, null, { links: isReq ? { request: r.id } : { deliverable: r.id } }); })]));
+    var mine = p.actions.filter(function (a) { return a.links && (isReq ? a.links.request === r.id : a.links.deliverable === r.id) && a.status !== "Done"; });
+    if (!mine.length) c3.appendChild(el("p", "zmuted", "No next step recorded for this improvement."));
+    mine.forEach(function (a) { c3.appendChild(zActionLine(p, a, false)); });
+    main.appendChild(c3);
+
+    var c4 = zCard("zfiles"); c4.appendChild(zCardHead("Files & links", null, [zQuiet("+ File or link", function () { zNewArtifactFrom(p, { title: "", kind: "Prototype", link: "", note: "", request: isReq ? r.id : "" }); }), zQuiet("All for " + p.name, function () { goPilot(p, "files"); })]));
+    if (!x.files.length) c4.appendChild(el("p", "zmuted", "Nothing attached yet. Prototypes, diagrams and documents for this improvement belong here."));
+    x.files.forEach(function (f) { if (!f.artifact) f.keep = zKeepLink(p, f, x); c4.appendChild(zFileRow(p, f, false)); });
+    main.appendChild(c4);
+
+    var c5 = zCard(); c5.appendChild(zCardHead("Client feedback and results", null, [zQuiet("Update", function () { editValidation(p, r, isReq ? "request" : "deliverable"); })]));
+    var val = r.validation || {};
+    if (val.note || (val.status && val.status !== "Not validated")) c5.appendChild(el("p", "zread", [val.status, val.date ? stamp(val.date) : "", val.note].filter(Boolean).join(" · ")));
+    else c5.appendChild(el("p", "zmuted", "Nothing from the client yet. A finished build is not a confirmed outcome: this stays open until the firm tells us it works for them."));
+    main.appendChild(c5);
+    grid.appendChild(main);
+
+    /* side card */
+    var side = zCard("zimpside");
+    var s1 = el("div", "blk"); s1.appendChild(el("h4", null, "Owner"));
+    var ow = el("div", "who"); var av = el("span", "zav"); if (x.owner) av.textContent = zInitials(x.owner); else av.appendChild(zIcon("user", 20)); ow.appendChild(av); ow.appendChild(el("span", null, x.owner || "Nobody yet")); s1.appendChild(ow); side.appendChild(s1);
+    var s2 = el("div", "blk"); s2.appendChild(el("h4", null, "Related client"));
+    var cl = el("button", "who"); cl.type = "button"; var bi = el("span", "zsq"); bi.appendChild(zIcon("building", 20)); cl.appendChild(bi); cl.appendChild(el("span", null, p.name)); cl.onclick = function () { goPilot(p, "overview"); }; s2.appendChild(cl); side.appendChild(s2);
+    if (isReq) {
+      var s3 = el("div", "blk"); s3.appendChild(el("h4", null, "Build"));
+      if (x.feature) { var fb = el("button", "who"); fb.type = "button"; var fi = el("span", "zsq"); fi.appendChild(zIcon("work", 20)); fb.appendChild(fi); var ft = el("span"); ft.appendChild(document.createTextNode(x.feature.name)); ft.appendChild(el("em", null, x.feature.state + (x.feature.rnd ? " · research" : ""))); fb.appendChild(ft); fb.onclick = function () { open(x.feature.id); }; s3.appendChild(fb); }
+      else { s3.appendChild(el("p", "zmuted", "No ALIE feature is linked yet.")); s3.appendChild(zQuiet("Promote to a proposed feature", function () { promoteRequest(p, r); })); }
+      side.appendChild(s3);
+    }
+    function expander(title, count, key, build) {
+      var w = el("div", "zexpander");
+      var b = el("button", null); b.type = "button"; b.appendChild(el("span", null, title + (count ? " · " + count : ""))); b.appendChild(zIcon("chevD", 18));
+      var inner2 = el("div", "in"); inner2.hidden = !foldOpen(key, false);
+      b.setAttribute("aria-expanded", String(!inner2.hidden));
+      var built = false;
+      function ensure() { if (!built && !inner2.hidden) { built = true; build(inner2); } }
+      b.onclick = function () { inner2.hidden = !inner2.hidden; b.setAttribute("aria-expanded", String(!inner2.hidden)); foldSet(key, !inner2.hidden); ensure(); };
+      w.appendChild(b); w.appendChild(inner2); ensure();
+      return w;
+    }
+    if (isReq) {
+      side.appendChild(expander("Evidence", x.evidence.length, "zx:ev:" + r.id, function (box) {
+        if (r.source) box.appendChild(el("p", "zmuted", "Source: " + r.source));
+        if (!x.evidence.length) box.appendChild(el("p", "zmuted", "No quote or observation is linked yet."));
+        x.evidence.slice(0, 8).forEach(function (e) { box.appendChild(evidenceRow(p, e, true)); });
+        if (x.evidence.length > 8) box.appendChild(zQuiet("All " + x.evidence.length + " in the request record", function () { foldSet("r:" + r.id, true); goPilot(p, "improvements", "requests"); }));
+      }));
+      var decs = [];
+      if (r.decisionRef && decisionById(r.decisionRef)) decs.push(decisionById(r.decisionRef));
+      decisionsLinked("request", r.id).forEach(function (d) { if (decs.indexOf(d) === -1) decs.push(d); });
+      if (x.feature) decisionsLinked("feature", x.feature.id).forEach(function (d) { if (decs.indexOf(d) === -1) decs.push(d); });
+      side.appendChild(expander("Decision history", decs.length + (r.decision !== "Undecided" ? 1 : 0), "zx:dec:" + r.id, function (box) {
+        var l1 = el("div", "zdecline"); l1.appendChild(el("b", null, "On the request: " + (r.decision || "Undecided"))); if (r.reason) l1.appendChild(el("span", null, r.reason)); box.appendChild(l1);
+        decs.forEach(function (d) { var l = el("button", "zdecline"); l.type = "button"; l.appendChild(el("b", null, d.title)); l.appendChild(el("span", null, d.state + (decisionBlocked(d) ? " · not yet aligned with the cofounders" : d.state === "Decided" ? " · " + d.alignment : "") + (d.date ? " · " + stamp(d.date) : ""))); l.onclick = function () { editDecision(d); }; box.appendChild(l); });
+        if (!decs.length) {
+          box.appendChild(el("p", "zmuted", r.decision === "Undecided" ? "No decision yet." : "“" + r.decision + "” was set on the request itself. No product decision record is linked, so nothing here counts as an aligned go-ahead."));
+          box.appendChild(zQuiet("Record the product decision", function () { editDecision(null, { title: "Build " + r.title + "?", pilot: p.id, links: x.feature ? { request: r.id, feature: x.feature.id } : { request: r.id } }); }));
+        }
+      }));
+      side.appendChild(expander("From evidence to validation", "", "zx:chain:" + r.id, function (box) { box.appendChild(chainLine(p, r)); box.appendChild(zQuiet("Open the full request record", function () { foldSet("r:" + r.id, true); goPilot(p, "improvements", "requests"); })); }));
+    } else {
+      side.appendChild(expander("Full deliverable record", "", "zx:d:" + r.id, function (box) { box.appendChild(zQuiet("Open in Deliverables", function () { foldSet("d:" + r.id, true); goPilot(p, "improvements", "deliverables"); })); }));
+    }
+    grid.appendChild(side);
+    page.appendChild(grid);
+  }
+
+  /* ---------- pilot-wide files & links: the same records and links, grouped by improvement ---------- */
+  function zPilotFiles(p) {
+    var groups = [];
+    var bu = [];
+    p.reviews.forEach(function (r) {
+      bu.push({ id: "rv:" + r.id, title: r.title + (r.subtitle ? " · " + r.subtitle : ""), kind: "Presentation", url: zReviewPreviewUrl(p, r), openLabel: "Preview", status: r.status === "Published" ? "Published" : r.status, where: "Client review" + (reviewCurrent(r) ? ", revision " + reviewCurrent(r).n : ", never shared"), artifact: null, imp: "", rel: ["Their business", function () { goPilot(p, "business"); }] });
+    });
+    if (p.driveDoc) bu.push({ id: "pd:" + p.id, title: p.name + " · pilot record", kind: "Document", url: "https://docs.google.com/document/d/" + p.driveDoc + "/edit", status: "", where: "Google Doc kept in step by the app", artifact: null, imp: "", rel: ["Their business", function () { goPilot(p, "business"); }] });
+    if (/^https?:\/\//.test(p.link || "")) bu.push({ id: "pf:" + p.id, title: p.name + " · Drive folder", kind: "Folder", url: p.link, status: "", where: "Pilot folder", artifact: null, imp: "", rel: ["Their business", function () { goPilot(p, "business"); }] });
+    problemsOf(p).forEach(function (pr) { var fid = pr.drive && pr.drive.fileId; if (fid) bu.push({ id: "pb:" + pr.id, title: zClampText(pr.title, 70), kind: "Document", url: "https://docs.google.com/document/d/" + fid + "/edit", status: pr.status, where: "Customer problem document", artifact: null, imp: "", rel: ["Problems", function () { goPilot(p, "business", "problems"); }] }); });
+    var used = {};
+    var imps = zImprovements(p);
+    imps.forEach(function (x) { x.files.forEach(function (f) { if (f.artifact) used[f.artifact.id] = true; }); });
+    p.artifacts.forEach(function (a) { if (!used[a.id] && !a.request && !a.feature) { used[a.id] = true; bu.push(zArtifactFile(p, a, "")); } });
+    if (bu.length) groups.push({ key: "bu", title: "Business understanding", items: bu });
+    imps.forEach(function (x) { if (x.files.length) groups.push({ key: x.key, title: x.title, imp: x, items: x.files.map(function (f) { if (!f.artifact) f.keep = zKeepLink(p, f, x); return f; }) }); });
+    var rest = p.artifacts.filter(function (a) { return !used[a.id]; }).map(function (a) { return zArtifactFile(p, a, ""); });
+    if (rest.length) groups.push({ key: "rest", title: "Linked to a feature only", items: rest });
+    var meet = [];
+    p.sessions.slice().sort(byDateDesc).forEach(function (s) {
+      ensureSession(s);
+      var rel = [zClampText(s.title || "Meeting", 34), function () { goPilot(p, "meetings", "", s.id); }];
+      [["recording", "Recording", "Recording"], ["transcript", "Transcript", "Document"], ["rawNotes", "Raw notes", "Document"], ["summary", "Summary", "Document"], ["receivedFiles", "Received files", "Folder"], ["folder", "Meeting folder", "Folder"]].forEach(function (k) {
+        if (s.drive[k[0]]) meet.push({ id: "s:" + s.id + ":" + k[0], title: k[1] + " · " + (s.date ? stamp(s.date) : "undated"), kind: k[2], url: s.drive[k[0]], status: "", where: s.title || "", artifact: null, imp: "", rel: rel });
+      });
+      if (s.doc && s.doc.fileId) meet.push({ id: "s:" + s.id + ":doc", title: "Meeting document · " + (s.date ? stamp(s.date) : "undated"), kind: "Document", url: "https://docs.google.com/document/d/" + s.doc.fileId + "/edit", status: "", where: s.title || "", artifact: null, imp: "", rel: rel });
+      (s.files || []).forEach(function (f) { meet.push({ id: "sf:" + f.id, title: f.name, kind: "Document", url: f.link || "", status: f.loop || "", where: (f.from === "Client" ? "Received from the firm · " : "") + (s.title || ""), artifact: null, imp: "", rel: rel }); });
+    });
+    if (meet.length) groups.push({ key: "meet", title: "Meeting records", items: meet, closed: true });
+    return groups;
+  }
+  function zRenderFiles(page, p, groups) {
+    var hd = el("div", "zsechead");
+    var hl = el("div"); hl.appendChild(el("h1", "zh1", "Files & links")); hl.appendChild(el("p", "zlead", "Everything created for this pilot, grouped by improvement.")); hd.appendChild(hl);
+    hd.appendChild(zBtn("File or link", "plus", "", function () { editArtifact(p, null); }));
+    page.appendChild(hd);
+    var tools = el("div", "zfiletools");
+    var sw = el("label", "zsearch"); sw.appendChild(zIcon("search", 18)); var si = el("input"); si.type = "search"; si.placeholder = "Search files…"; si.setAttribute("aria-label", "Search files"); si.value = ui.fileQ || ""; sw.appendChild(si); tools.appendChild(sw);
+    var kinds = [["", "All"], ["Prototype", "Prototypes"], ["Document", "Documents"], ["Diagram", "Diagrams"]];
+    if (groups.some(function (g) { return g.items.some(function (x) { return x.kind === "Recording"; }); })) kinds.push(["Recording", "Recordings"]);
+    var chips = el("div", "zchipset"); chips.setAttribute("role", "group"); chips.setAttribute("aria-label", "File type");
+    kinds.forEach(function (k) { var b = el("button", "zchip", k[1]); b.type = "button"; b.setAttribute("aria-pressed", String((ui.fileKind || "") === k[0])); b.onclick = function () { ui.fileKind = k[0]; renderView(); }; chips.appendChild(b); });
+    tools.appendChild(chips);
+    page.appendChild(tools);
+    var host = el("div", "zfilegroups");
+    function match(x) {
+      var k = ui.fileKind || "", q = (ui.fileQ || "").toLowerCase();
+      var kind = x.kind === "Presentation" || x.kind === "Folder" ? "Document" : x.kind;
+      return (!k || kind === k) && (!q || (x.title + " " + x.kind + " " + (x.where || "")).toLowerCase().indexOf(q) !== -1);
+    }
+    function fill() {
+      host.innerHTML = "";
+      var shown = 0;
+      groups.forEach(function (g) {
+        var items = g.items.filter(match); if (!items.length) return;
+        shown += items.length;
+        var key = "zf:" + p.id + ":" + g.key;
+        var box = zCard("zfilegroup");
+        var openNow = (ui.fileQ || ui.fileKind) ? true : foldOpen(key, !g.closed);
+        var h = el("div", "zfilehead");
+        var tb = el("button", "ttl"); tb.type = "button"; tb.setAttribute("aria-expanded", String(openNow)); tb.appendChild(zIcon("chevD", 18)); tb.appendChild(el("b", null, g.title)); tb.appendChild(el("em", null, String(items.length)));
+        h.appendChild(tb);
+        ["Type", "Related", "Status", "Action"].forEach(function (c, i) { h.appendChild(el("span", "c c" + i, c)); });
+        box.appendChild(h);
+        var rows = el("div", "zrows"); rows.hidden = !openNow;
+        items.forEach(function (x) { rows.appendChild(zFileRow(p, x, true)); });
+        box.appendChild(rows);
+        box.classList.toggle("shut", !openNow);
+        tb.onclick = function () { rows.hidden = !rows.hidden; box.classList.toggle("shut", rows.hidden); tb.setAttribute("aria-expanded", String(!rows.hidden)); foldSet(key, !rows.hidden); };
+        host.appendChild(box);
+      });
+      if (!shown) host.appendChild(zEmpty(groups.length ? "Nothing matches." : "No files or links yet. Add a prototype, a diagram or a document and it shows up here and on its improvement."));
+    }
+    si.oninput = function () { ui.fileQ = si.value; fill(); };
+    fill();
+    page.appendChild(host);
+    page.appendChild(el("p", "zmuted znote", "Each file is stored once. Links that were written inside a description are listed where they belong, with where they were found; “Keep as a file” stores one as a proper record."));
+  }
+
+  /* ---------- Work: everything being explored, built or checked, across pilots ---------- */
+  var WORK_COLS = [["considering", "Considering", "Ideas and opportunities we are assessing."], ["trying", "Trying", "Early experiments in progress."], ["building", "Building", "In development and moving forward."], ["checking", "Checking with clients", "In client review and validation."], ["live", "Live", "In the product today."]];
+  function zHasProtoLink(f) { return /workers\.dev|vercel\.app|netlify\.app|pages\.dev|figma\.com\/proto/i.test((f.note || "") + " " + (f.link || "")); }
+  function zWorkItems() {
+    var out = [];
+    var reqByFeature = {};
+    pilots().forEach(function (p) { ensurePilot(p); p.requests.forEach(function (r) { if (r.feature) (reqByFeature[r.feature] = reqByFeature[r.feature] || []).push({ p: p, r: r }); }); });
+    feats().forEach(function (f) {
+      if (f.parent && f.state === "Live") return;
+      var clients = (reqByFeature[f.id] || []).slice();
+      pilotsFor(f).forEach(function (p) { if (!clients.some(function (c) { return c.p.id === p.id; })) clients.push({ p: p, r: null }); });
+      var checking = f.state === "Feature flag" || pilots().some(function (p) { return p.deliverables.some(function (d) { return d.status === "Ready for client testing" && (d.features || []).indexOf(f.id) !== -1; }); });
+      var proto = zHasProtoLink(f) || clients.some(function (c) { return c.r && c.p.artifacts.some(function (a) { return a.kind === "Prototype" && (a.request === c.r.id || a.feature === f.id); }); });
+      var stage = f.state === "Live" ? "live" : checking ? "checking" : (f.state === "Building" || f.state === "Planned" || f.state === "Needs work") ? "building"
+        : (f.state === "Research" || proto || (f.rnd && ["Assigned", "In progress", "Findings"].indexOf(f.rndStage) !== -1)) ? "trying" : "considering";
+      var next = null;
+      clients.forEach(function (c) { if (!next && c.r) next = openActions(c.p).filter(function (a) { return a.links && a.links.request === c.r.id; })[0] || null; });
+      var tags = [];
+      if (proto && stage !== "live") tags.push("Prototype");
+      if (f.rnd) tags.push("Research" + (f.student ? " · " + f.student : ""));
+      if (f.state === "Planned" || f.state === "Needs work" || f.state === "Feature flag") tags.push(f.state);
+      out.push({ id: f.id, f: f, title: f.name, text: zFirstSentence(zPlain(f.note || ""), 120), owner: f.owner && f.owner !== "Unassigned" ? f.owner : "", areas: f.spaces || [], clients: clients, stage: stage, tags: tags,
+                 next: next ? next.title : f.rnd && stage !== "live" ? "Research stage: " + (f.rndStage || "Backlog") : "", updated: f.updated || 0, open: function () { open(f.id); } });
+    });
+    pilots().forEach(function (p) {
+      p.requests.forEach(function (r) {
+        if (r.feature && feature(r.feature)) return;
+        if (r.decision === "Declined") return;
+        var x = zRequestImprovement(p, r);
+        out.push({ id: "r:" + r.id, f: null, title: r.title, text: zFirstSentence(zPlain(r.need || r.bottleneck || ""), 120), owner: x.owner, areas: [], clients: [{ p: p, r: r }], stage: x.proto ? "trying" : "considering",
+                   tags: (x.proto ? ["Prototype"] : []).concat(r.decision === "Undecided" ? ["Needs a decision"] : [r.decision]), next: x.next ? x.next.title : "", updated: r.updated || 0, open: function () { goPilot(p, "improvements", "", "r:" + r.id); } });
+      });
+    });
+    return out;
+  }
+  function zWorkPass(x) {
+    var w = ui.wf || (ui.wf = { client: "", area: "", owner: "", show: "active" });
+    if (w.client === "-" ? x.clients.length : w.client && !x.clients.some(function (c) { return c.p.id === w.client; })) return false;
+    if (w.area && x.areas.indexOf(w.area) === -1) return false;
+    if (w.owner && x.owner !== w.owner) return false;
+    if (w.show === "active" && x.stage === "live") return false;
+    if (w.show === "live" && x.stage !== "live") return false;
+    if (w.show === "research" && !(x.f && x.f.rnd)) return false;
+    return true;
+  }
+  function zWorkCard(x) {
+    var c = el("article", "zwork");
+    var tb = el("button", "ttl"); tb.type = "button"; tb.appendChild(el("h3", null, x.title)); tb.onclick = x.open; c.appendChild(tb);
+    if (x.text) c.appendChild(el("p", null, x.text));
+    if (x.tags.length) { var tg = el("div", "tags"); x.tags.forEach(function (t) { tg.appendChild(el("span", "ztag" + (t === "Prototype" ? " gold" : ""), t)); }); c.appendChild(tg); }
+    var foot = el("div", "foot");
+    var ow = el("div", "row"); var av = el("span", "zav sm"); if (x.owner) av.textContent = zInitials(x.owner); else av.appendChild(zIcon("user", 15)); ow.appendChild(av); ow.appendChild(el("span", null, x.owner || "No owner yet")); foot.appendChild(ow);
+    if (x.next) { var nx = el("div", "row"); nx.appendChild(zIcon("list", 17)); nx.appendChild(el("span", null, zClampText(x.next, 70))); foot.appendChild(nx); }
+    x.clients.forEach(function (cl) {
+      var b = el("button", "zlink client"); b.type = "button"; b.appendChild(el("span", null, cl.p.name)); b.appendChild(zIcon("external", 15));
+      b.onclick = function (e) { e.stopPropagation(); if (cl.r) goPilot(cl.p, "improvements", "", "r:" + cl.r.id); else goPilot(cl.p, "overview"); };
+      foot.appendChild(b);
+    });
+    c.appendChild(foot);
+    return c;
+  }
+  function zWorkTabs() {
+    var m = menu("More views", [
+      ["Timeline and roadmap planner", function () { go("roadmap"); }],
+      ["Research and student work", function () { go("rnd"); }],
+      ["Decisions", function () { go("decisions"); }],
+      ["Activity history", function () { go("changes"); }]
+    ], "zbtn");
+    return m;
+  }
+  function renderWork(host) {
+    var page = el("div", "zpage zworkpage");
+    var head = el("div", "zpagehead");
+    var hl = el("div"); hl.appendChild(el("h1", "zh1", "Work")); hl.appendChild(el("p", "zlead", "What we are exploring, building and checking.")); head.appendChild(hl);
+    var addM = menu("Improvement", [["A product idea or feature", function () { create(); }]].concat(pilots().map(function (p) { return ["Something " + p.name + " asked for", function () { goPilot(p, "improvements"); editRequest(p, null); }]; })).concat([["A research question", function () { create([], { rnd: true, state: "Research", name: "New research item" }); }]]), "zbtn gold");
+    var ab = addM.querySelector("button"); ab.insertBefore(zIcon("plus", 18), ab.firstChild);
+    head.appendChild(addM);
+    page.appendChild(head);
+
+    var bar = el("div", "zworkbar");
+    var seg = el("div", "zseg"); seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Layout");
+    [["list", "List", "list"], ["board", "Board", "board"]].forEach(function (m) { var b = el("button"); b.type = "button"; b.appendChild(zIcon(m[2], 18)); b.appendChild(el("span", null, m[1])); b.setAttribute("aria-pressed", String((ui.wmode || "board") === m[0])); b.onclick = function () { ui.wmode = m[0]; render(); }; seg.appendChild(b); });
+    bar.appendChild(seg);
+    var right = el("div", "zheadacts");
+    right.appendChild(zBtn("Timeline", "clock", "", function () { go("roadmap"); }));
+    right.appendChild(zWorkTabs());
+    bar.appendChild(right);
+    page.appendChild(bar);
+
+    var w = ui.wf || (ui.wf = { client: "", area: "", owner: "", show: "active" });
+    var filters = el("div", "zfilters");
+    function filt(label, opts, key) { var s = selIn(opts, w[key], function (v) { w[key] = v; renderView(); }); s.className = "zselect"; s.setAttribute("aria-label", label); filters.appendChild(s); }
+    filt("Client", [["", "Client: all"]].concat(pilots().map(function (p) { return [p.id, p.name]; })).concat([["-", "No client yet"]]), "client");
+    filt("Product area", [["", "Product area: all"]].concat(S.spaces.map(function (s) { return [s, s]; })), "area");
+    filt("Owner", [["", "Owner: anyone"]].concat(S.people.filter(function (n) { return n !== "Unassigned"; }).map(function (n) { return [n, n]; })), "owner");
+    filt("Show", [["active", "Active work"], ["research", "Research only"], ["live", "Live in the product"], ["all", "Everything"]], "show");
+    if (S.projects.length > 1) { var ps = selIn(S.projects.map(function (pr) { return [pr.id, "Product: " + pr.name]; }), S.current, function (v) { S.current = v; render(); save(); }); ps.className = "zselect"; ps.setAttribute("aria-label", "Product"); filters.appendChild(ps); }
+    page.appendChild(filters);
+
+    var items = zWorkItems().filter(zWorkPass).sort(function (a, b) { return b.updated - a.updated; });
+    var cols = WORK_COLS.filter(function (c) { return c[0] !== "live" || w.show === "live" || w.show === "all"; });
+    if (w.show === "live") cols = cols.filter(function (c) { return c[0] === "live"; });
+    if ((ui.wmode || "board") === "list") {
+      var table = zCard("zworklist");
+      var hh = el("div", "zwl head"); ["Improvement", "Stage", "Client", "Owner", "Area", "Updated"].forEach(function (c) { hh.appendChild(el("span", null, c)); }); table.appendChild(hh);
+      if (!items.length) table.appendChild(zEmpty("Nothing matches these filters."));
+      items.sort(function (a, b) { return WORK_COLS.map(function (c) { return c[0]; }).indexOf(a.stage) - WORK_COLS.map(function (c) { return c[0]; }).indexOf(b.stage) || b.updated - a.updated; });
+      items.forEach(function (x) {
+        var r = el("button", "zwl"); r.type = "button";
+        var t = el("span", "t"); t.appendChild(el("b", null, x.title)); if (x.tags.length) t.appendChild(el("em", null, x.tags.join(" · "))); r.appendChild(t);
+        var st = WORK_COLS.filter(function (c) { return c[0] === x.stage; })[0];
+        var sp = el("span", "stg"); sp.appendChild(el("i", "zdot " + x.stage)); sp.appendChild(el("span", null, st[1])); r.appendChild(sp);
+        r.appendChild(el("span", null, x.clients.map(function (c) { return c.p.name; }).join(", ") || "—"));
+        r.appendChild(el("span", null, x.owner || "—"));
+        r.appendChild(el("span", null, x.areas.join(", ") || "—"));
+        r.appendChild(el("span", null, x.updated ? stamp(dKey(new Date(x.updated))) : "—"));
+        r.onclick = x.open;
+        table.appendChild(r);
+      });
+      page.appendChild(table);
+    } else {
+      var board = el("div", "zboard c" + cols.length);
+      cols.forEach(function (c) {
+        var col = el("section", "zboardcol");
+        var list = items.filter(function (x) { return x.stage === c[0]; });
+        var ch = el("div", "colhead"); ch.appendChild(el("i", "zdot " + c[0])); var ct = el("div"); var h = el("h2", null, c[1]); h.appendChild(el("em", null, String(list.length))); ct.appendChild(h); ct.appendChild(el("p", null, c[2])); ch.appendChild(ct); col.appendChild(ch);
+        if (!list.length) col.appendChild(el("p", "zmuted pad", "Nothing here with these filters."));
+        var lim = ui.workAll === c[0] ? list.length : 8;
+        list.slice(0, lim).forEach(function (x) { col.appendChild(zWorkCard(x)); });
+        if (list.length > lim) col.appendChild(zQuiet("Show " + (list.length - lim) + " more", function () { ui.workAll = c[0]; renderView(); }));
+        board.appendChild(col);
+      });
+      page.appendChild(board);
+    }
+    host.appendChild(page);
+  }
+
+  /* ---------- Library: what ALIE offers, and what we know about the market ---------- */
+  function zLibTabs(cur) {
+    var tabs = el("div", "ztabs"); tabs.setAttribute("role", "tablist");
+    [["library", "Capabilities"], ["icp", "Market"]].forEach(function (m) { var b = el("button", null, m[1]); b.type = "button"; b.setAttribute("role", "tab"); b.setAttribute("aria-selected", String(cur === m[0])); b.onclick = function () { go(m[0]); }; tabs.appendChild(b); });
+    return tabs;
+  }
+  function zRelatedImprovements(f) {
+    var ids = [f.id].concat(childrenOf(f).map(function (k) { return k.id; })), out = [];
+    pilots().forEach(function (p) {
+      ensurePilot(p);
+      p.requests.forEach(function (r) { if (ids.indexOf(r.feature) !== -1) out.push({ title: r.title, sub: p.name, open: function () { goPilot(p, "improvements", "", "r:" + r.id); } }); });
+      p.deliverables.forEach(function (d) { if ((d.features || []).some(function (id) { return ids.indexOf(id) !== -1; })) out.push({ title: d.title, sub: p.name + " · deliverable", open: function () { goPilot(p, "improvements", "", "d:" + d.id); } }); });
+    });
+    return out;
+  }
+  function zCapabilityPanel(box, f, onClose) {
+    var x = el("button", "zclose"); x.type = "button"; x.setAttribute("aria-label", "Close"); x.appendChild(zIcon("x", 20)); x.onclick = onClose; box.appendChild(x);
+    var ro = el("span", "zround big"); ro.appendChild(zIcon("doc", 30)); box.appendChild(ro);
+    box.appendChild(el("h2", "zh2", f.name));
+    var pr = el("div", "zpillrow"); pr.appendChild(statePill(f)); (f.spaces || []).forEach(function (s) { pr.appendChild(el("span", "ztag", s)); }); box.appendChild(pr);
+    box.appendChild(zExpandable(f.note, null, 380, "No description yet."));
+    var kids = childrenOf(f);
+    if (kids.length) {
+      var s0 = el("div", "blk"); var h0 = el("h4"); h0.appendChild(zIcon("list", 20)); h0.appendChild(el("span", null, "Parts of it · " + kids.length)); s0.appendChild(h0);
+      kids.slice(0, 8).forEach(function (k) { var b = el("button", "zplain"); b.type = "button"; b.appendChild(el("span", null, k.name)); b.appendChild(el("em", null, k.state)); b.onclick = function () { open(k.id); }; s0.appendChild(b); });
+      if (kids.length > 8) s0.appendChild(el("p", "zmuted", "And " + (kids.length - 8) + " more on the feature page."));
+      box.appendChild(s0);
+    }
+    var rel = zRelatedImprovements(f);
+    var s1 = el("div", "blk"); var h1 = el("h4"); h1.appendChild(zIcon("work", 20)); h1.appendChild(el("span", null, "Related improvements")); s1.appendChild(h1);
+    if (!rel.length) s1.appendChild(el("p", "zmuted", "No pilot improvement points at this yet."));
+    rel.slice(0, 6).forEach(function (r) { var b = el("button", "zplain"); b.type = "button"; b.appendChild(el("span", null, r.title)); b.appendChild(el("em", null, r.sub)); b.onclick = r.open; s1.appendChild(b); });
+    box.appendChild(s1);
+    var s2 = el("div", "blk"); var h2 = el("h4"); h2.appendChild(zIcon("link", 20)); h2.appendChild(el("span", null, "Source")); s2.appendChild(h2);
+    var fb = el("button", "zlink"); fb.type = "button"; fb.appendChild(el("span", null, "Feature page: " + f.name)); fb.onclick = function () { open(f.id); }; s2.appendChild(fb);
+    if (f.driveDoc) { var a = el("a", "zlink"); a.href = "https://docs.google.com/document/d/" + f.driveDoc + "/edit"; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Feature document in Drive"; s2.appendChild(a); }
+    if (/^https?:\/\//.test(f.link || "")) { var a2 = el("a", "zlink"); a2.href = f.link; a2.target = "_blank"; a2.rel = "noopener"; a2.textContent = zPrettyUrl(f.link); s2.appendChild(a2); }
+    box.appendChild(s2);
+  }
+  function renderLibrary(host) {
+    var sel = ui.libSel ? feature(ui.libSel) : null;
+    var wrap = el("div", "zlib" + (sel && !narrow() ? " haspanel" : ""));
+    var page = el("div", "zpage");
+    var head = el("div", "zpagehead");
+    var hl = el("div"); hl.appendChild(el("h1", "zh1", "Product library")); hl.appendChild(el("p", "zlead", "What ALIE offers and what we know about our market.")); head.appendChild(hl);
+    head.appendChild(zBtn("Catalogue tools", "settings", "", function () { ui.fmode = "cards"; go("features"); }));
+    page.appendChild(head);
+    page.appendChild(zLibTabs("library"));
+    var lf = ui.lf || (ui.lf = { q: "", area: "", all: false });
+    var tools = el("div", "zfiletools");
+    var sw = el("label", "zsearch"); sw.appendChild(zIcon("search", 18)); var si = el("input"); si.type = "search"; si.placeholder = "Find a capability"; si.setAttribute("aria-label", "Find a capability"); si.value = lf.q; sw.appendChild(si); tools.appendChild(sw);
+    var chips = el("div", "zchipset"); chips.setAttribute("role", "group"); chips.setAttribute("aria-label", "Product area");
+    [["", "All"]].concat(S.spaces.map(function (s) { return [s, s.replace(/^ALIE\s+/, "")]; })).forEach(function (k) { var b = el("button", "zchip round", k[1]); b.type = "button"; b.setAttribute("aria-pressed", String(lf.area === k[0])); b.onclick = function () { lf.area = k[0]; renderView(); }; chips.appendChild(b); });
+    tools.appendChild(chips);
+    page.appendChild(tools);
+    var listHost = el("div", "zcaps");
+    function fill() {
+      listHost.innerHTML = "";
+      var q = lf.q.toLowerCase();
+      var all = feats().filter(function (f) { return !f.parent; }).filter(function (f) { return (!lf.area || (f.spaces || []).indexOf(lf.area) !== -1) && (!q || (f.name + " " + zPlain(f.note || "") + " " + childrenOf(f).map(function (k) { return k.name; }).join(" ")).toLowerCase().indexOf(q) !== -1); });
+      var groups = [["Available today", function (f) { return f.state === "Live"; }], ["Available, being improved", function (f) { return f.state === "Needs work" || f.state === "Feature flag"; }]];
+      if (lf.all || q) groups.push(["Not in the product yet", function (f) { return ["Live", "Needs work", "Feature flag"].indexOf(f.state) === -1; }]);
+      var n = 0;
+      groups.forEach(function (g) {
+        var list = all.filter(g[1]).sort(function (a, b) { return a.name.localeCompare(b.name); }); if (!list.length) return;
+        n += list.length;
+        listHost.appendChild(el("h3", "zh3", g[0]));
+        var box = el("div", "zcaplist");
+        list.forEach(function (f) {
+          var b = el("button", "zcap" + (sel && sel.id === f.id ? " on" : "")); b.type = "button";
+          b.appendChild(zIcon(childrenOf(f).length ? "folder" : "doc", 26));
+          var t = el("span", "t"); t.appendChild(el("b", null, f.name)); t.appendChild(el("span", null, zFirstSentence(zPlain(f.note || ""), 110) || "No description yet.")); b.appendChild(t);
+          var ub = el("span", "used"); if ((f.spaces || []).length) { ub.appendChild(el("span", "lab2", "Used by")); f.spaces.forEach(function (s) { ub.appendChild(el("span", "ztag", s.replace(/^ALIE\s+/, ""))); }); } b.appendChild(ub);
+          b.appendChild(zIcon("chevR", 18));
+          b.onclick = function () {
+            if (narrow()) { sideDrawer(f.name, function (body, close) { body.classList.add("zcappanel"); zCapabilityPanel(body, f, close); var h = document.querySelector("#edrawer > h2"); if (h) h.remove(); }, { cls: "zcapdrawer" }); return; }
+            ui.libSel = ui.libSel === f.id ? null : f.id; render();
+          };
+          box.appendChild(b);
+        });
+        listHost.appendChild(box);
+      });
+      if (!n) listHost.appendChild(zEmpty("Nothing matches."));
+      if (!q) listHost.appendChild(zQuiet(lf.all ? "Hide what is not in the product yet" : "Also show what is not in the product yet", function () { lf.all = !lf.all; fill(); }));
+    }
+    si.oninput = function () { lf.q = si.value; fill(); };
+    fill();
+    page.appendChild(listHost);
+    wrap.appendChild(page);
+    if (sel && !narrow()) { var panel = el("aside", "zcappanel"); zCapabilityPanel(panel, sel, function () { ui.libSel = null; render(); }); wrap.appendChild(panel); }
+    host.appendChild(wrap);
+  }
+
+  /* ---------- Settings ---------- */
+  function renderSettings(host) {
+    var page = el("div", "zpage zsettings");
+    var head = el("div", "zpagehead"); var hl = el("div"); hl.appendChild(el("h1", "zh1", "Settings")); hl.appendChild(el("p", "zlead", "People, products, connections and your data.")); head.appendChild(hl); page.appendChild(head);
+    function rowCard(title, text, actions) { var c = zCard("zsetrow"); var t = el("div", "t"); t.appendChild(el("h2", null, title)); t.appendChild(el("p", "zmuted", text)); c.appendChild(t); var a = el("div", "zheadacts"); actions.forEach(function (x) { a.appendChild(x); }); c.appendChild(a); return c; }
+    page.appendChild(rowCard("Uzziel Tamon", "Chief Product Officer · Product Manager", SESSION.required ? [zBtn("Sign out", null, "", function () { fetch("/api/logout", { method: "POST" }).then(function () { location.href = "/login.html"; }); })] : []));
+    page.appendChild(rowCard("Team and students", S.people.filter(function (n) { return n !== "Unassigned"; }).length + " team members · " + S.students.length + " students", [zBtn("Team members", "users", "", function () { managePeople("people"); }), zBtn("Students", "flask", "", function () { managePeople("students"); })]));
+    var cur = project();
+    var pc = rowCard("Products", "Work and Library show one product at a time. Now showing " + cur.name + ".", []);
+    var pa = pc.querySelector(".zheadacts");
+    var ps = selIn(S.projects.map(function (pr) { return [pr.id, pr.name + " · " + S.features.filter(function (f) { return f.project === pr.id; }).length + " features"]; }), S.current, function (v) { S.current = v; ui.libSel = null; render(); save(); }); ps.className = "zselect"; ps.setAttribute("aria-label", "Product"); pa.appendChild(ps);
+    pa.appendChild(zBtn("New", "plus", "", function () { askProject("New project").then(function (v) { if (!v) return; var pr = { id: uid(), name: v.name, kind: v.kind }; S.projects.push(pr); S.current = pr.id; render(); save(); toast("Product " + pr.name + " created."); }); }));
+    pa.appendChild(zBtn("Rename", "edit", "", function () { askProject("Edit project", cur).then(function (v) { if (!v) return; cur.name = v.name; cur.kind = v.kind; render(); save(); }); }));
+    page.appendChild(pc);
+    var ac = rowCard("Product areas", S.spaces.join(" · ") || "None yet", [zBtn("New area", "plus", "", newSpace)]);
+    var al = el("div", "zchips wide"); S.spaces.forEach(function (sp) { var b = el("button", "zchip round", sp + " · " + inSpace(sp).length); b.type = "button"; b.onclick = function () { ui.view = "space"; ui.space = sp; ui.feature = null; render(); }; al.appendChild(b); });
+    ac.appendChild(al); page.appendChild(ac);
+    var dc = zCard("zsetrow col"); var dt = el("div", "t"); dt.appendChild(el("h2", null, "Google Drive and Calendar")); dt.appendChild(el("p", "zmuted", "Pilot records are copied to Drive, and planned meetings meet your calendar both ways.")); dc.appendChild(dt); dc.appendChild(driveStatusLine()); page.appendChild(dc);
+    page.appendChild(rowCard("Activity history", "Every change to features and research, newest first.", [zBtn("Open history", "clock", "", function () { go("changes"); })]));
+    page.appendChild(rowCard("Your data", "Export everything as one file, or bring a file back in.", [zBtn("Export (JSON)", null, "", function () { window.open("/api/export", "_blank"); }), zBtn("Import (JSON)", null, "", importData),
+      zBtn("Reset to sample data", null, "danger", function () { askConfirm("Reset everything?", "All projects, features and research will be replaced by the sample data.", { danger: true, ok: "Reset" }).then(function (yes) { if (yes) resetSample(); }); })]));
+    host.appendChild(page);
+  }
+
+  /* search reaches pilots too: meetings, improvements, problems, actions, people, reviews */
+  function zPilotHits(q) {
+    var out = [];
+    function has() { return Array.prototype.join.call(arguments, " ").toLowerCase().indexOf(q) !== -1; }
+    pilots().forEach(function (p) {
+      ensurePilot(p);
+      if (has(p.name)) out.push({ icon: "users", title: p.name, sub: "Pilot · " + p.status, open: function () { goPilot(p, "overview"); } });
+      p.sessions.forEach(function (s) { if (has(s.title, s.purpose, s.participants, zPlain(s.summary || ""))) out.push({ icon: "calendar", title: s.title || "Meeting", sub: "Meeting · " + p.name + (s.date ? " · " + stamp(s.date) : ""), open: function () { goPilot(p, "meetings", "", s.id); } }); });
+      p.requests.forEach(function (r) { if (has(r.title, zPlain(r.need || ""), zPlain(r.bottleneck || ""))) out.push({ icon: "flask", title: r.title, sub: "Improvement · " + p.name, open: function () { goPilot(p, "improvements", "", "r:" + r.id); } }); });
+      p.deliverables.forEach(function (d) { if (has(d.title, zPlain(d.note || ""))) out.push({ icon: "flask", title: d.title, sub: "Deliverable · " + p.name, open: function () { goPilot(p, "improvements", "", "d:" + d.id); } }); });
+      problemsOf(p).forEach(function (pr) { if (has(pr.title, pr.statement || "")) out.push({ icon: "alert", title: pr.title, sub: "Customer problem · " + p.name + " · " + pr.status, open: function () { foldSet("pb:" + pr.id, true); goPilot(p, "business", "problems"); } }); });
+      p.actions.forEach(function (a) { if (has(a.title, a.note || "")) out.push({ icon: "check", title: a.title, sub: "Action · " + p.name + " · " + a.status, open: function () { goPilot(p, "overview"); editAction(p, a); } }); });
+      p.people.forEach(function (x) { if (has(x.name, x.role || "")) out.push({ icon: "user", title: x.name, sub: [x.role, p.name].filter(Boolean).join(" · "), open: function () { goPilot(p, "overview"); editPerson(p, x); } }); });
+      p.steps.forEach(function (s) { if (has(s.title, s.actor || "")) out.push({ icon: "diagram", title: s.title, sub: "Workflow step · " + p.name, open: function () { foldSet("w:" + s.id, true); goPilot(p, "business", "workflow"); } }); });
+      p.reviews.forEach(function (r) { if (has(r.title, r.subtitle || "", "review")) out.push({ icon: "doc", title: r.title + (r.subtitle ? " · " + r.subtitle : ""), sub: "Client review · " + r.status, open: function () { goPilot(p, "business", "reviews"); } }); });
+    });
+    return out;
+  }
+
   /* ---------- global wiring ---------- */
 
   document.getElementById("burger").onclick = function () {
@@ -7374,6 +8516,7 @@
     document.getElementById("app").dataset.nav = "closed";
     document.getElementById("scrim").style.display = "none";
   };
+  document.getElementById("capbtn").onclick = function () { openCapture(); };
   document.getElementById("find").oninput = function (e) { ui.query = e.target.value; renderView(); var fs = document.querySelector(".fsearch input"); if (fs) fs.value = e.target.value; };
   document.addEventListener("keydown", function (e) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); document.getElementById("find").focus(); document.getElementById("find").select(); }
@@ -7383,10 +8526,12 @@
       if (ui.query) { ui.query = ""; find.value = ""; find.blur(); renderView(); }
     }
   });
+  var wasNarrow = narrow();
+  window.addEventListener("resize", function () { if (narrow() !== wasNarrow) { wasNarrow = narrow(); document.getElementById("app").dataset.nav = wasNarrow ? "closed" : "open"; document.getElementById("scrim").style.display = "none"; render(); } });
   window.addEventListener("hashchange", function () {
-    var before = JSON.stringify([ui.view, ui.feature, ui.space]);
+    var before = navKey();
     readHash();
-    if (JSON.stringify([ui.view, ui.feature, ui.space]) !== before) render();
+    if (navKey() !== before) render(); else writeHash();
   });
 
   load().then(function () {

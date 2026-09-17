@@ -43,7 +43,8 @@
       "name": "shot-sink",
       "runtimeExecutable": "node",
       "runtimeArgs": [
-        "C:/Users/tamon/AppData/Local/Temp/claude/C--Dev-Product-Manager/1c43b824-796b-4714-87ea-64112d701907/scratchpad/shot_sink.mjs"
+        "C:/Users/tamon/AppData/Local/Temp/claude/C--Dev-Product-Manager/1c43b824-796b-4714-87ea-64112d701907/scratchpad/shot_sink.mjs",
+        "C:/Dev/ALIE/alie/docs/product-manager-simplification-2026-09-17/built"
       ],
       "port": 9977
     }
