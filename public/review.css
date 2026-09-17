@@ -187,7 +187,7 @@ img { display:block; }
   .rv-hero { left:20px; right:20px; max-width:none; }
   .rv-hero h1 { font-size:40px; } .rv-hero .sub { font-size:20px; margin-bottom:30px; } .rv-hero .meta { font-size:15px; } .rv-hero .msg { font-size:16px; margin-top:22px; }
   .rv-text { position:static; width:auto; padding:22px 20px 24px; display:block; overflow:visible; }
-  .rv-card.right .rv-text { left:auto; }
+  .rv-card.right .rv-text { left:auto; width:auto; padding:22px 20px 24px; }
   .rv-text h1 { font-size:26px; }
   .rv-scroll { position:static; padding:66px 0 30px; overflow:visible; }
   .rv-col { width:auto; margin:0; padding:0 20px; }
@@ -214,3 +214,38 @@ img { display:block; }
   .rv-selbar button { padding:10px 12px; }
 }
 @media (prefers-reduced-motion:reduce) { .rv-side { transition:none; } }
+
+/* ---------- author editing (signed-in preview only) ---------- */
+.rv.has-editbar { --card-t:58px; }
+.rv.has-editbar .rv-side { top:48px; }
+.rv-editbar { scrollbar-width:none; position:fixed; top:0; left:0; right:0; height:48px; z-index:40; background:#141414; color:#fff; display:flex; align-items:center; gap:14px; padding:0 14px; font-size:12.5px; overflow-x:auto; white-space:nowrap; }
+.rv-editbar .seg { display:inline-flex; background:#2b2b2b; border-radius:999px; padding:3px; flex:none; }
+.rv-editbar .seg button { border:0; background:transparent; color:#cfcfcf; border-radius:999px; height:28px; padding:0 14px; font-size:12.5px; }
+.rv-editbar .seg button[aria-pressed="true"] { background:#fff; color:#111; }
+.rv-editbar .which { color:#bdbdbd; }
+.rv-editbar label { display:inline-flex; align-items:center; gap:6px; color:#bdbdbd; }
+.rv-editbar input, .rv-editbar select { height:28px; border-radius:8px; border:1px solid #444; background:#222; color:#fff; padding:0 8px; font-size:12.5px; max-width:190px; }
+.rv-editbar .grp { display:inline-flex; gap:4px; }
+.rv-editbar .grp button, .rv-editbar .st { height:28px; border-radius:8px; border:1px solid #444; background:#222; color:#fff; padding:0 10px; font-size:12.5px; }
+.rv-editbar .grp button.danger { color:#ffb4b4; }
+.rv-editbar .st { margin-left:auto; border:0; background:transparent; color:#9fe0b0; cursor:default; }
+.rv-editbar .st.saving { color:#e9d38a; } .rv-editbar .st.failed { color:#ffb4b4; cursor:pointer; text-decoration:underline; }
+.rv.editing .rv-cbtn { display:none; }
+.rv.editing .rv-ed { outline:1px dashed #c9c9c9; outline-offset:6px; border-radius:4px; cursor:text; min-width:40px; }
+.rv.editing .rv-ed:hover { outline-color:#8a8a8a; }
+.rv.editing .rv-ed:focus { outline:2px solid #111; background:#fffdf3; }
+.rv.editing .rv-edblock { position:relative; outline:1px dashed transparent; outline-offset:6px; cursor:pointer; }
+.rv.editing .rv-edblock:hover { outline-color:#b5b5b5; }
+.rv-edtools { position:absolute; right:0; top:-30px; display:none; gap:3px; background:#141414; border-radius:8px; padding:3px; z-index:8; }
+.rv-edblock:hover > .rv-edtools, .rv-edblock:focus-within > .rv-edtools { display:flex; }
+.rv-edtools button { border:0; background:transparent; color:#fff; font-size:12px; height:24px; padding:0 8px; border-radius:6px; font-style:normal; }
+.rv-edtools button:hover { background:rgba(255,255,255,.16); }
+.rv-edtools button.danger { color:#ffb4b4; }
+.rv-srcbox { cursor:default; }
+.rv-srcbox textarea { width:100%; border:2px solid #111; border-radius:10px; background:#fffdf3; padding:12px 14px; font-family:var(--mono); font-size:14px; line-height:1.5; resize:vertical; font-style:normal; }
+.rv-srcbox .acts { display:flex; gap:8px; margin:8px 0 6px; }
+.rv-srcbox .acts button { height:34px; padding:0 14px; border-radius:9px; border:1px solid var(--line); background:#fff; font-size:13.5px; font-style:normal; }
+.rv-srcbox .acts button.primary { background:#141414; color:#fff; border-color:#141414; }
+.rv-srcbox .hint { font-size:12px; line-height:1.45; color:var(--mute); font-style:normal; font-family:var(--sans); margin-bottom:14px; }
+.rv-addfirst { border:1px dashed #b5b5b5; background:#fff; border-radius:10px; padding:10px 14px; font-size:14px; color:#444; }
+@media (max-width:860px) { .rv.has-editbar .rv-card { margin-top:48px; } .rv.has-editbar .rv-menu, .rv.has-editbar .rv-cbtn { top:62px; } .rv-edtools { top:-28px; } }

@@ -414,6 +414,8 @@ const EFFORT_UNITS = ["days", "weeks", "months"];
 /* ---- client reviews: the anonymous side ----
    A whole-document save from the app carries a copy of each pilot; feedback and revisions written on the server
    between two saves must survive that copy, so they are unioned back in by id. */
+const DRAFT_FIELDS = ["title", "subtitle", "author", "lang", "intro", "closing", "titleFr", "subtitleFr", "introFr", "closingFr"];
+function draftOf(r) { const d = { id: r.id, date: r.date, cards: r.cards }; DRAFT_FIELDS.forEach(k => { d[k] = r[k]; }); return d; }
 function keepServerSideReviewData(currentState, next) {
   (currentState.pilots || []).forEach(cp => {
     const np = (next.pilots || []).find(x => x.id === cp.id);
@@ -421,6 +423,8 @@ function keepServerSideReviewData(currentState, next) {
     (cp.reviews || []).forEach(cr => {
       const nr = np.reviews.find(x => x.id === cr.id);
       if (!nr) return;
+      /* a draft edited on the page after this copy of the app was loaded wins over the app's older copy */
+      if ((cr.draftAt || 0) > (nr.draftAt || 0)) { DRAFT_FIELDS.forEach(k => { nr[k] = cr[k]; }); nr.cards = cr.cards; nr.draftAt = cr.draftAt; }
       cr.feedback.forEach(f => { if (!nr.feedback.some(x => x.id === f.id)) nr.feedback.push(f); });
       cr.revisions.forEach(rv => { if (!nr.revisions.some(x => x.id === rv.id)) nr.revisions.push(rv); });
       nr.revisions.sort((a, b) => a.n - b.n);
@@ -661,6 +665,30 @@ export async function handleApi(req, store) {
     const r = p && p.reviews.find(x => x.id === query.review);
     if (!r) return json(404, { error: "Review not found." });
     return json(200, { ok: true, preview: true, snapshot: snapshotOf(Object.assign({}, r, { date: new Date().toISOString().slice(0, 10) }), p, r.revisions.length + 1) });
+  }
+  /* editing on the page: a signed-in author reads the raw draft and writes it back; revisions and feedback are never touched here */
+  if (seg[0] === "reviews" && seg[1] === "draft" && method === "GET") {
+    const doc = await store.load();
+    const p = (doc.state.pilots || []).find(x => x.id === query.pilot);
+    const r = p && p.reviews.find(x => x.id === query.review);
+    if (!r) return json(404, { error: "Review not found." });
+    return json(200, { ok: true, pilot: { id: p.id, name: p.name }, review: draftOf(r), revisionCount: r.revisions.length, status: r.status });
+  }
+  if (seg[0] === "reviews" && seg[1] === "draft" && method === "POST") {
+    const incoming = body.draft && typeof body.draft === "object" ? body.draft : null;
+    if (!incoming || !Array.isArray(incoming.cards)) return json(400, { error: "draft with cards is required" });
+    const out = await mutate(store, state => {
+      const p = (state.pilots || []).find(x => x.id === body.pilot);
+      const r = p && p.reviews.find(x => x.id === body.review);
+      if (!r) return { error: "Review not found." };
+      const notesById = {}; r.cards.forEach(c => { notesById[c.id] = c.notes; });
+      DRAFT_FIELDS.forEach(k => { if (typeof incoming[k] === "string") r[k] = incoming[k]; });
+      r.cards = incoming.cards.filter(c => c && typeof c === "object").map(c => Object.assign({}, c, { notes: typeof c.notes === "string" ? c.notes : (notesById[c.id] || "") }));
+      const now = Date.now(); r.updated = now; r.draftAt = now; p.updated = now;
+      return { result: { updated: now } };
+    }, body.who);
+    if (out.error) return json(404, { error: out.error });
+    return json(200, Object.assign({ ok: true, version: out.snapshot.version }, out.result));
   }
   if (seg[0] === "public") return handlePublic(req, store);
 

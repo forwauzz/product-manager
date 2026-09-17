@@ -51,6 +51,7 @@ export function parseBlocks(body) {
     }
     else b = { kind: "p", text: lines.join(" ") };
     if (b.text === undefined) b.text = blockText(b);
+    b.src = lines.join("\n");
     b.id = "b" + hashText(b.kind + "|" + normText(blockText(b)));
     out.push(b);
   });
@@ -109,7 +110,7 @@ export function normalizeReview(r) {
   const status = oneOf(REVIEW_STATUS, r.status, revisions.length ? "Published" : "Draft");
   return { id: str(r.id || uid()), title: str(r.title), subtitle: str(r.subtitle), author: str(r.author), date: str(r.date), lang: r.lang === "fr" ? "fr" : "en", intro: str(r.intro), closing: str(r.closing),
     titleFr: str(r.titleFr), subtitleFr: str(r.subtitleFr), introFr: str(r.introFr), closingFr: str(r.closingFr),
-    status, cards, revisions, feedback, created: num(r.created, Date.now()), updated: num(r.updated, Date.now()) };
+    status, cards, revisions, feedback, draftAt: num(r.draftAt, 0), created: num(r.created, Date.now()), updated: num(r.updated, Date.now()) };
 }
 /* French text exists when at least one page carries it */
 export function hasFrench(review) { return (review.cards || []).some(c => (c.bodyFr || "").trim() || (c.titleFr || "").trim()); }
@@ -190,7 +191,7 @@ export function applySuggestion(review, fb, now) {
   card[key] = card[key].replace(q, fb.suggestion);
   fb.state = "Applied";
   fb.applied = { at: now || Date.now(), before: q, after: fb.suggestion, card: card.id, lang: key === "bodyFr" ? "fr" : "en" };
-  review.updated = now || Date.now();
+  review.updated = now || Date.now(); review.draftAt = review.updated;
   return { ok: true };
 }
 

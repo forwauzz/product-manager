@@ -19,6 +19,7 @@ const visualSrc = n => "/visuals/v" + (/^[1-6]$/.test(String(n)) ? n : "1") + ".
 let snap = null, cur = null, lang = "en", revId = "", T = UI.en, cards = [], idx = 0, name = "", queue = [], mine = {}, seen = {}, done = false, panel = null, toastTimer = 0;
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } } };
 const K = k => "alie.rv." + revId + "." + k;
+const hooks = { afterRender: null }; /* the signed-in preview attaches its editing layer here */
 
 async function boot() {
   let r, j;
@@ -35,6 +36,7 @@ async function boot() {
   render();
   retryQueue();
   window.addEventListener("online", retryQueue);
+  if (preview) import("/review-edit.js").then(m => m.attach({ root, params, preview, esc, hooks, render, go, get lang() { return lang; }, get idx() { return idx; }, get cards() { return cards; }, setSnap(s) { snap = s; setLang(snapshotLangs(snap).indexOf(lang) !== -1 ? lang : snap.lang); if (idx > cards.length) idx = cards.length; } })).catch(() => {});
 }
 /* the whole experience follows the language: labels, pages, and the language a comment is filed under */
 function setLang(l) {
@@ -89,6 +91,7 @@ function render() {
   if (panel && cardEl) { const pn = document.createElement("aside"); pn.className = "rv-panel"; pn.id = "panel"; pn.innerHTML = renderPanel(); cardEl.appendChild(pn); }
   if (cardEl) { const bg = document.createElement("div"); bg.className = "rv-bar-bg"; cardEl.appendChild(bg); }
   wire();
+  if (hooks.afterRender) hooks.afterRender();
 }
 function controls(N) {
   const isVisual = idx === 0 || ((cards[idx - 1] || {}).layout || "article") !== "article";

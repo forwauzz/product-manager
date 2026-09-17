@@ -205,3 +205,47 @@ test("flow and team blocks parse, carry their text for anchors, reach the snapsh
   assert.equal(snapshotCards(snap)[0].blocks[0].nodes.length, 2);
   assert.ok(!JSON.stringify(snap).includes("SOURCE"), "internal notes stay out of what the guest receives");
 });
+
+test("editing on the page: the author reads the raw draft and writes it back; revisions, feedback and notes survive, and an older app copy cannot undo it", async () => {
+  const { parseBlocks } = await import("../public/reviews.js");
+  const store = new MemoryStore(pilotState());
+  const before = await store.load();
+  const r0 = before.state.pilots[0].reviews[0];
+  const token = (await handleApi(req("POST", "/reviews/publish", { pilot: "p1", review: r0.id }), store)).body.revision.token;
+  const g = await handleApi(req("GET", "/reviews/draft?pilot=p1&review=" + r0.id), store);
+  assert.equal(g.status, 200); assert.equal(g.body.review.cards.length, 12); assert.equal(g.body.revisionCount, 1);
+  assert.ok(!("feedback" in g.body.review) && !("revisions" in g.body.review));
+  /* one block edited through its own source, the page rebuilt from the blocks */
+  const draft = g.body.review;
+  const c1 = draft.cards.find(c => c.id === "c1");
+  const blocks = parseBlocks(c1.body);
+  assert.ok(blocks.every(b => typeof b.src === "string" && b.src.length));
+  blocks[0] = { src: "Sarah, this first paragraph was rewritten on the page." };
+  c1.body = blocks.map(b => b.src).join("\n\n");
+  c1.title = "Why this exists";
+  draft.cards.splice(1, 0, { id: "cnew", section: c1.section, title: "New page", body: "Write here.", layout: "article" });
+  delete draft.cards.find(c => c.id === "c11").notes; /* the page does not send notes back for every card */
+  const w = await handleApi(req("POST", "/reviews/draft", { pilot: "p1", review: r0.id, draft, who: "test" }), store);
+  assert.equal(w.status, 200);
+  const after = (await store.load()).state.pilots[0].reviews[0];
+  assert.equal(after.cards.length, 13); assert.equal(after.cards[1].id, "cnew");
+  assert.equal(after.cards[0].title, "Why this exists");
+  assert.ok(after.cards[0].body.startsWith("Sarah, this first paragraph was rewritten"));
+  assert.ok(after.cards.find(c => c.id === "c11").notes.length > 100, "internal notes are kept when the page omits them");
+  assert.equal(after.revisions.length, 1);
+  /* the published revision the guest reads is unchanged */
+  const pub = (await handlePublic(req("GET", "/public/review/" + token), store)).body.snapshot;
+  assert.ok(JSON.stringify(pub).includes("I wanted to put my understanding in one place"));
+  assert.ok(!JSON.stringify(pub).includes("rewritten on the page"));
+  /* an app tab loaded before the edit saves its older copy: the newer draft wins */
+  const stale = JSON.parse(JSON.stringify(before.state));
+  stale.pilots[0].updated = Date.now() + 5000; stale.pilots[0].objective = "edited in the app";
+  const put = await handleApi(req("PUT", "/state", { version: (await store.load()).version, state: stale, who: "app" }), store);
+  assert.equal(put.status, 200);
+  const merged = put.body.state.pilots[0];
+  assert.equal(merged.objective, "edited in the app");
+  assert.equal(merged.reviews[0].cards.length, 13);
+  assert.equal(merged.reviews[0].cards[0].title, "Why this exists");
+  assert.equal((await handleApi(req("GET", "/reviews/draft?pilot=p1&review=nope"), store)).status, 404);
+  assert.equal((await handleApi(req("POST", "/reviews/draft", { pilot: "p1", review: r0.id, draft: { title: "x" } }), store)).status, 400);
+});

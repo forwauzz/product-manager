@@ -4227,6 +4227,7 @@
     var meta = [r.subtitle, cur ? "revision " + cur.n + " · published " + stamp(cur.publishedAt.slice(0, 10)) : "not published yet", r.cards.length + " pages", counts.total ? counts.open + " open of " + counts.total + " feedback" : "no feedback yet", finTxt, R.hasFrench(r) ? (r.lang === "fr" ? "French first, English available" : "English first, French available") : (r.lang === "fr" ? "French only" : "English only")];
     var side = [quietPill(r.status, r.status === "Published" ? "st-live" : r.status === "Disabled" ? "st-needs-work" : "")];
     if (open) side.push(chipBtn("Copy link", function (e) { e.stopPropagation(); copyReviewLink(cur); }));
+    side.push(chipBtn("Edit on the page", function (e) { e.stopPropagation(); saveSettled().then(function () { window.open("/review?preview=" + encodeURIComponent(p.id + "/" + r.id) + "&edit=1", "_blank"); }); }));
     side.push(chipBtn("Open preview", function (e) { e.stopPropagation(); window.open("/review?preview=" + encodeURIComponent(p.id + "/" + r.id), "_blank", "noopener"); }));
     return xrow({ key: "rv:" + r.id, title: r.title || "Untitled review", meta: metaLine(meta), side: side, open: true, details: function (det) {
       var acts = el("div", "rowacts");
@@ -4397,7 +4398,7 @@
       body.appendChild(list);
       body.appendChild(chipBtn("+ Page", function () { d.cards.push({ id: uid(), section: d.cards.length ? d.cards[d.cards.length - 1].section : REVIEW_SECTIONS[0], title: "", body: "" }); draw(); }));
       body.appendChild(drawerActs(function () {
-        d.title = d.title.trim(); d.updated = Date.now();
+        d.title = d.title.trim(); d.updated = Date.now(); d.draftAt = d.updated;
         d.cards = d.cards.filter(function (c) { return c.title.trim() || c.body.trim(); });
         Object.assign(r, d); touchPilot(p); close(); render(); save();
       }, close));
