@@ -103,6 +103,7 @@ export function seedIcps() {
 
 /* Make sure every record has every field the UI relies on. Mutates and returns the state. */
 export function normalize(state) {
+  const IDEA_MAX = 8000;
   const s = state && typeof state === "object" ? state : {};
   if (!Array.isArray(s.projects) || !s.projects.length) s.projects = [{ id: uid(), name: "New project", kind: "" }];
   s.projects = s.projects.filter(p => p && typeof p === "object").map(p => ({ id: String(p.id || uid()), name: String(p.name || "Untitled"), kind: String(p.kind || "") }));
@@ -261,6 +262,11 @@ export function normalize(state) {
     applied: !!d.applied, drive: drv(d.drive), created: num(d.created, Date.now()), updated: num(d.updated, Date.now())
   }));
   s.decisions.forEach(d => { if (d.links.problem) { const pp = s.pilots.find(p => p.id === d.pilot); if (!pp || !pp.problems.some(x => x.id === d.links.problem)) delete d.links.problem; } });
+  /* ideas: personal notes jotted on the go. One record, shown on Today and inside its pilot. `created` is the capture time and is never rewritten. */
+  s.ideas = arr(s.ideas).filter(x => x.id && str(x.text).trim()).map(x => {
+    const created = num(x.created, Date.now());
+    return { id: str(x.id), text: str(x.text).slice(0, IDEA_MAX), pilot: pilotIds.has(x.pilot) ? x.pilot : "", created, updated: Math.max(created, num(x.updated, created)) };
+  });
   if (!Array.isArray(s.log)) s.log = [];
   s.log = s.log.filter(e => e && typeof e === "object" && e.id).map(e => ({
     id: String(e.id), t: Number(e.t) || 0, who: String(e.who || ""), fid: String(e.fid || ""), fname: String(e.fname || ""),
@@ -409,6 +415,7 @@ async function mutate(store, fn, who) {
 }
 
 const json = (status, body, headers) => ({ status, body, headers: headers || {} });
+const IDEA_LIMIT = 8000;
 const EFFORT_UNITS = ["days", "weeks", "months"];
 
 /* ---- client reviews: the anonymous side ----
@@ -522,6 +529,41 @@ export async function handleApi(req, store) {
         throw e;
       }
     }
+  }
+
+  /* ideas: saved one at a time so a phone on a weak connection gets a clear yes or no. The id comes from the device,
+     so sending the same idea again (a retry, a double tap) updates nothing and never makes a second copy. */
+  if (path === "/ideas" && method === "POST") {
+    const id = String(body.id || "").trim(), text = String(body.text || "").trim();
+    if (!/^[A-Za-z0-9_-]{6,40}$/.test(id)) return json(400, { error: "idea id missing or malformed" });
+    if (!text) return json(400, { error: "Write something first." });
+    if (text.length > IDEA_LIMIT) return json(400, { error: "That note is too long to save as one idea." });
+    const wantPilot = String(body.pilot || "");
+    const out = await mutate(store, state => {
+      if (wantPilot && !state.pilots.some(x => x.id === wantPilot)) return { error: "That pilot no longer exists." };
+      const now = Date.now();
+      const cur = state.ideas.find(x => x.id === id);
+      if (cur) {
+        if (cur.text === text && cur.pilot === wantPilot) return { result: { idea: cur, duplicate: true } };
+        cur.text = text; cur.pilot = wantPilot; cur.updated = now;
+        return { result: { idea: cur } };
+      }
+      let created = Number(body.created) || now;
+      if (created > now + 5 * 60000 || created < now - 45 * 86400000) created = now;
+      const idea = { id, text, pilot: wantPilot, created, updated: created };
+      state.ideas.push(idea);
+      return { result: { idea, isNew: true } };
+    });
+    if (out.error) return json(400, { error: out.error });
+    return json(200, Object.assign({ ok: true, version: out.snapshot.version }, out.result));
+  }
+  if (seg[0] === "ideas" && seg.length === 2 && method === "DELETE") {
+    const out = await mutate(store, state => {
+      const before = state.ideas.length;
+      state.ideas = state.ideas.filter(x => x.id !== seg[1]);
+      return { result: { removed: before - state.ideas.length } };
+    });
+    return json(200, Object.assign({ ok: true, version: out.snapshot.version }, out.result));
   }
 
   if (path === "/export" && method === "GET") {

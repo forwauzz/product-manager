@@ -6956,7 +6956,7 @@
     var pad = el("div", "pad");
     if (!hits.length && !ph.length) pad.appendChild(el("div", "empty", "No match."));
     if (ph.length) {
-      pad.appendChild(sectionTitle("In pilots · " + ph.length, 4));
+      pad.appendChild(sectionTitle("In pilots and ideas · " + ph.length, 4));
       var pbox = el("div", "zcard zsearchhits");
       ph.slice(0, 40).forEach(function (x) { var b = el("button", "zrowlink"); b.type = "button"; b.appendChild(zIcon(x.icon, 22)); var t = el("span", "t"); t.appendChild(el("b", null, x.title)); t.appendChild(el("span", null, x.sub)); b.appendChild(t); b.appendChild(zIcon("chevR", 18)); b.onclick = x.open; pbox.appendChild(b); });
       pad.appendChild(pbox);
@@ -7186,7 +7186,7 @@
     if (["home", "decisions", "roadmap", "features", "parallel", "timeline", "rnd", "icp", "changes"].indexOf(m[0]) !== -1) { ui.view = m[0]; ui.icpOpen = null; }
   }
 
-  function render() { renderNav(); renderTopbar(); renderView(); writeHash(); }
+  function render() { renderNav(); renderTopbar(); renderTabbar(); renderView(); writeHash(); }
 
   function renderNav() {
     var nav = document.getElementById("nav");
@@ -7352,7 +7352,10 @@
       if (nm.s.participants) { var m3 = el("span"); m3.appendChild(zIcon("users", 17)); m3.appendChild(el("span", null, nm.s.participants)); meta.appendChild(m3); }
       nvb.appendChild(meta);
       if (nm.s.purpose) nvb.appendChild(el("p", "zread", zClampText(nm.s.purpose, 220)));
-      nvb.appendChild(zBtn("Open meeting", "arrowR", "gold", function () { goPilot(nm.p, "meetings", "", nm.s.id); }, true));
+      var nvacts = el("div", "zbtnrow");
+      nvacts.appendChild(zBtn("Open meeting", "arrowR", "gold", function () { goPilot(nm.p, "meetings", "", nm.s.id); }, true));
+      nvacts.appendChild(zEditMeetingBtn(nm.p, nm.s));
+      nvb.appendChild(nvacts);
     } else {
       nvb.appendChild(el("h2", "znexttitle", "No visit planned"));
       nvb.appendChild(el("p", "zread", "Plan the next meeting so its questions are ready before you walk in."));
@@ -7362,6 +7365,7 @@
     var art = el("div", "znextart"); art.setAttribute("aria-hidden", "true");
     nv.appendChild(art);
     main.appendChild(nv);
+    main.appendChild(zIdeasSection(null));
 
     /* actions */
     var ac = zCard();
@@ -7581,7 +7585,10 @@
       t.appendChild(el("span", "ttl", np.title || np.purpose || "Planned meeting"));
       if (np.participants) { var w = el("span", "with"); w.appendChild(zIcon("users", 16)); w.appendChild(el("span", null, np.participants)); t.appendChild(w); }
       row.appendChild(t);
-      row.appendChild(zBtn("Prepare visit", null, "gold", function () { goPilot(p, "meetings", "", np.id); }));
+      var nmacts = el("div", "zbtnrow");
+      nmacts.appendChild(zEditMeetingBtn(p, np));
+      nmacts.appendChild(zBtn("Prepare visit", null, "gold", function () { goPilot(p, "meetings", "", np.id); }));
+      row.appendChild(nmacts);
       c2.appendChild(row);
     } else c2.appendChild(zEmpty("No meeting planned.", zBtn("Plan a meeting", "plus", "", function () { editSession(p, null); })));
     main.appendChild(c2);
@@ -7607,6 +7614,7 @@
     });
     var vf = el("div", "zcardfoot line"); var vt = el("button", "zlink"); vt.type = "button"; vt.appendChild(el("span", null, ppl.length > 4 ? "View all " + ppl.length + " people" : "View team")); vt.appendChild(zIcon("arrowR", 16)); vt.onclick = function () { contextPane(p); }; vf.appendChild(vt); c4.appendChild(vf);
     side.appendChild(c4);
+    var ci = zCard("zideaswrap"); ci.appendChild(zIdeasSection(p)); side.appendChild(ci);
 
     var c5 = zCard();
     c5.appendChild(zCardHead("Progress", null, [zQuiet("All improvements", function () { goPilot(p, "improvements"); })]));
@@ -7662,7 +7670,10 @@
       if (lines.length) nv.appendChild(ul);
       if (lines.length > 3) nv.appendChild(el("p", "zmuted", "And " + (lines.length - 3) + " more " + (qs.length ? "questions" : "agenda items") + "."));
       if (!lines.length) nv.appendChild(el("p", "zmuted", "No questions or agenda yet."));
-      nv.appendChild(zBtn("Open agenda", "arrowR", "gold", function () { goPilot(p, "meetings", "", next.id); }, true));
+      var nvrow = el("div", "zbtnrow");
+      nvrow.appendChild(zBtn("Open agenda", "arrowR", "gold", function () { goPilot(p, "meetings", "", next.id); }, true));
+      nvrow.appendChild(zEditMeetingBtn(p, next));
+      nv.appendChild(nvrow);
       left.appendChild(nv);
     }
     left.appendChild(el("h3", "zh3", "Past meetings"));
@@ -7687,7 +7698,10 @@
   function zMeetingPanel(p, s) {
     var pn = el("aside", "zsplitside");
     pn.appendChild(zBack("Back to meetings", function () { goPilot(p, "meetings"); }));
-    pn.appendChild(el("h2", "zh2", s.title || s.purpose || "Meeting"));
+    var ptop = el("div", "zpaneltop");
+    ptop.appendChild(el("h2", "zh2", s.title || s.purpose || "Meeting"));
+    ptop.appendChild(zEditMeetingBtn(p, s));
+    pn.appendChild(ptop);
     var meta = [zLongDate(s.date), s.time, s.participants].filter(Boolean).join("  ·  ");
     pn.appendChild(el("p", "zmuted", meta));
     var pills = el("div", "zpillrow"); pills.appendChild(quietPill(s.stage, STAGE_CLASS[s.stage])); if (s.draft) pills.appendChild(quietPill("draft", "st-feature-flag")); var cp = calendarPill(p, s); if (cp) pills.appendChild(cp); pn.appendChild(pills);
@@ -7734,7 +7748,6 @@
     as.forEach(function (a) { pn.appendChild(zActionLine(p, a, false)); });
     var ev = p.evidence.filter(function (e) { return e.session === s.id; }).length;
     var foot = el("div", "zbtnrow foot");
-    foot.appendChild(zBtn("Edit meeting", "edit", "", function () { editSession(p, s); }));
     foot.appendChild(zBtn("+ Follow-up", null, "", function () { editAction(p, null, { links: { session: s.id } }); }));
     foot.appendChild(zBtn("+ Question", null, "", function () { editQuestion(p, null, { session: s.id }); }));
     pn.appendChild(foot);
@@ -8486,6 +8499,7 @@
   function zPilotHits(q) {
     var out = [];
     function has() { return Array.prototype.join.call(arguments, " ").toLowerCase().indexOf(q) !== -1; }
+    ideasSorted("").forEach(function (x) { if (has(x.text)) out.push({ icon: "edit", title: zClampText(x.text, 90), sub: "Idea · " + zExactTime(x.created) + (x.pilot && pilotById(x.pilot) ? " · " + pilotById(x.pilot).name : ""), open: function () { go("home"); openIdea(x); } }); });
     pilots().forEach(function (p) {
       ensurePilot(p);
       if (has(p.name)) out.push({ icon: "users", title: p.name, sub: "Pilot · " + p.status, open: function () { goPilot(p, "overview"); } });
@@ -8499,6 +8513,201 @@
       p.reviews.forEach(function (r) { if (has(r.title, r.subtitle || "", "review")) out.push({ icon: "doc", title: r.title + (r.subtitle ? " · " + r.subtitle : ""), sub: "Client review · " + r.status, open: function () { goPilot(p, "business", "reviews"); } }); });
     });
     return out;
+  }
+
+
+  /* ---------- ideas: one text box, an optional pilot, saved one at a time ----------
+     A personal note, not a client request and not a decision. The same record shows on Today and inside its pilot.
+     The capture time is stamped once, on the device, and never changes afterwards. */
+  var IDEA_DRAFT = "alie.ideadraft.v1";
+  function ideas() { if (!Array.isArray(S.ideas)) S.ideas = []; return S.ideas; }
+  function ideasSorted(pilotId) { return ideas().filter(function (x) { return !pilotId || x.pilot === pilotId; }).sort(function (a, b) { return (b.created || 0) - (a.created || 0); }); }
+  function zExactTime(t) {
+    var d = new Date(t);
+    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" }) + " · " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  function zRelTime(t) {
+    var diff = Date.now() - t, d = new Date(t), day = dKey(d);
+    if (diff < 90000) return "Just now";
+    if (diff < 3600000) return Math.round(diff / 60000) + " min ago";
+    if (day === today()) return "Today";
+    if (day === dKey(new Date(Date.now() - 86400000))) return "Yesterday";
+    if (diff < 6 * 86400000) return d.toLocaleDateString(undefined, { weekday: "long" });
+    return "";
+  }
+  function readIdeaDraft() { try { var d = JSON.parse(localStorage.getItem(IDEA_DRAFT) || "null"); return d && typeof d === "object" ? d : null; } catch (e) { return null; } }
+  function writeIdeaDraft(d) { try { if (d && (d.text || d.id)) localStorage.setItem(IDEA_DRAFT, JSON.stringify(d)); else localStorage.removeItem(IDEA_DRAFT); } catch (e) {} }
+  /* the server said yes: mirror its copy here. The version only moves forward when nothing else changed in between. */
+  function applyIdeaFromServer(idea, version, removedId) {
+    var list = ideas();
+    if (removedId) S.ideas = list.filter(function (x) { return x.id !== removedId; });
+    else { var cur = list.filter(function (x) { return x.id === idea.id; })[0]; if (cur) Object.keys(idea).forEach(function (k) { cur[k] = idea[k]; }); else list.push(idea); }
+    if (dirty || saving) return;
+    if (version === VERSION + 1) { VERSION = version; return; }
+    fetch("/api/state", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (doc) { if (doc && !dirty && !saving) { S = doc.state; VERSION = doc.version; render(); } }).catch(function () {});
+  }
+  function sendIdea(payload) {
+    return fetch("/api/ideas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then(function (r) {
+      if (r.status === 401) { location.href = "/login.html"; return new Promise(function () {}); }
+      return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok || !j.idea) throw new Error(j.error || "The server did not confirm the save."); return j; });
+    });
+  }
+  function openIdea(idea, presetPilot) {
+    var isNew = !idea;
+    var draft = isNew ? (readIdeaDraft() || { id: "", text: "", pilot: presetPilot || "", created: 0 }) : { id: idea.id, text: idea.text, pilot: idea.pilot || "", created: idea.created };
+    if (isNew && presetPilot && !draft.text) draft.pilot = presetPilot;
+    if (draft.pilot && !pilotById(draft.pilot)) draft.pilot = "";
+    var ta;
+    sideDrawer(isNew ? "New idea" : "Edit idea", function (body, close) {
+      ta = el("textarea", "zideatext"); ta.rows = 7; ta.value = draft.text || "";
+      ta.placeholder = "What is on your mind?";
+      ta.setAttribute("aria-label", "Your idea"); ta.setAttribute("autocapitalize", "sentences"); ta.setAttribute("enterkeyhint", "enter");
+      ta.oninput = function () { draft.text = ta.value; if (isNew) writeIdeaDraft(draft); };
+      body.appendChild(ta);
+      body.appendChild(el("p", "zideahint", "Just get it down. Organize it later."));
+      if (pilots().length) {
+        var sel = selIn([["", "No pilot"]].concat(pilots().map(function (x) { return [x.id, x.name]; })), draft.pilot || "", function (v) { draft.pilot = v; if (isNew) writeIdeaDraft(draft); });
+        sel.className = "zselect wide";
+        body.appendChild(fld("Pilot (optional)", sel));
+      }
+      var stamp2 = el("p", "zideastamp");
+      function paintStamp() {
+        if (draft.created) stamp2.textContent = "Captured " + zExactTime(draft.created) + (!isNew && idea.updated > idea.created + 1000 ? " · edited " + zExactTime(idea.updated) : "") + ". The capture time never changes.";
+        else stamp2.textContent = "The date and time are recorded when you save.";
+      }
+      paintStamp(); body.appendChild(stamp2);
+      var status = el("p", "zideastatus"); status.setAttribute("role", "status"); status.setAttribute("aria-live", "polite"); body.appendChild(status);
+      var btn = el("button", "zbtn zsaveidea", isNew ? "Save idea" : "Save changes"); btn.type = "button";
+      var busy = false;
+      function submit() {
+        var text = ta.value.trim();
+        if (!text) { status.textContent = "Write something first."; status.className = "zideastatus bad"; ta.focus(); return; }
+        if (busy) return;
+        busy = true; btn.disabled = true; btn.textContent = "Saving…"; status.textContent = ""; status.className = "zideastatus";
+        /* one id and one capture time per note, fixed at the first press: a retry sends the very same idea */
+        if (!draft.id) { draft.id = "i" + uid(); draft.created = Date.now(); }
+        draft.text = text; if (isNew) writeIdeaDraft(draft);
+        paintStamp();
+        sendIdea({ id: draft.id, text: text, pilot: draft.pilot || "", created: draft.created, who: ME }).then(function (j) {
+          if (isNew) writeIdeaDraft(null);
+          applyIdeaFromServer(j.idea, j.version);
+          ui.ideaSavedAt = Date.now(); ui.ideaSavedNew = isNew;
+          close(); render();
+          if (ui.view !== "home") toast(isNew ? "Idea saved. It is under Today, Ideas." : "Idea updated.");
+        }).catch(function (e) {
+          busy = false; btn.disabled = false; btn.textContent = "Try again";
+          status.className = "zideastatus bad";
+          status.textContent = "Not saved: " + (e && e.message === "Failed to fetch" ? "no connection" : (e && e.message) || "unknown error") + ". Your note is kept on this device. Try again when you are back online.";
+        });
+      }
+      btn.onclick = submit;
+      ta.onkeydown = function (e) { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); submit(); } };
+      body.appendChild(btn);
+      var foot = el("div", "zideafoot");
+      if (isNew) {
+        foot.appendChild(zQuiet("Add something else: an action, a meeting, a file…", function () { openCapture(); }));
+        if (draft.text) foot.appendChild(zQuiet("Clear this draft", function () { draft = { id: "", text: "", pilot: "", created: 0 }; writeIdeaDraft(null); ta.value = ""; paintStamp(); ta.focus(); }));
+      } else {
+        foot.appendChild(zQuiet("Delete this idea", function () { deleteIdea(idea, close); }));
+      }
+      body.appendChild(foot);
+    }, { eyebrow: "ALIE", cls: "zidea" });
+    if (ta) { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }
+  }
+  function deleteIdea(idea, after) {
+    askConfirm("Delete this idea?", "“" + zClampText(idea.text, 120) + "” will be removed from Today and from its pilot.", { danger: true, ok: "Delete" }).then(function (yes) {
+      if (!yes) return;
+      fetch("/api/ideas/" + encodeURIComponent(idea.id), { method: "DELETE" }).then(function (r) { return r.json().then(function (j) { if (!r.ok || !j.ok) throw new Error(j.error || "failed"); return j; }); })
+        .then(function (j) { applyIdeaFromServer(null, j.version, idea.id); if (after) after(); render(); toast("Idea deleted."); })
+        .catch(function () { toast("Could not delete it. Check the connection and try again.", true); });
+    });
+  }
+  function zIdeaCard(x, showPilot) {
+    var c = el("article", "zideacard");
+    var top = el("div", "top");
+    var when = el("time", "when"); when.setAttribute("datetime", new Date(x.created).toISOString());
+    var rel = zRelTime(x.created);
+    if (rel) when.appendChild(el("b", null, rel));
+    when.appendChild(el("span", null, zExactTime(x.created)));
+    if (x.updated > x.created + 1000) when.appendChild(el("em", null, "edited"));
+    top.appendChild(when);
+    var m = menu("", [["Edit", function () { openIdea(x); }], ["Change or remove pilot", function () { openIdea(x); }], "-", ["Delete", function () { deleteIdea(x); }, true]], "zmorebtn");
+    var mb = m.querySelector("button"); mb.appendChild(zIcon("more", 20)); mb.setAttribute("aria-label", "More for this idea");
+    top.appendChild(m);
+    c.appendChild(top);
+    var t = el("button", "txt"); t.type = "button"; t.textContent = x.text; t.setAttribute("aria-label", "Edit idea: " + zClampText(x.text, 60)); t.onclick = function () { openIdea(x); };
+    c.appendChild(t);
+    var p = x.pilot ? pilotById(x.pilot) : null;
+    if (showPilot && p) { var pb = el("button", "ztag pilot", p.name); pb.type = "button"; pb.onclick = function () { goPilot(p, "overview"); }; c.appendChild(pb); }
+    return c;
+  }
+  function zIdeasSection(pilot) {
+    var sec = el("section", "zideas" + (pilot ? " inpilot" : ""));
+    var key = pilot ? "p:" + pilot.id : "today";
+    var list = ideasSorted(pilot ? pilot.id : "");
+    if (!pilot && ui.ideaSavedAt && Date.now() - ui.ideaSavedAt < 7000) {
+      var ok = el("div", "zsaved"); ok.setAttribute("role", "status");
+      var ck = el("span", "ck"); ck.appendChild(zIcon("check", 16)); ok.appendChild(ck);
+      ok.appendChild(el("span", null, ui.ideaSavedNew ? "Idea saved" : "Idea updated"));
+      sec.appendChild(ok);
+      setTimeout(function () { if (ok.parentNode) ok.remove(); }, 7000 - (Date.now() - ui.ideaSavedAt));
+    }
+    var hd = el("div", "zideashead");
+    var h = el("h2", null, "Ideas"); if (list.length) h.appendChild(el("em", null, String(list.length))); hd.appendChild(h);
+    var add = el("button", "zaddidea"); add.type = "button"; add.appendChild(zIcon("plus", 18)); add.appendChild(el("span", null, "Idea")); add.onclick = function () { openIdea(null, pilot ? pilot.id : ""); };
+    hd.appendChild(add);
+    sec.appendChild(hd);
+    if (!list.length) sec.appendChild(el("p", "zmuted", pilot ? "No ideas linked to " + pilot.name + " yet. Link one from its menu, or add one here." : "Nothing yet. Jot a thought on your phone and find it here on any device."));
+    var lim = ui.ideasAll === key ? list.length : (pilot ? 3 : 5);
+    list.slice(0, lim).forEach(function (x) { sec.appendChild(zIdeaCard(x, !pilot)); });
+    if (list.length > lim) sec.appendChild(zQuiet("Show all " + list.length + " ideas", function () { ui.ideasAll = key; renderView(); }));
+    else if (ui.ideasAll === key && list.length > (pilot ? 3 : 5)) sec.appendChild(zQuiet("Show fewer", function () { ui.ideasAll = ""; renderView(); }));
+    return sec;
+  }
+
+  /* ---------- edit a meeting: the few fields that change, on the same record ---------- */
+  function zEditMeeting(p, s) {
+    ensureSession(s);
+    var d = { date: s.date || "", time: s.time || "", title: s.title || "", agenda: s.agenda || "", summary: s.summary || "" };
+    sideDrawer("Edit meeting", function (body, close) {
+      var r1 = el("div", "fld two");
+      r1.appendChild(fld("Date", txtIn(d.date, "", function (v) { d.date = v; }, "date")));
+      r1.appendChild(fld("Time", txtIn(d.time, "", function (v) { d.time = v; }, "time")));
+      body.appendChild(r1);
+      body.appendChild(fld("Title", txtIn(d.title, "Onsite with Amélie", function (v) { d.title = v; })));
+      body.appendChild(fld("Agenda", areaIn(d.agenda, "One item per line.", function (v) { d.agenda = v; }, 5)));
+      body.appendChild(fld("Notes", richEditor(d.summary, function (h) { d.summary = h; }, "What happened, or what to remember.", "small")));
+      var kept = [];
+      var nq = p.questions.filter(function (q) { return q.session === s.id; }).length, na = p.actions.filter(function (a) { return a.links && a.links.session === s.id; }).length, ne = p.evidence.filter(function (e) { return e.session === s.id; }).length;
+      if (s.transcript) kept.push("the transcript"); if ((s.files || []).length) kept.push(s.files.length + (s.files.length === 1 ? " file" : " files"));
+      if (nq) kept.push(nq + (nq === 1 ? " question" : " questions")); if (na) kept.push(na + (na === 1 ? " follow-up" : " follow-ups")); if (ne) kept.push(ne + (ne === 1 ? " piece of evidence" : " pieces of evidence"));
+      var note = "Saving changes this same meeting." + (kept.length ? " Everything attached stays with it: " + kept.join(", ") + "." : "");
+      if (s.calendar && s.calendar.eventId) note += " It is in your calendar: the same event is updated, no second event and no invitation.";
+      body.appendChild(el("p", "note", note));
+      var more = zQuiet("All fields: participants, stage, Drive links, transcript", function () { editSession(p, s); });
+      body.appendChild(drawerActs(function () {
+        var moved = d.date !== (s.date || "") || d.time !== (s.time || "");
+        s.date = d.date; s.time = d.time; s.title = d.title.trim(); s.agenda = d.agenda; s.summary = d.summary; s.updated = Date.now();
+        touchPilot(p); close(); render(); save();
+        toast(moved && s.date ? "Meeting moved to " + zLongDate(s.date) + (s.time ? " at " + s.time : "") + "." : "Meeting saved.");
+      }, close, [more]));
+    }, { eyebrow: "MEETING", wide: true });
+  }
+  function zEditMeetingBtn(p, s, cls) { return zBtn("Edit", "edit", cls || "", function (e) { if (e) e.stopPropagation(); zEditMeeting(p, s); }); }
+
+  /* phone: the four destinations sit at the bottom, within reach of a thumb */
+  function renderTabbar() {
+    var bar = document.getElementById("tabbar");
+    if (!bar) return;
+    bar.innerHTML = "";
+    var group = navGroup();
+    [["today", "Today", "home", "home"], ["pilots", "Pilots", "flask", "pilots"], ["work", "Work", "work", "work"], ["library", "Library", "book", "library"]].forEach(function (it) {
+      var b = el("button"); b.type = "button";
+      b.setAttribute("aria-current", group === it[0] ? "page" : "false");
+      b.appendChild(zIcon(it[2], 24)); b.appendChild(el("span", null, it[1]));
+      b.onclick = function () { go(it[3]); };
+      bar.appendChild(b);
+    });
   }
 
   /* ---------- global wiring ---------- */
@@ -8516,7 +8725,8 @@
     document.getElementById("app").dataset.nav = "closed";
     document.getElementById("scrim").style.display = "none";
   };
-  document.getElementById("capbtn").onclick = function () { openCapture(); };
+  document.getElementById("capbtn").onclick = function () { openIdea(null); };
+  document.getElementById("tbbrand").onclick = function () { go("home"); };
   document.getElementById("find").oninput = function (e) { ui.query = e.target.value; renderView(); var fs = document.querySelector(".fsearch input"); if (fs) fs.value = e.target.value; };
   document.addEventListener("keydown", function (e) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); document.getElementById("find").focus(); document.getElementById("find").select(); }

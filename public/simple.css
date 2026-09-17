@@ -387,3 +387,59 @@ button.zdecline:hover { border-color:var(--gold); }
   .zlegacy { padding:18px 18px 0; } .pilotcol { padding-left:18px; } .head h1 { font-size:27px; }
   .zcapgrid { grid-template-columns:minmax(0,1fr); }
 }
+
+/* ---------- ideas ---------- */
+.tbbrand { display:none; }
+.ztabbar { display:none; }
+.zideas { display:flex; flex-direction:column; gap:14px; }
+.zideashead { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.zideashead h2 { margin:0; font-size:24px; font-weight:700; letter-spacing:-.015em; display:flex; align-items:baseline; gap:10px; }
+.zideashead h2 em { font-style:normal; font-size:14px; font-weight:400; color:var(--slate); }
+.zideas.inpilot .zideashead h2 { font-size:19.5px; }
+.zaddidea { display:inline-flex; align-items:center; gap:8px; height:44px; padding:0 20px; border-radius:var(--r-sm); background:#d8bd8a; color:var(--ink); font-size:16px; font-weight:600; }
+.zaddidea:hover { background:#cdb07a; }
+.zideas.inpilot .zaddidea { height:38px; padding:0 14px; font-size:14.5px; }
+.zsaved { display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:var(--r-sm); background:#e6ede4; color:var(--ink); font-size:16px; }
+.zsaved .ck { width:28px; height:28px; border-radius:50%; background:#5f9a6c; color:#fff; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.zideacard { background:var(--card); border:1px solid var(--line); border-radius:var(--r-md); padding:16px 18px 18px; display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
+.zideaswrap .zideacard { padding:12px 14px 14px; background:var(--bone); }
+.zideacard .top { display:flex; align-items:center; justify-content:space-between; width:100%; gap:10px; }
+.zideacard .when { display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline; font-size:13.5px; color:var(--slate); }
+.zideacard .when b { font-weight:500; color:#55534f; }
+.zideacard .when em { font-style:normal; font-size:12px; padding:1px 8px; border-radius:999px; background:#f0ede7; }
+.zideacard .txt { padding:0; text-align:left; font-size:17px; line-height:1.5; color:var(--ink); white-space:pre-wrap; overflow-wrap:anywhere; width:100%; }
+.zideaswrap .zideacard .txt { font-size:15.5px; }
+.zideacard .txt:hover { color:#3a3324; }
+.zmorebtn { width:36px; height:32px; border-radius:var(--r-xs); color:#55534f; display:inline-flex; align-items:center; justify-content:center; padding:0; border:0; background:none; }
+.zmorebtn:hover { background:var(--soft); }
+.zideacard .menu { top:36px; }
+.ztag.pilot { cursor:pointer; } .ztag.pilot:hover { border-color:var(--gold); }
+/* the idea sheet */
+.edrawer.zidea .eyebrow { font-size:22px; letter-spacing:.2em; color:var(--ink); font-weight:400; margin-bottom:26px; }
+.edrawer.zidea > h2 { font-size:30px; letter-spacing:-.02em; margin-bottom:18px; }
+.zideatext { width:100%; min-height:220px; border:1px solid #ddd7cb; border-radius:var(--r-sm); background:var(--card); padding:18px 18px; font-size:18px; line-height:1.5; resize:vertical; }
+.zideatext:focus { outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(168,138,76,.14); }
+.zideahint { margin:10px 2px 18px; font-size:14px; color:var(--slate); }
+.zselect.wide { width:100%; }
+.zideastamp { margin:14px 2px 0; font-size:13.5px; color:var(--slate); }
+.zideastatus { margin:10px 2px 0; min-height:20px; font-size:14.5px; color:var(--slate); } .zideastatus.bad { color:#9a3b22; }
+.zsaveidea { width:100%; height:56px; margin-top:8px; border:0; border-radius:var(--r-sm); background:#cfb27e; color:var(--ink); font-size:18px; font-weight:600; }
+.zsaveidea:hover { background:#c4a56e; border:0; } .zsaveidea:disabled { opacity:.65; cursor:default; }
+.zideafoot { display:flex; flex-direction:column; gap:10px; align-items:flex-start; margin-top:22px; }
+.zpaneltop { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; } .zpaneltop .zh2 { margin-bottom:8px; }
+.znext .zbtnrow { margin-top:auto; } .znext .zbtnrow .zbtn { margin-top:0; }
+@media (max-width:860px) {
+  .burger { display:none !important; }
+  .app .nav { display:none !important; } .app .scrim { display:none !important; }
+  .tbbrand { display:block; font-size:22px; letter-spacing:.2em; font-weight:400; color:var(--ink); padding:0 4px 0 2px; flex:none; }
+  .ztabbar { display:grid; grid-template-columns:repeat(4,1fr); flex:none; background:var(--card); border-top:1px solid var(--line); padding:8px 6px calc(8px + env(safe-area-inset-bottom,0px)); }
+  .ztabbar button { display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 0; font-size:12.5px; color:#77746d; border-radius:var(--r-xs); min-height:52px; }
+  .ztabbar button[aria-current="page"] { color:var(--gold-t); font-weight:600; }
+  .ztoday .zcol > .zideas { order:-1; }
+  .zideashead h2 { font-size:26px; }
+  .edrawer.zidea, .edrawer.zidea.wide { width:100%; max-width:100%; height:100%; top:0; bottom:0; border-radius:0; border-top:0; padding-top:calc(18px + env(safe-area-inset-top,0px)); overflow-y:auto; }
+  .edrawer.zidea .dclose { top:calc(12px + env(safe-area-inset-top,0px)); right:12px; font-size:26px; color:var(--ink); }
+  .zideatext { min-height:36dvh; font-size:18px; }
+  .znext .zbtnrow { width:100%; } .znext .zbtnrow .zbtn { flex:1; width:auto; }
+  .znextmeet .zbtnrow { width:100%; } .znextmeet .zbtnrow .zbtn { flex:1; width:auto; }
+}
