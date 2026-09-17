@@ -30,6 +30,22 @@
         "C:/Users/tamon/AppData/Local/Temp/claude/C--Dev-Product-Manager/1c43b824-796b-4714-87ea-64112d701907/scratchpad/cm_proxy.mjs"
       ],
       "port": 9797
+    },
+    {
+      "name": "pm-live-qa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/tamon/AppData/Local/Temp/claude/C--Dev-Product-Manager/1c43b824-796b-4714-87ea-64112d701907/scratchpad/pm_proxy.mjs"
+      ],
+      "port": 9898
+    },
+    {
+      "name": "shot-sink",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/tamon/AppData/Local/Temp/claude/C--Dev-Product-Manager/1c43b824-796b-4714-87ea-64112d701907/scratchpad/shot_sink.mjs"
+      ],
+      "port": 9977
     }
   ]
 }

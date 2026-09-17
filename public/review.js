@@ -1,5 +1,7 @@
 /* The guest side of a client review: read ten short pages, comment on a page, or highlight a passage and suggest
-   better wording. No account. Everything sent goes to the published revision it was written against. */
+   better wording. No account. Everything sent goes to the published revision it was written against.
+   Layout follows the reference cards: a navigation tree on the left, one white card, a full-height visual or a
+   reading column, round back/next controls. */
 import { UI, snapshotCards, LIMITS } from "/reviews.js";
 
 const root = document.getElementById("rv");
@@ -9,8 +11,11 @@ const params = new URLSearchParams(location.search);
 const token = (location.pathname.match(/^\/r\/([A-Za-z0-9_-]{20,})$/) || [])[1] || "";
 const preview = params.get("preview") || "";
 const rnd = () => "s_" + Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, "0")).join("");
+const ARROW_L = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" opacity=".35"/><path d="M14 8l-4 4 4 4"/></svg>';
+const ARROW_R = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+const visualSrc = n => "/visuals/v" + (/^[1-6]$/.test(String(n)) ? n : "1") + ".svg";
 
-let snap = null, revId = "", T = UI.en, cards = [], idx = 0, name = "", queue = [], mine = {}, done = false, panel = null, toastTimer = 0;
+let snap = null, revId = "", T = UI.en, cards = [], idx = 0, name = "", queue = [], mine = {}, seen = {}, done = false, panel = null, toastTimer = 0;
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } } };
 const K = k => "alie.rv." + revId + "." + k;
 
@@ -23,59 +28,74 @@ async function boot() {
   if (!r.ok || !j.snapshot) return closed(false, j && j.error);
   snap = j.snapshot; revId = preview ? "preview" : j.revisionId; T = UI[snap.lang] || UI.en; cards = snapshotCards(snap);
   document.documentElement.lang = snap.lang; document.title = (snap.title || "ALIE") + " · " + T.cover;
-  name = store.get("alie.rv.name", ""); queue = store.get(K("q"), []); mine = store.get(K("mine"), {}); done = !!store.get(K("done"), false);
+  name = store.get("alie.rv.name", ""); queue = store.get(K("q"), []); mine = store.get(K("mine"), {}); seen = store.get(K("seen"), {}); done = !!store.get(K("done"), false);
   idx = Math.min(cards.length, Math.max(0, Number(store.get(K("pos"), 0)) || 0));
   render();
   retryQueue();
   window.addEventListener("online", retryQueue);
 }
 function closed(network, why) {
-  root.innerHTML = '<div class="rv-closed"><div class="rv-eyebrow">ALIE</div><h1>' + esc(network ? "Cannot reach the server" : T.closed) + "</h1><p>" + esc(network ? "Check your connection and reload." : (why || T.closedHint)) + "</p></div>";
+  root.innerHTML = '<div class="rv-closed"><h1>' + esc(network ? "Cannot reach the server" : T.closed) + "</h1><p>" + esc(network ? "Check your connection and reload." : (why || T.closedHint)) + "</p></div>";
 }
 
 /* ---------- rendering ---------- */
 function render() {
   const N = cards.length;
   const sections = snap.sections;
-  let side = '<a class="rv-brand" href="#" data-go="0"><span class="sq">A</span><b>ALIE</b></a><div class="pilot">' + esc(snap.pilot || "") + "</div>";
-  side += '<button class="rv-item" data-go="0" aria-current="' + (idx === 0) + '"><span class="n">·</span><span>' + esc(snap.title) + "</span></button>";
+  const seenCount = Object.keys(seen).length;
+  let side = '<a class="rv-brand" href="#" data-go="0"><span class="sq">A</span>ALIE<span class="chev">⌄</span></a>';
   let n = 0;
-  sections.forEach(s => {
-    side += '<div class="rv-sec">' + esc(s.title) + "</div>";
-    s.cards.forEach(c => { n++; const m = (mine[c.id] || []).length; side += '<button class="rv-item" data-go="' + n + '" aria-current="' + (idx === n) + '"><span class="n">' + n + '</span><span>' + esc(c.title) + "</span>" + (m ? '<span class="dot">' + m + "</span>" : "") + "</button>"; });
+  sections.forEach((s, si) => {
+    side += '<button class="rv-sec"><span class="ic">' + (si + 1) + '</span><span class="t">' + esc(s.title) + '</span><span class="ch">⌃</span></button>';
+    s.cards.forEach(c => { n++; const m = (mine[c.id] || []).length; side += '<button class="rv-item" data-go="' + n + '" aria-current="' + (idx === n && !done) + '"><span class="box' + (seen[c.id] ? " on" : "") + '"></span><span class="t">' + esc(c.title) + "</span>" + (m ? '<span class="dot">' + m + "</span>" : "") + "</button>"; });
   });
-  side += '<div class="foot">' + esc(T.prepared) + " " + esc(snap.author) + " · " + esc(snap.date) + "<br>" + esc(T.revision) + " " + esc(String(snap.revision)) + "</div>";
+  side += '<div class="foot"><span class="clock"></span><span>' + seenCount + " " + esc(T.of) + " " + N + " " + esc(snap.lang === "fr" ? "pages lues" : "pages read") + "</span></div>";
 
-  let main;
+  let card;
+  const menuBtn = '<button class="rv-menu" data-menu>☰ ' + esc(T.sections) + "</button>";
   if (done) {
-    main = '<div class="rv-col rv-done"><div class="rv-eyebrow">' + esc(snap.pilot) + '</div><h1 class="rv-title">' + esc(T.finished.split(".")[0]) + ".</h1><p>" + esc(T.finished.split(".").slice(1).join(".").trim()) + '</p><p class="note">' + esc(T.finishNote) + '</p><p><button class="rv-cbtn" data-go="1" data-undone="1">' + esc(T.back) + "</button></p></div>";
+    card = '<div class="rv-card article">' + menuBtn + '<div class="rv-scroll"><div class="rv-col"><h1>' + esc(T.finished.split(".")[0]) + '.</h1><div class="rule"></div><div class="rv-body"><p>' + esc(T.finished.split(".").slice(1).join(".").trim()) + "</p><p>" + esc(T.finishNote) + '</p></div></div></div>' +
+      '<button class="rv-back" data-go="' + N + '" data-undone="1" aria-label="' + esc(T.back) + '">' + ARROW_L + "</button></div>";
   } else if (idx === 0) {
-    main = '<div class="rv-col rv-cover"><div class="rv-topline"><div class="rv-eyebrow">' + esc(snap.pilot) + " · " + esc(T.cover) + '</div><button class="rv-cbtn rv-menu" data-menu>' + esc(T.sections) + "</button></div>" +
-      '<h1 class="rv-title">' + esc(snap.title) + '</h1><p class="sub">' + esc(snap.subtitle) + '</p><div class="wash"></div>' +
-      '<p class="meta"><b>' + esc(snap.author) + "</b> · " + esc(snap.date) + " · " + esc(T.revision) + " " + esc(String(snap.revision)) + "<br>" + esc(T.welcomeMeta) + "</p>" +
-      '<p class="intro">' + inline(snap.intro) + '</p><p><button class="rv-cbtn primary" data-go="1">' + esc(T.start) + " →</button></p></div>";
+    card = '<div class="rv-card visual">' + menuBtn + '<img class="rv-visual" src="' + visualSrc(5) + '" alt=""><div class="rv-text"><div class="eyebrow">' + esc(snap.pilot) + " · " + esc(T.cover) + '</div><h1>' + esc(snap.title) + '</h1><div class="sub">' + esc(snap.subtitle) + '</div><p class="meta"><b>' + esc(snap.author) + "</b> · " + esc(snap.date) + " · " + esc(T.revision) + " " + esc(String(snap.revision)) + "<br>" + esc(T.welcomeMeta) + "</p><p>" + inline(snap.intro) + '</p><p><button class="rv-start" data-go="1">' + esc(T.start) + " " + ARROW_R + "</button></p></div>" +
+      controls(N) + "</div>";
   } else {
     const c = cards[idx - 1];
     const sec = sections.find(s => s.cards.some(x => x.id === c.id));
-    main = '<div class="rv-col"><div class="rv-topline"><div class="rv-eyebrow">' + esc(sec ? sec.title : "") + " · " + idx + " " + esc(T.of) + " " + N + '</div><div class="grp"><button class="rv-cbtn rv-menu" data-menu>' + esc(T.sections) + '</button> <button class="rv-cbtn" data-page-comment title="' + esc(T.prompt) + '">✎ ' + esc(T.comment) + "</button></div></div>" +
-      '<h1 class="rv-title">' + esc(c.title) + '</h1><div class="rv-rule"></div><div class="rv-body" data-card="' + esc(c.id) + '">' + c.blocks.map(renderBlock).join("") + "</div>" +
-      (idx === N && snap.closing ? '<p class="rv-callout">' + inline(snap.closing) + "</p>" : "") +
-      renderMine(c.id) + "</div>";
+    const layout = c.layout || "article";
+    const commentBtn = '<button class="rv-cbtn" data-page-comment title="' + esc(T.prompt) + '">✎ ' + esc(T.comment) + "</button>";
+    if (layout === "visual" || layout === "visual-right") {
+      card = '<div class="rv-card visual' + (layout === "visual-right" ? " right" : "") + '">' + menuBtn + commentBtn + '<img class="rv-visual" src="' + visualSrc(c.visual || (idx % 6) + 1) + '" alt=""><div class="rv-text"><h1>' + esc(c.title) + '</h1><div class="rv-body" data-card="' + esc(c.id) + '">' + c.blocks.map(b => renderBlock(b, true)).join("") + (idx === N && snap.closing ? '<p class="closing">' + inline(snap.closing) + "</p>" : "") + "</div>" + renderMine(c.id) + "</div>" + controls(N) + "</div>";
+    } else {
+      let blocks = c.blocks.map(b => renderBlock(b, false));
+      if (c.figure && blocks.length) { const last = blocks.pop(); blocks.push('<div class="rv-fig">' + last + '<img src="' + visualSrc(c.figure) + '" alt=""></div>'); }
+      card = '<div class="rv-card article">' + menuBtn + commentBtn + '<div class="rv-scroll"><div class="rv-col"><div class="eyebrow" style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8a8a8a;margin-bottom:14px">' + esc(sec ? sec.title : "") + '</div><h1>' + esc(c.title) + '</h1><div class="rule"></div><div class="rv-body" data-card="' + esc(c.id) + '">' + blocks.join("") + (idx === N && snap.closing ? '<div class="rv-quote">' + inline(snap.closing) + "</div>" : "") + "</div>" + renderMine(c.id) + "</div></div>" + controls(N) + "</div>";
+    }
   }
-  const bar = done ? "" : '<div class="rv-bar"><div class="grp"><button class="rv-cbtn" data-go="' + (idx - 1) + '"' + (idx <= 0 ? " disabled" : "") + ">← " + esc(T.back) + '</button></div><span class="count">' + (idx ? idx + " " + esc(T.of) + " " + N : "") + '</span><div class="grp">' +
-    (idx < N ? '<button class="rv-cbtn primary" data-go="' + (idx + 1) + '">' + esc(idx === 0 ? T.start : T.next) + " →</button>" : (preview ? "" : '<button class="rv-cbtn primary" data-finish>' + esc(T.finish) + "</button>")) + "</div></div>";
   root.setAttribute("data-panel", panel ? "open" : "closed");
-  root.innerHTML = '<aside class="rv-side" id="side">' + side + '</aside><main class="rv-main" id="main">' + (preview ? '<div class="rv-preview">Preview · comments are off</div>' : "") + main + "</main>" + (panel ? '<aside class="rv-panel" id="panel">' + renderPanel() + "</aside>" : "") + bar;
+  root.innerHTML = '<aside class="rv-side" id="side">' + side + "</aside>" + (preview ? '<div class="rv-preview">Preview · comments are off</div>' : "") + card;
+  const cardEl = root.querySelector(".rv-card");
+  if (panel && cardEl) { const pn = document.createElement("aside"); pn.className = "rv-panel"; pn.id = "panel"; pn.innerHTML = renderPanel(); cardEl.appendChild(pn); }
+  if (cardEl) { const bg = document.createElement("div"); bg.className = "rv-bar-bg"; cardEl.appendChild(bg); }
   wire();
 }
-function renderBlock(b) {
+function controls(N) {
+  const isVisual = idx === 0 || ((cards[idx - 1] || {}).layout || "article") !== "article";
+  const back = '<button class="rv-back" data-go="' + (idx - 1) + '"' + (idx <= 0 ? " disabled" : "") + ' aria-label="' + esc(T.back) + '">' + ARROW_L + "</button>";
+  const count = idx ? '<span class="rv-count">' + idx + " " + esc(T.of) + " " + N + "</span>" : "";
+  let next;
+  if (idx < N) next = isVisual ? '<button class="rv-next" data-go="' + (idx + 1) + '" aria-label="' + esc(T.next) + '">' + ARROW_R + "</button>" : '<button class="rv-next pill" data-go="' + (idx + 1) + '">' + esc(T.next) + " " + ARROW_R + "</button>";
+  else next = preview ? "" : '<button class="rv-next pill dark" data-finish>' + esc(T.finish) + "</button>";
+  return back + count + next;
+}
+function renderBlock(b, compact) {
   let inner;
   if (b.kind === "h") inner = "<h2>" + inline(b.text) + "</h2>" + (b.rest ? "<p>" + inline(b.rest) + "</p>" : "");
-  else if (b.kind === "callout") inner = '<aside class="rv-callout">' + inline(b.text) + "</aside>";
-  else if (b.kind === "steps") inner = "<ol>" + b.items.map(i => "<li>" + inline(i) + "</li>").join("") + "</ol>";
+  else if (b.kind === "callout") inner = '<div class="rv-quote' + (/^(to confirm|à confirmer)/i.test(b.text) ? " pink" : "") + '">' + inline(b.text) + "</div>";
+  else if (b.kind === "steps") inner = b.items.map((it, i) => { const m = /^\*\*(.+?)\*\*\s*(.*)$/.exec(it); return '<div class="rv-num"><span class="n">' + (i + 1) + "</span>" + (m ? "<b>" + inline(m[1]) + "</b>" + inline(m[2]) : inline(it)) + "</div>"; }).join("");
   else if (b.kind === "list") inner = "<ul>" + b.items.map(i => "<li>" + inline(i) + "</li>").join("") + "</ul>";
-  else if (b.kind === "columns") inner = '<div class="rv-cols">' + b.head.map((h, i) => '<div class="rv-col-card"><h3>' + inline(h) + "</h3>" + b.rows.map(r => "<p>" + inline(r[i] || "") + "</p>").join("") + "</div>").join("") + "</div>";
-  else inner = "<p>" + inline(b.text) + "</p>";
+  else if (b.kind === "columns") inner = '<div class="rv-grid">' + b.head.map((h, i) => '<div><img class="ico" src="' + visualSrc(2 + i) + '" alt=""><b>' + inline(h) + "</b>" + b.rows.map(r => "<p>" + inline(r[i] || "") + "</p>").join("") + "</div>").join("") + "</div>";
+  else inner = '<p class="' + (b.text.length <= 70 && /:$/.test(b.text) ? "lead" : "") + '">' + inline(b.text) + "</p>";
   return '<div class="rv-block" data-block="' + esc(b.id) + '">' + inner + "</div>";
 }
 function renderMine(cardId) {
@@ -88,12 +108,12 @@ function renderPanel() {
   const c = cards.find(x => x.id === p.card);
   const failed = queue.filter(q => q.status === "failed").length;
   let h = '<button class="x" data-panel-close aria-label="' + esc(T.cancel) + '">×</button><h2>' + esc(p.mode === "suggest" ? T.suggest : p.mode === "comment" ? T.commentSel : T.pageComment) + '</h2><div class="where">' + esc(T.onPage) + " " + esc(c ? c.title : "") + "</div>";
-  if (failed) h += '<div class="unsent">' + esc(T.failed) + ' <button class="rv-cbtn" data-retry style="min-height:32px;padding:4px 10px;margin-left:6px">' + esc(T.retry) + "</button></div>";
+  if (failed) h += '<div class="unsent">' + esc(T.failed) + ' <button class="btn" data-retry style="height:32px;padding:0 10px;margin-left:6px">' + esc(T.retry) + "</button></div>";
   if (p.quote) h += "<label>" + esc(T.original) + "</label><blockquote>" + esc(p.quote) + "</blockquote>";
   if (p.mode === "suggest") h += '<label for="pf-sug">' + esc(T.replacement) + '</label><textarea id="pf-sug" maxlength="' + LIMITS.suggestion + '">' + esc(p.suggestion) + '</textarea><label for="pf-txt">' + esc(T.why) + '</label><textarea id="pf-txt" style="min-height:70px" maxlength="' + LIMITS.text + '">' + esc(p.text) + "</textarea>";
   else h += '<label for="pf-txt">' + esc(T.prompt) + '</label><textarea id="pf-txt" maxlength="' + LIMITS.text + '">' + esc(p.text) + "</textarea>";
-  if (!name) h += '<label for="pf-name">' + esc(T.name) + '</label><input id="pf-name" maxlength="' + LIMITS.name + '" autocomplete="name"><div class="hint">' + esc(T.nameHint) + "</div>";
-  h += '<div class="acts"><button class="rv-cbtn primary" data-send' + (preview ? " disabled" : "") + ">" + esc(T.send) + '</button><button class="rv-cbtn" data-panel-close>' + esc(T.cancel) + "</button></div>";
+  if (!name) h += '<label for="pf-name">' + esc(T.name) + '</label><input id="pf-name" maxlength="' + LIMITS.name + '" autocomplete="name" value="' + esc(p.name || "") + '"><div class="hint">' + esc(T.nameHint) + "</div>";
+  h += '<div class="acts"><button class="btn primary" data-send' + (preview ? " disabled" : "") + ">" + esc(T.send) + '</button><button class="btn" data-panel-close>' + esc(T.cancel) + "</button></div>";
   h += '<div class="status' + (p.status === "ok" ? " ok" : p.status === "bad" ? " bad" : "") + '">' + esc(p.statusText || "") + "</div>";
   return h;
 }
@@ -102,10 +122,11 @@ function renderPanel() {
 function wire() {
   root.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", e => { e.preventDefault(); if (b.dataset.undone) { done = false; store.set(K("done"), false); } go(Number(b.dataset.go)); }));
   root.querySelectorAll("[data-menu]").forEach(b => b.addEventListener("click", () => { root.setAttribute("data-menu", root.getAttribute("data-menu") === "open" ? "closed" : "open"); }));
+  root.querySelectorAll(".rv-sec").forEach(b => b.addEventListener("click", () => { const first = b.nextElementSibling; if (first && first.dataset.go) go(Number(first.dataset.go)); }));
   const side = document.getElementById("side");
   side.addEventListener("click", e => { if (e.target.closest("[data-go]")) root.setAttribute("data-menu", "closed"); });
-  const main = document.getElementById("main");
-  main.addEventListener("click", e => { if (root.getAttribute("data-menu") === "open" && !e.target.closest("[data-menu]")) root.setAttribute("data-menu", "closed"); });
+  const cardEl = root.querySelector(".rv-card");
+  if (cardEl) cardEl.addEventListener("click", e => { if (root.getAttribute("data-menu") === "open" && !e.target.closest("[data-menu]")) root.setAttribute("data-menu", "closed"); });
   const pc = root.querySelector("[data-page-comment]"); if (pc) pc.addEventListener("click", () => openPanel("page", cards[idx - 1].id));
   const fin = root.querySelector("[data-finish]"); if (fin) fin.addEventListener("click", finish);
   root.querySelectorAll("[data-panel-close]").forEach(b => b.addEventListener("click", closePanel));
@@ -113,15 +134,18 @@ function wire() {
   const rt = root.querySelector("[data-retry]"); if (rt) rt.addEventListener("click", retryQueue);
   const txt = document.getElementById("pf-txt"); if (txt) txt.addEventListener("input", () => { panel.text = txt.value; });
   const sug = document.getElementById("pf-sug"); if (sug) sug.addEventListener("input", () => { panel.suggestion = sug.value; });
+  const nmi = document.getElementById("pf-name"); if (nmi) nmi.addEventListener("input", () => { panel.name = nmi.value; });
   if (panel && !panel.focused) { panel.focused = true; const f = document.getElementById(panel.mode === "suggest" ? "pf-sug" : "pf-txt"); if (f && window.innerWidth > 860) f.focus(); }
-  const body = root.querySelector(".rv-body");
+  const body = root.querySelector(".rv-body[data-card]");
   if (body && !preview) { body.addEventListener("mouseup", onSelect); body.addEventListener("touchend", () => setTimeout(onSelect, 60)); body.addEventListener("keyup", e => { if (e.shiftKey) onSelect(); }); }
+  const sc = root.querySelector(".rv-scroll, .rv-text"); if (sc) sc.scrollTop = 0;
   window.scrollTo({ top: 0 });
 }
 function go(i) {
   if (i < 0 || i > cards.length) return;
   idx = i; store.set(K("pos"), idx);
-  if (panel && !(panel.text || panel.suggestion)) panel = null; /* an empty form closes; a started one stays on its page */
+  if (idx > 0) { seen[cards[idx - 1].id] = 1; store.set(K("seen"), seen); }
+  if (panel && !(panel.text || panel.suggestion || panel.name)) panel = null; /* an empty form closes; a started one (text or a typed name) stays on its page */
   removeSelbar(); render();
 }
 document.addEventListener("keydown", e => {
@@ -131,7 +155,8 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") { removeSelbar(); if (panel && !(panel.text || panel.suggestion)) closePanel(); root.setAttribute("data-menu", "closed"); }
 });
 function openPanel(mode, cardId, sel) {
-  panel = Object.assign({ mode, card: cardId, block: "", quote: "", start: -1, end: -1, context: "", text: "", suggestion: "", status: "", statusText: "", focused: false }, sel || {});
+  const keepName = panel ? panel.name || "" : "";
+  panel = Object.assign({ mode, card: cardId, block: "", quote: "", start: -1, end: -1, context: "", text: "", suggestion: "", name: keepName, status: "", statusText: "", focused: false }, sel || {});
   if (mode === "suggest" && !panel.suggestion) panel.suggestion = panel.quote;
   removeSelbar(); render();
   if (window.innerWidth <= 860) { const pn = document.getElementById("panel"); if (pn) pn.scrollTop = 0; }
@@ -159,8 +184,9 @@ function onSelect() {
   bar.innerHTML = '<button data-m="comment">💬 ' + esc(T.commentSel) + '</button><button data-m="suggest">✎ ' + esc(T.suggest) + "</button>";
   document.body.appendChild(bar);
   const w = bar.offsetWidth;
-  bar.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, rect.left + window.scrollX + rect.width / 2 - w / 2)) + "px";
-  bar.style.top = Math.max(8, rect.top + window.scrollY - bar.offsetHeight - 10) + "px";
+  bar.style.position = "fixed";
+  bar.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, rect.left + rect.width / 2 - w / 2)) + "px";
+  bar.style.top = Math.max(8, rect.top - bar.offsetHeight - 10) + "px";
   bar.querySelectorAll("button").forEach(b => b.addEventListener("mousedown", e => e.preventDefault()));
   bar.querySelectorAll("button").forEach(b => b.addEventListener("click", () => { openPanel(b.dataset.m, sel.card, sel); if (s.removeAllRanges) s.removeAllRanges(); }));
   blockEl.classList.add("hl"); setTimeout(() => blockEl.classList.remove("hl"), 1500);
@@ -208,7 +234,7 @@ async function retryQueue() {
 async function finish() {
   if (preview) return;
   if (!name) { openPanel("page", cards[cards.length - 1].id); setStatus("", T.name); return; }
-  const item = { id: rnd(), payload: { submission: rnd(), kind: "finish", name }, status: "sending", at: Date.now() };
+  const item = { id: rnd(), payload: { submission: "", kind: "finish", name }, status: "sending", at: Date.now() };
   item.payload.submission = item.id;
   queue.push(item); store.set(K("q"), queue);
   const ok = await send(item);

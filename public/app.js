@@ -64,11 +64,14 @@
     clearTimeout(timer);
     timer = setTimeout(flush, 350);
   }
+  var inflight = null;
   function flush() {
-    if (!dirty || saving) return Promise.resolve();
+    /* a save already on the wire: wait for it, then send whatever is still unsaved */
+    if (saving) return inflight ? inflight.then(function () { return flush(); }) : Promise.resolve();
+    if (!dirty) return Promise.resolve();
     saving = true; dirty = false;
     setSaveState("Saving…");
-    return fetch("/api/state", {
+    inflight = fetch("/api/state", {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ version: VERSION, state: S, who: ME })
     }).then(function (r) {
@@ -96,6 +99,16 @@
     }).then(function () {
       saving = false;
       if (dirty) { clearTimeout(timer); timer = setTimeout(flush, conflicts ? 120 : 1500); }
+    });
+    return inflight;
+  }
+  /* resolves once nothing is left unsaved: a save that conflicted and merged is sent again before this settles */
+  function saveSettled(tries) {
+    tries = tries === undefined ? 40 : tries;
+    return flush().then(function () {
+      if (!dirty && !saving) return true;
+      if (tries <= 0) return false;
+      return new Promise(function (r) { setTimeout(r, 200); }).then(function () { return saveSettled(tries - 1); });
     });
   }
   window.addEventListener("beforeunload", function (e) {
@@ -3626,7 +3639,7 @@
       var b = el("button", "chip", st === "Error" ? "Retry" : d.fileId ? "Sync now" : "Push to Drive");
       b.onclick = function (e) {
         e.stopPropagation(); b.disabled = true; b.textContent = "Pushing…";
-        flush().then(function () { return fetch("/api/drive/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: kind, id: rec.id, pilot: pilot ? pilot.id : "" }) }); })
+        saveSettled().then(function () { return fetch("/api/drive/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: kind, id: rec.id, pilot: pilot ? pilot.id : "" }) }); })
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (x) {
             var j = x.j || {};
@@ -4207,7 +4220,11 @@
   }
   function reviewRow(p, r) {
     var R = RV(), cur = reviewCurrent(r), open = cur && R.revisionOpen(cur), counts = R.feedbackCounts(r);
-    var meta = [r.subtitle, cur ? "revision " + cur.n + " · published " + stamp(cur.publishedAt.slice(0, 10)) : "not published yet", r.cards.length + " pages", counts.total ? counts.open + " open of " + counts.total + " feedback" : "no feedback yet", counts.finished ? "finished by " + (counts.finished.name || "the reader") + " on " + stamp(new Date(counts.finished.created).toISOString().slice(0, 10)) : (cur ? "not finished" : ""), r.lang === "fr" ? "French" : "English"];
+    var finTxt = "";
+    if (cur && counts.finished) finTxt = "revision " + cur.n + " finished by " + (counts.finished.name || "the reader") + " on " + stamp(new Date(counts.finished.created).toISOString().slice(0, 10));
+    else if (cur && counts.finishedEarlier) { var fr = r.revisions.filter(function (x) { return x.id === counts.finishedEarlier.revision; })[0]; finTxt = "revision " + cur.n + " not finished yet" + (fr ? " (revision " + fr.n + " was finished by " + (counts.finishedEarlier.name || "the reader") + ")" : ""); }
+    else if (cur) finTxt = "revision " + cur.n + " not finished yet";
+    var meta = [r.subtitle, cur ? "revision " + cur.n + " · published " + stamp(cur.publishedAt.slice(0, 10)) : "not published yet", r.cards.length + " pages", counts.total ? counts.open + " open of " + counts.total + " feedback" : "no feedback yet", finTxt, r.lang === "fr" ? "French" : "English"];
     var side = [quietPill(r.status, r.status === "Published" ? "st-live" : r.status === "Disabled" ? "st-needs-work" : "")];
     if (open) side.push(chipBtn("Copy link", function (e) { e.stopPropagation(); copyReviewLink(cur); }));
     side.push(chipBtn("Open preview", function (e) { e.stopPropagation(); window.open("/review?preview=" + encodeURIComponent(p.id + "/" + r.id), "_blank", "noopener"); }));
@@ -4254,11 +4271,17 @@
     var cur = reviewCurrent(r);
     askConfirm(cur ? "Publish revision " + (cur.n + 1) + "?" : "Publish this review?", cur ? "The current link stops working and a new link is created for the new revision. Earlier feedback keeps its quotes; anchors that no longer match are flagged, never moved." : "A fixed copy of the pages is frozen behind a new link. Later edits need a new revision.", { ok: "Publish" }).then(function (y) {
       if (!y) return;
-      flush().then(function () { return fetch("/api/reviews/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pilot: p.id, review: r.id, who: ME }) }); })
+      saveSettled().then(function (ok) { if (!ok) throw new Error("The draft could not be saved yet. Try again in a moment."); return fetch("/api/reviews/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pilot: p.id, review: r.id, who: ME }) }); })
         .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, j: j }; }); })
         .then(function (x) {
           if (!x.ok || !x.j.ok) { toast("Could not publish: " + (x.j.error || "server error"), true); return; }
-          S = x.j.state; VERSION = x.j.version; dirty = false;
+          /* keep our own copy: add the revision the server made, and take its version number. Anything else written on the
+             server meanwhile (feedback, revisions) is unioned back in by the server on the next save. */
+          var rv = x.j.state && x.j.state.pilots.filter(function (pp) { return pp.id === p.id; })[0];
+          var srv = rv && rv.reviews.filter(function (rr) { return rr.id === r.id; })[0];
+          var made = srv && srv.revisions.filter(function (z) { return z.id === x.j.revision.id; })[0];
+          if (made) { r.revisions.forEach(function (z) { z.disabled = true; }); r.revisions.push(made); r.status = "Published"; r.updated = Date.now(); touchPilot(p); }
+          VERSION = x.j.version;
           render(); toast("Revision " + x.j.revision.n + " published. Copy the link to share it.");
         }).catch(function () { toast("Could not reach the server.", true); });
     });
@@ -4337,6 +4360,11 @@
           var secIn = txtIn(c.section, "Section", function (v) { c.section = v; }); secIn.setAttribute("list", "rvsections"); rr.appendChild(fld("Section", secIn));
           rr.appendChild(fld("Page title", txtIn(c.title, "", function (v) { c.title = v; })));
           box.appendChild(rr);
+          var r3 = el("div", "fld two");
+          r3.appendChild(fld("Composition", selIn([["article", "Reading column"], ["visual", "Visual left, text right"], ["visual-right", "Text left, visual right"]], c.layout || "article", function (v) { c.layout = v; })));
+          var vis = [["", "None"], ["1", "Visual 1 · pink to blue"], ["2", "Visual 2 · peach to lilac"], ["3", "Visual 3 · sky to rose"], ["4", "Visual 4 · gold to blue"], ["5", "Visual 5 · violet to mint"], ["6", "Visual 6 · mint to violet"]];
+          r3.appendChild(fld((c.layout || "article") === "article" ? "Figure beside the last block" : "Visual", selIn(vis, (c.layout || "article") === "article" ? (c.figure || "") : (c.visual || ""), function (v) { if ((c.layout || "article") === "article") c.figure = v; else c.visual = v; })));
+          box.appendChild(r3);
           var words = c.body.split(/\s+/).filter(Boolean).length;
           var wc = el("span", "note", words + " words");
           box.appendChild(fld("Text", areaIn(c.body, "", function (v) { c.body = v; wc.textContent = v.split(/\s+/).filter(Boolean).length + " words"; }, 9)));
