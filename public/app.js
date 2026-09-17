@@ -4224,7 +4224,7 @@
     if (cur && counts.finished) finTxt = "revision " + cur.n + " finished by " + (counts.finished.name || "the reader") + " on " + stamp(new Date(counts.finished.created).toISOString().slice(0, 10));
     else if (cur && counts.finishedEarlier) { var fr = r.revisions.filter(function (x) { return x.id === counts.finishedEarlier.revision; })[0]; finTxt = "revision " + cur.n + " not finished yet" + (fr ? " (revision " + fr.n + " was finished by " + (counts.finishedEarlier.name || "the reader") + ")" : ""); }
     else if (cur) finTxt = "revision " + cur.n + " not finished yet";
-    var meta = [r.subtitle, cur ? "revision " + cur.n + " · published " + stamp(cur.publishedAt.slice(0, 10)) : "not published yet", r.cards.length + " pages", counts.total ? counts.open + " open of " + counts.total + " feedback" : "no feedback yet", finTxt, r.lang === "fr" ? "French" : "English"];
+    var meta = [r.subtitle, cur ? "revision " + cur.n + " · published " + stamp(cur.publishedAt.slice(0, 10)) : "not published yet", r.cards.length + " pages", counts.total ? counts.open + " open of " + counts.total + " feedback" : "no feedback yet", finTxt, R.hasFrench(r) ? (r.lang === "fr" ? "French first, English available" : "English first, French available") : (r.lang === "fr" ? "French only" : "English only")];
     var side = [quietPill(r.status, r.status === "Published" ? "st-live" : r.status === "Disabled" ? "st-needs-work" : "")];
     if (open) side.push(chipBtn("Copy link", function (e) { e.stopPropagation(); copyReviewLink(cur); }));
     side.push(chipBtn("Open preview", function (e) { e.stopPropagation(); window.open("/review?preview=" + encodeURIComponent(p.id + "/" + r.id), "_blank", "noopener"); }));
@@ -4291,6 +4291,7 @@
     var row = el("div", "rvfb");
     var head = el("div", "rvfb-head");
     head.appendChild(quietPill(fb.kind === "suggestion" ? "suggested correction" : fb.kind === "finish" ? "finished review" : "comment", fb.kind === "suggestion" ? "st-planned" : fb.kind === "finish" ? "st-live" : ""));
+    if (R.hasFrench(r)) head.appendChild(quietPill(R.feedbackLang(r, fb) === "fr" ? "FR" : "EN", "st-planned"));
     var rev = r.revisions.filter(function (x) { return x.id === fb.revision; })[0];
     head.appendChild(el("span", "note", [fb.name || "unnamed", new Date(fb.created).toLocaleString(), rev ? "revision " + rev.n : "", fb.card ? reviewCardTitle(r, fb.card) : ""].filter(Boolean).join(" · ")));
     var anchor = R.anchorStatus(r, fb);
@@ -4339,9 +4340,19 @@
       r2.appendChild(fld("Prepared by", txtIn(d.author, "", function (v) { d.author = v; })));
       r2.appendChild(fld("Date shown", txtIn(d.date, "", function (v) { d.date = v; }, "date")));
       body.appendChild(r2);
-      body.appendChild(fld("Language of the pages", selIn([["en", "English"], ["fr", "Français"]], d.lang, function (v) { d.lang = v; }), "Sets the reader's buttons and labels. Comments keep the language and revision they were written against."));
+      body.appendChild(fld("Language shown first", selIn([["en", "English"], ["fr", "Français"]], d.lang, function (v) { d.lang = v; }), "The reader can switch to the other language when its text is filled in below. Comments keep the language, page and revision they were written against."));
       body.appendChild(fld("Welcome text", areaIn(d.intro, "Why this exists and how to correct it.", function (v) { d.intro = v; }, 3)));
       body.appendChild(fld("Closing text", areaIn(d.closing, "Shown on the last page above Finish review.", function (v) { d.closing = v; }, 2)));
+      var frTop = el("div", "rvfr");
+      frTop.appendChild(el("div", "lab", "En français"));
+      var rf = el("div", "fld two");
+      rf.appendChild(fld("Titre", txtIn(d.titleFr || "", "Le Cabinet M", function (v) { d.titleFr = v; })));
+      rf.appendChild(fld("Sous-titre", txtIn(d.subtitleFr || "", "Ce que je comprends de votre cabinet jusqu’ici", function (v) { d.subtitleFr = v; })));
+      frTop.appendChild(rf);
+      frTop.appendChild(fld("Texte d’accueil", areaIn(d.introFr || "", "", function (v) { d.introFr = v; }, 3)));
+      frTop.appendChild(fld("Mot de la fin", areaIn(d.closingFr || "", "", function (v) { d.closingFr = v; }, 2)));
+      if (/cabinet\s*m/i.test(p.name)) frTop.appendChild(chipBtn("Fill the French from the approved text", function () { var n = RV().addCabinetMFrench(d); toast(n.length ? "French text added to " + n.length + " fields. Save to keep it." : "French text is already there."); close(); editReview(p, Object.assign(r, d), isNew); }));
+      body.appendChild(frTop);
       body.appendChild(el("div", "lab", "Pages"));
       body.appendChild(el("p", "note", "Blank line between blocks. “## ” a subheading, “> ” a callout, “1. ” numbered steps, “- ” bullets, “| left | right |” rows for a two-column comparison (first row is the headings), **bold** and *italic*. Aim for 60 to 160 words a page."));
       var list = el("div", "rvcards");
@@ -4369,6 +4380,14 @@
           var wc = el("span", "note", words + " words");
           box.appendChild(fld("Text", areaIn(c.body, "", function (v) { c.body = v; wc.textContent = v.split(/\s+/).filter(Boolean).length + " words"; }, 9)));
           box.appendChild(wc);
+          var frBox = el("div", "rvfr");
+          frBox.appendChild(el("div", "lab", "En français" + ((c.bodyFr || "").trim() ? "" : " · not written yet")));
+          var rfr = el("div", "fld two");
+          rfr.appendChild(fld("Section", txtIn(c.sectionFr || "", "", function (v) { c.sectionFr = v; })));
+          rfr.appendChild(fld("Titre de la page", txtIn(c.titleFr || "", "", function (v) { c.titleFr = v; })));
+          frBox.appendChild(rfr);
+          frBox.appendChild(fld("Texte", areaIn(c.bodyFr || "", "Same markup as the English text.", function (v) { c.bodyFr = v; }, 7)));
+          box.appendChild(frBox);
           list.appendChild(box);
         });
       }

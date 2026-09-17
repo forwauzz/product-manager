@@ -1706,3 +1706,4 @@
   .rvlinks { display:flex; gap:8px; flex-wrap:wrap; }
   .rvcard-edit { border:1px solid var(--line); border-radius:var(--r-md); padding:12px 14px; margin:0 0 12px; background:var(--bone); }
   .rvcard-edit .row.between { margin-bottom:8px; }
+  .rvfr { border-left:3px solid var(--gold); padding:8px 0 4px 14px; margin:10px 0 6px; }

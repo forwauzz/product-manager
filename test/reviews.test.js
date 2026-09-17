@@ -25,7 +25,7 @@ test("the Cabinet M draft is ten short pages in five sections, with the records 
   const records = snapshotCards(snap).find(c => c.id === "c4");
   assert.ok(records.blocks.some(b => b.kind === "columns" && b.head.length === 2));
   assert.ok(!JSON.stringify(snap).includes("IMG_"), "no transcript references reach the guest");
-  assert.deepEqual(Object.keys(snap).sort(), ["author", "closing", "date", "intro", "lang", "pilot", "reviewId", "revision", "sections", "subtitle", "title"]);
+  assert.deepEqual(Object.keys(snap).sort(), ["alt", "author", "closing", "date", "intro", "lang", "pilot", "reviewId", "revision", "sections", "subtitle", "title"]);
 });
 
 function pilotState() {
@@ -140,7 +140,7 @@ test("a suggestion changes the draft only, once, and leaves a trace; anchors are
   const out = applySuggestion(r, fb, 2000);
   assert.equal(out.ok, true);
   assert.ok(r.cards.find(c => c.id === "c2").body.includes("rebuilds the history"));
-  assert.equal(fb.state, "Applied"); assert.deepEqual(fb.applied, { at: 2000, before: "reconstructs the history", after: "rebuilds the history", card: "c2" });
+  assert.equal(fb.state, "Applied"); assert.deepEqual(fb.applied, { at: 2000, before: "reconstructs the history", after: "rebuilds the history", card: "c2", lang: "en" });
   assert.ok(JSON.stringify(snap).includes("reconstructs the history"), "the published snapshot is untouched");
   assert.equal(anchorStatus(r, fb), "changed");
   assert.equal(applySuggestion(r, fb, 3000).ok, false);
@@ -149,4 +149,40 @@ test("a suggestion changes the draft only, once, and leaves a trace; anchors are
   assert.equal(anchorStatus(r, { kind: "comment", card: "zzz", quote: "q" }), "card missing");
   const e = emptyReview({ title: "T" });
   assert.equal(e.status, "Draft"); assert.equal(e.cards.length, 0);
+});
+
+test("a review carries French pages; the guest gets both languages, and a French correction lands in the French text", async () => {
+  const { hasFrench, snapshotLangs, cardIn } = await import("../public/reviews.js");
+  const d = cabinetMDraft();
+  assert.equal(hasFrench(d), true);
+  assert.equal(d.cards.filter(c => c.bodyFr).length, 10);
+  const snap = snapshotOf(d, { name: "Le Cabinet M" }, 1);
+  assert.deepEqual(snapshotLangs(snap), ["en", "fr"]);
+  assert.equal(snap.alt.lang, "fr");
+  assert.equal(snap.alt.sections.length, 5);
+  assert.equal(snapshotCards(snap, "fr").length, 10);
+  assert.deepEqual(snapshotCards(snap, "fr").map(c => c.id), snapshotCards(snap, "en").map(c => c.id), "page ids are shared across languages");
+  assert.equal(cardIn(d.cards[3], "fr").title, "L’ouverture et les demandes de documents");
+  assert.ok(snapshotCards(snap, "fr")[3].blocks.some(b => b.kind === "columns"), "French records page keeps its two columns");
+  const rev = { id: "rev1", n: 1, snapshot: snap };
+  const frCard = snapshotCards(snap, "fr").find(c => c.id === "c2");
+  const frBlock = frCard.blocks.find(b => /reconstitue/.test(b.text));
+  const v = validateSubmission({ submission: "s_frfrfrfr", kind: "suggestion", lang: "fr", card: "c2", block: frBlock.id, quote: "reconstitue l’historique", suggestion: "reconstruit l’historique", name: "Sarah" }, rev, 1000);
+  assert.equal(v.ok, true); assert.equal(v.feedback.lang, "fr");
+  /* the same block id does not exist in English: a French block cannot be filed against the English page */
+  const wrong = validateSubmission({ submission: "s_frfrfrf2", kind: "suggestion", lang: "en", card: "c2", block: frBlock.id, quote: "x", suggestion: "y" }, rev, 1000);
+  assert.equal(wrong.ok, false);
+  assert.equal(anchorStatus(d, v.feedback), "intact");
+  const out = applySuggestion(d, v.feedback, 2000);
+  assert.equal(out.ok, true);
+  assert.ok(d.cards.find(c => c.id === "c2").bodyFr.includes("reconstruit l’historique"));
+  assert.ok(d.cards.find(c => c.id === "c2").body.includes("reconstructs the history"), "the English text is untouched");
+  assert.equal(v.feedback.applied.lang, "fr");
+  /* a page without French falls back to English in the French snapshot, so the switch never hides a page */
+  const e = emptyReview({ title: "T", cards: [{ id: "x1", section: "S", title: "Only English", body: "Hello.", bodyFr: "Bonjour.", titleFr: "Seulement" }, { id: "x2", section: "S", title: "Second", body: "Two." }] });
+  const s2 = snapshotOf(e, null, 1);
+  assert.equal(snapshotCards(s2, "fr")[1].title, "Second");
+  assert.equal(snapshotCards(s2, "fr")[0].title, "Seulement");
+  const none = emptyReview({ title: "T", cards: [{ id: "y", section: "S", title: "E", body: "e" }] });
+  assert.equal(snapshotOf(none, null, 1).alt, null);
 });
