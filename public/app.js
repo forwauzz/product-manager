@@ -4341,7 +4341,7 @@
       r2.appendChild(fld("Date shown", txtIn(d.date, "", function (v) { d.date = v; }, "date")));
       body.appendChild(r2);
       body.appendChild(fld("Language shown first", selIn([["en", "English"], ["fr", "Français"]], d.lang, function (v) { d.lang = v; }), "The reader can switch to the other language when its text is filled in below. Comments keep the language, page and revision they were written against."));
-      body.appendChild(fld("Welcome text", areaIn(d.intro, "Why this exists and how to correct it.", function (v) { d.intro = v; }, 3)));
+      body.appendChild(fld("Welcome text (kept for the record; the cover shows title, subtitle and date, page 1 carries the welcome)", areaIn(d.intro, "", function (v) { d.intro = v; }, 2)));
       body.appendChild(fld("Closing text", areaIn(d.closing, "Shown on the last page above Finish review.", function (v) { d.closing = v; }, 2)));
       var frTop = el("div", "rvfr");
       frTop.appendChild(el("div", "lab", "En français"));

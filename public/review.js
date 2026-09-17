@@ -67,7 +67,7 @@ function render() {
     card = '<div class="rv-card article">' + menuBtn + '<div class="rv-scroll"><div class="rv-col"><h1>' + esc(T.finished.split(".")[0]) + '.</h1><div class="rule"></div><div class="rv-body"><p>' + esc(T.finished.split(".").slice(1).join(".").trim()) + "</p><p>" + esc(T.finishNote) + '</p></div></div></div>' +
       '<button class="rv-back" data-go="' + N + '" data-undone="1" aria-label="' + esc(T.back) + '">' + ARROW_L + "</button></div>";
   } else if (idx === 0) {
-    card = '<div class="rv-card visual">' + menuBtn + '<img class="rv-visual" src="' + visualSrc(5) + '" alt=""><div class="rv-text"><div class="eyebrow">' + esc(snap.pilot) + " · " + esc(T.cover) + '</div><h1>' + esc(cur.title) + '</h1><div class="sub">' + esc(cur.subtitle) + '</div><p class="meta"><b>' + esc(snap.author) + "</b> · " + esc(snap.date) + " · " + esc(T.revision) + " " + esc(String(snap.revision)) + "<br>" + esc(T.welcomeMeta) + "</p><p>" + inline(cur.intro) + '</p><p><button class="rv-start" data-go="1">' + esc(T.start) + " " + ARROW_R + "</button></p></div>" +
+    card = '<div class="rv-card visual hero">' + menuBtn + '<img class="rv-visual" src="' + visualSrc(1) + '" alt=""><div class="rv-hero"><h1>' + esc(cur.title) + '</h1><div class="sub">' + esc(cur.subtitle) + '</div><div class="meta">' + esc(T.prepared) + " <b>" + esc(snap.author) + "</b> · " + esc(snap.date) + " · " + esc(T.revision) + " " + esc(String(snap.revision)) + "</div></div>" +
       controls(N) + "</div>";
   } else {
     const c = cards[idx - 1];
@@ -94,7 +94,8 @@ function controls(N) {
   const back = '<button class="rv-back" data-go="' + (idx - 1) + '"' + (idx <= 0 ? " disabled" : "") + ' aria-label="' + esc(T.back) + '">' + ARROW_L + "</button>";
   const count = idx ? '<span class="rv-count">' + idx + " " + esc(T.of) + " " + N + "</span>" : "";
   let next;
-  if (idx < N) next = isVisual ? '<button class="rv-next" data-go="' + (idx + 1) + '" aria-label="' + esc(T.next) + '">' + ARROW_R + "</button>" : '<button class="rv-next pill" data-go="' + (idx + 1) + '">' + esc(T.next) + " " + ARROW_R + "</button>";
+  if (idx === 0) next = '<button class="rv-next pill hero" data-go="1">' + esc(T.start) + " " + ARROW_R + "</button>";
+  else if (idx < N) next = isVisual ? '<button class="rv-next" data-go="' + (idx + 1) + '" aria-label="' + esc(T.next) + '">' + ARROW_R + "</button>" : '<button class="rv-next pill" data-go="' + (idx + 1) + '">' + esc(T.next) + " " + ARROW_R + "</button>";
   else next = preview ? "" : '<button class="rv-next pill dark" data-finish>' + esc(T.finish) + "</button>";
   return back + count + next;
 }

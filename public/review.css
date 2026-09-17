@@ -43,10 +43,12 @@ img { display:block; }
 
 /* ---------- the card ---------- */
 .rv-card { position:fixed; left:var(--card-l); right:var(--card-r); top:var(--card-t); bottom:var(--card-b); background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
-.rv-visual { position:absolute; top:7px; bottom:8px; left:5px; width:var(--visual); border-radius:12px; object-fit:cover; }
-.rv-card.right .rv-visual { left:auto; right:5px; }
-.rv-text { position:absolute; top:0; bottom:0; left:581px; width:350px; display:flex; flex-direction:column; justify-content:center; padding:60px 0 90px; overflow:auto; }
-.rv-card.right .rv-text { left:84px; }
+.rv-visual { position:absolute; top:7px; left:5px; width:var(--visual); height:calc(100% - 15px); border-radius:12px; object-fit:cover; }
+.rv-card.right .rv-visual { left:auto; right:0; top:0; width:38%; height:100%; border-radius:0 12px 12px 0; }
+.rv-text { position:absolute; top:0; bottom:0; left:581px; width:350px; display:flex; flex-direction:column; justify-content:safe center; padding:60px 0 90px; overflow:auto; }
+.rv-card.right .rv-text { left:118px; width:calc(62% - 148px); padding:40px 0 80px; }
+.rv-card.right .rv-text p { margin-bottom:18px; }
+.rv-card.right .rv-text .rv-quote { margin-bottom:18px; }
 .rv-text h1 { font-size:28px; font-weight:400; line-height:1.2; margin:0 0 22px; letter-spacing:-.01em; color:#111; }
 .rv-text p { margin:0 0 25px; font-size:17px; line-height:25px; color:#1c1c1c; }
 .rv-text .eyebrow { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); margin-bottom:14px; font-weight:600; }
@@ -87,6 +89,15 @@ img { display:block; }
 .rv-mine .it { font-size:14px; color:var(--mute); padding:7px 0; border-bottom:1px solid #f0f0f0; }
 .rv-mine .it b { color:var(--ink); font-weight:500; }
 .rv-mine .it .st { font-family:var(--mono); font-size:10.5px; margin-left:8px; color:#a26; }
+
+/* hero cover: the visual fills the card, the title sits over it */
+.rv-card.hero .rv-visual { top:0; bottom:0; left:0; width:100%; height:100%; border-radius:12px; }
+.rv-hero { position:absolute; left:238px; top:50%; transform:translateY(-50%); max-width:calc(100% - 300px); color:#111; }
+.rv-hero h1 { font-size:64px; font-weight:500; line-height:1.08; letter-spacing:-.025em; margin:0 0 18px; }
+.rv-hero .sub { font-size:26px; font-weight:400; line-height:1.3; margin:0 0 60px; color:#1c1c1c; }
+.rv-hero .meta { font-size:18px; font-style:italic; color:#1c1c1c; }
+.rv-hero .meta b { font-weight:500; font-style:normal; }
+.rv-next.pill.hero { background:#fff; color:#111; border:1px solid var(--line); box-shadow:0 2px 10px rgba(0,0,0,.08); }
 
 /* ---------- controls ---------- */
 .rv-back { position:absolute; left:18px; bottom:12px; width:58px; height:58px; border-radius:50%; border:0; background:#f2f2f2; display:grid; place-items:center; color:#8a8a8a; z-index:3; }
@@ -131,7 +142,7 @@ img { display:block; }
 .rv-closed p { color:var(--mute); }
 
 /* ---------- narrower desktops ---------- */
-@media (max-width:1180px) { :root { --visual:400px; } .rv-text { left:490px; width:min(350px, calc(100% - 540px)); } .rv-card.right .rv-text { left:60px; } .rv-col { width:min(768px, calc(100% - 160px)); margin-left:80px; } }
+@media (max-width:1180px) { :root { --visual:400px; } .rv-text { left:490px; width:min(350px, calc(100% - 540px)); } .rv-card.right .rv-text { left:70px; width:calc(58% - 110px); } .rv-hero { left:140px; } .rv-hero h1 { font-size:52px; } .rv-col { width:min(768px, calc(100% - 160px)); margin-left:80px; } }
 @media (max-width:1000px) { :root { --visual:360px; } .rv-text { left:420px; width:calc(100% - 470px); } .rv-col { margin-left:60px; width:calc(100% - 120px); } }
 
 /* ---------- phones and small tablets: one column, ordinary scrolling ---------- */
@@ -144,7 +155,11 @@ img { display:block; }
   .rv-menu { display:inline-flex; position:absolute; top:14px; left:16px; z-index:3; height:36px; padding:0 14px; border-radius:999px; border:1px solid var(--line); background:#fff; font-size:13px; color:#444; align-items:center; gap:6px; }
   .rv-card { position:static; border:0; border-radius:0; min-height:100dvh; overflow:visible; }
   .rv-visual { position:relative; top:auto; bottom:auto; left:auto; right:auto; width:calc(100% - 16px); height:56vw; max-height:380px; margin:64px 8px 0; }
-  .rv-card.right .rv-visual { right:auto; }
+  .rv-card.right .rv-visual { right:auto; width:calc(100% - 16px); height:56vw; border-radius:12px; }
+  .rv-card.hero .rv-visual { position:absolute; inset:0; width:100%; height:100%; margin:0; max-height:none; border-radius:0; }
+  .rv-card.hero { min-height:100dvh; position:relative; }
+  .rv-hero { left:20px; right:20px; max-width:none; }
+  .rv-hero h1 { font-size:40px; } .rv-hero .sub { font-size:20px; margin-bottom:30px; } .rv-hero .meta { font-size:15px; }
   .rv-text { position:static; width:auto; padding:22px 20px 24px; display:block; overflow:visible; }
   .rv-card.right .rv-text { left:auto; }
   .rv-text h1 { font-size:26px; }
