@@ -16,12 +16,14 @@ test("card markup parses into typed blocks with ids that follow the text, not th
   assert.notEqual(twice[0].id, twice[1].id);
 });
 
-test("the Cabinet M draft is ten short pages in five sections, with the records page split in two columns", () => {
+test("the Cabinet M draft is twelve short pages in five sections, with the records page split in two columns", () => {
   const d = cabinetMDraft();
-  assert.equal(d.cards.length, 10);
+  assert.equal(d.cards.length, 12);
   const snap = snapshotOf(d, { name: "Le Cabinet M" }, 1);
-  assert.deepEqual(snap.sections.map(s => s.cards.length), [2, 3, 2, 1, 2]);
-  d.cards.forEach(c => { const w = c.body.split(/\s+/).filter(Boolean).length; assert.ok(w >= 40 && w <= 270, c.title + " has " + w + " words"); });
+  assert.deepEqual(snap.sections.map(s => s.cards.length), [2, 4, 2, 2, 2]);
+  d.cards.forEach(c => { const w = c.body.split(/\s+/).filter(Boolean).length; assert.ok(w >= 40 && w <= 420, c.title + " has " + w + " words"); });
+  assert.ok(d.cards.find(c => c.id === "c11").body.includes("~?"), "the flow page has decision points");
+  assert.equal(d.cards.find(c => c.id === "c6").body.split("\n@ ").length - 1, 7, "seven people on the team page");
   const records = snapshotCards(snap).find(c => c.id === "c4");
   assert.ok(records.blocks.some(b => b.kind === "columns" && b.head.length === 2));
   assert.ok(!JSON.stringify(snap).includes("IMG_"), "no transcript references reach the guest");
@@ -155,15 +157,15 @@ test("a review carries French pages; the guest gets both languages, and a French
   const { hasFrench, snapshotLangs, cardIn } = await import("../public/reviews.js");
   const d = cabinetMDraft();
   assert.equal(hasFrench(d), true);
-  assert.equal(d.cards.filter(c => c.bodyFr).length, 10);
+  assert.equal(d.cards.filter(c => c.bodyFr).length, 12);
   const snap = snapshotOf(d, { name: "Le Cabinet M" }, 1);
   assert.deepEqual(snapshotLangs(snap), ["en", "fr"]);
   assert.equal(snap.alt.lang, "fr");
   assert.equal(snap.alt.sections.length, 5);
-  assert.equal(snapshotCards(snap, "fr").length, 10);
+  assert.equal(snapshotCards(snap, "fr").length, 12);
   assert.deepEqual(snapshotCards(snap, "fr").map(c => c.id), snapshotCards(snap, "en").map(c => c.id), "page ids are shared across languages");
-  assert.equal(cardIn(d.cards[3], "fr").title, "L’ouverture et les demandes de documents");
-  assert.ok(snapshotCards(snap, "fr")[3].blocks.some(b => b.kind === "columns"), "French records page keeps its two columns");
+  assert.equal(cardIn(d.cards.find(c => c.id === "c4"), "fr").title, "L’ouverture et les demandes de documents");
+  assert.ok(snapshotCards(snap, "fr").find(c => c.id === "c4").blocks.some(b => b.kind === "columns"), "French records page keeps its two columns");
   const rev = { id: "rev1", n: 1, snapshot: snap };
   const frCard = snapshotCards(snap, "fr").find(c => c.id === "c2");
   const frBlock = frCard.blocks.find(b => /reconstitue/.test(b.text));
@@ -185,4 +187,21 @@ test("a review carries French pages; the guest gets both languages, and a French
   assert.equal(snapshotCards(s2, "fr")[0].title, "Seulement");
   const none = emptyReview({ title: "T", cards: [{ id: "y", section: "S", title: "E", body: "e" }] });
   assert.equal(snapshotOf(none, null, 1).alt, null);
+});
+
+test("flow and team blocks parse, carry their text for anchors, reach the snapshot, and internal notes never do", async () => {
+  const { parseBlocks, blockText, snapshotOf, snapshotCards, emptyReview } = await import("../public/reviews.js");
+  const flow = parseBlocks("~ [Caroline] Callback :: within a day\n~? Fits the firm? :: yes → Consultation / no → Declined\n~| [Caroline] Agency file || [Technicienne] Medical records\n~> Support || Contestation || Expertise\n~= Throughout: sommaire, deadlines")[0];
+  assert.equal(flow.kind, "flow");
+  assert.deepEqual(flow.nodes.map(n => n.kind), ["stage", "decision", "parallel", "fanout", "band"]);
+  assert.deepEqual(flow.nodes[0], { kind: "stage", actor: "Caroline", label: "Callback", note: "within a day" });
+  assert.deepEqual(flow.nodes[1].options, [{ answer: "yes", to: "Consultation" }, { answer: "no", to: "Declined" }]);
+  assert.equal(flow.nodes[2].items.length, 2);
+  assert.ok(blockText(flow).includes("Medical records"));
+  const team = parseBlocks("@ Sarah-Jeanne | Avocate | Leads the firm.\n@ Caroline | Adjointe | Reception.")[0];
+  assert.equal(team.kind, "team"); assert.equal(team.people.length, 2); assert.equal(team.people[1].title, "Adjointe");
+  const r = emptyReview({ title: "T", cards: [{ id: "f", section: "S", title: "Flow", body: "~ A\n~ B", notes: "SOURCE 09-10 00:01" }] });
+  const snap = snapshotOf(r, null, 1);
+  assert.equal(snapshotCards(snap)[0].blocks[0].nodes.length, 2);
+  assert.ok(!JSON.stringify(snap).includes("SOURCE"), "internal notes stay out of what the guest receives");
 });

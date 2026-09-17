@@ -4388,6 +4388,7 @@
           frBox.appendChild(rfr);
           frBox.appendChild(fld("Texte", areaIn(c.bodyFr || "", "Same markup as the English text.", function (v) { c.bodyFr = v; }, 7)));
           box.appendChild(frBox);
+          box.appendChild(fld("Internal notes (sources; never shown to the firm)", areaIn(c.notes || "", "Transcript and timestamp behind each claim on this page.", function (v) { c.notes = v; }, 3)));
           list.appendChild(box);
         });
       }

@@ -645,6 +645,7 @@ export async function handleApi(req, store) {
       if (!r) return { error: "Review not found." };
       if (!r.cards.length) return { error: "Add at least one page before publishing." };
       const now = new Date();
+      r.date = now.toISOString().slice(0, 10); /* the cover says when this understanding was last updated: the day it was published */
       const rev = { id: uid(), n: r.revisions.length + 1, publishedAt: now.toISOString(), expires: /^\d{4}-\d{2}-\d{2}$/.test(String(body.expires || "")) ? body.expires : "", disabled: false, token: randomToken(), by: String(body.who || currentWho || ""), snapshot: snapshotOf(r, p, r.revisions.length + 1) };
       r.revisions.forEach(x => { x.disabled = true; });
       r.revisions.push(rev);
@@ -659,7 +660,7 @@ export async function handleApi(req, store) {
     const p = (doc.state.pilots || []).find(x => x.id === query.pilot);
     const r = p && p.reviews.find(x => x.id === query.review);
     if (!r) return json(404, { error: "Review not found." });
-    return json(200, { ok: true, preview: true, snapshot: snapshotOf(r, p, r.revisions.length + 1) });
+    return json(200, { ok: true, preview: true, snapshot: snapshotOf(Object.assign({}, r, { date: new Date().toISOString().slice(0, 10) }), p, r.revisions.length + 1) });
   }
   if (seg[0] === "public") return handlePublic(req, store);
 

@@ -13,6 +13,7 @@ const preview = params.get("preview") || "";
 const rnd = () => "s_" + Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, "0")).join("");
 const ARROW_L = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" opacity=".35"/><path d="M14 8l-4 4 4 4"/></svg>';
 const ARROW_R = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+function fmtDate(d) { try { return new Intl.DateTimeFormat(lang === "fr" ? "fr-CA" : "en-CA", { day: "numeric", month: "long", year: "numeric" }).format(new Date(d + "T12:00:00")); } catch (e) { return d || ""; } }
 const visualSrc = n => "/visuals/v" + (/^[1-6]$/.test(String(n)) ? n : "1") + ".svg";
 
 let snap = null, cur = null, lang = "en", revId = "", T = UI.en, cards = [], idx = 0, name = "", queue = [], mine = {}, seen = {}, done = false, panel = null, toastTimer = 0;
@@ -67,7 +68,7 @@ function render() {
     card = '<div class="rv-card article">' + menuBtn + '<div class="rv-scroll"><div class="rv-col"><h1>' + esc(T.finished.split(".")[0]) + '.</h1><div class="rule"></div><div class="rv-body"><p>' + esc(T.finished.split(".").slice(1).join(".").trim()) + "</p><p>" + esc(T.finishNote) + '</p></div></div></div>' +
       '<button class="rv-back" data-go="' + N + '" data-undone="1" aria-label="' + esc(T.back) + '">' + ARROW_L + "</button></div>";
   } else if (idx === 0) {
-    card = '<div class="rv-card visual hero">' + menuBtn + '<img class="rv-visual" src="' + visualSrc(1) + '" alt=""><div class="rv-hero"><h1>' + esc(cur.title) + '</h1><div class="sub">' + esc(cur.subtitle) + '</div><div class="meta">' + esc(T.prepared) + " <b>" + esc(snap.author) + "</b> · " + esc(snap.date) + " · " + esc(T.revision) + " " + esc(String(snap.revision)) + "</div></div>" +
+    card = '<div class="rv-card visual hero">' + menuBtn + '<img class="rv-visual" src="' + visualSrc(1) + '" alt=""><div class="rv-hero"><h1>' + esc(cur.title) + '</h1><div class="sub">' + esc(cur.subtitle) + '</div><div class="meta">' + esc(T.prepared) + " <b>" + esc(snap.author) + "</b> · " + esc(T.lastUpdated) + " " + esc(fmtDate(snap.date)) + " · " + esc(T.revision) + " " + esc(String(snap.revision)) + "</div>" + (cur.intro ? '<p class="msg">' + inline(cur.intro) + "</p>" : "") + "</div>" +
       controls(N) + "</div>";
   } else {
     const c = cards[idx - 1];
@@ -99,9 +100,28 @@ function controls(N) {
   else next = preview ? "" : '<button class="rv-next pill dark" data-finish>' + esc(T.finish) + "</button>";
   return back + count + next;
 }
+function flowItem(i, cls) { return '<div class="fl-node' + (cls ? " " + cls : "") + '">' + (i.actor ? '<span class="fl-actor">' + inline(i.actor) + "</span>" : "") + '<span class="fl-label">' + inline(i.label) + "</span>" + (i.note ? '<span class="fl-note">' + inline(i.note) + "</span>" : "") + "</div>"; }
+function renderFlow(b) {
+  const arrow = '<div class="fl-arrow" aria-hidden="true"></div>';
+  return '<div class="rv-flow" role="img" aria-label="' + esc(T.flowAria) + '">' + b.nodes.map((n, i) => {
+    let h;
+    if (n.kind === "parallel") h = '<div class="fl-par">' + n.items.map(it => flowItem(it)).join('<div class="fl-plus">+</div>') + "</div>";
+    else if (n.kind === "fanout") h = '<div class="fl-fan">' + n.items.map(it => flowItem(it, "fan")).join("") + "</div>";
+    else if (n.kind === "band") h = '<div class="fl-band">' + (n.actor ? '<span class="fl-actor">' + inline(n.actor) + "</span>" : "") + inline(n.label) + (n.note ? ' <span class="fl-note">' + inline(n.note) + "</span>" : "") + "</div>";
+    else if (n.kind === "decision") h = '<div class="fl-dec"><span class="fl-q">?</span><span class="fl-label">' + inline(n.label) + "</span>" + (n.options.length ? '<div class="fl-opts">' + n.options.map(o => '<span class="fl-opt"><b>' + inline(o.answer) + "</b> → " + inline(o.to) + "</span>").join("") + "</div>" : "") + "</div>";
+    else h = flowItem(n);
+    const last = i === b.nodes.length - 1 || n.kind === "band" || (b.nodes[i + 1] && b.nodes[i + 1].kind === "band");
+    return h + (last ? "" : arrow);
+  }).join("") + "</div>";
+}
+function renderTeam(b) {
+  return '<div class="rv-team">' + b.people.map(p => { const ini = p.name.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(x => x[0]).join("").toUpperCase(); return '<div class="tm"><span class="tm-ini" aria-hidden="true">' + esc(ini) + '</span><div><b>' + inline(p.name) + "</b>" + (p.title ? '<span class="tm-title">' + inline(p.title) + "</span>" : "") + (p.role ? "<p>" + inline(p.role) + "</p>" : "") + "</div></div>"; }).join("") + "</div>";
+}
 function renderBlock(b, compact) {
   let inner;
-  if (b.kind === "h") inner = "<h2>" + inline(b.text) + "</h2>" + (b.rest ? "<p>" + inline(b.rest) + "</p>" : "");
+  if (b.kind === "flow") inner = renderFlow(b);
+  else if (b.kind === "team") inner = renderTeam(b);
+  else if (b.kind === "h") inner = "<h2>" + inline(b.text) + "</h2>" + (b.rest ? "<p>" + inline(b.rest) + "</p>" : "");
   else if (b.kind === "callout") inner = '<div class="rv-quote' + (/^(to confirm|à confirmer)/i.test(b.text) ? " pink" : "") + '">' + inline(b.text) + "</div>";
   else if (b.kind === "steps") inner = b.items.map((it, i) => { const m = /^\*\*(.+?)\*\*\s*(.*)$/.exec(it); return '<div class="rv-num"><span class="n">' + (i + 1) + "</span>" + (m ? "<b>" + inline(m[1]) + "</b>" + inline(m[2]) : inline(it)) + "</div>"; }).join("");
   else if (b.kind === "list") inner = "<ul>" + b.items.map(i => "<li>" + inline(i) + "</li>").join("") + "</ul>";
