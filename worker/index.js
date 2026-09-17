@@ -127,7 +127,8 @@ export default {
       } catch (e) { return jsonResponse(500, { error: "Server error" }); }
     }
     if (/^\/r\/[A-Za-z0-9_-]{20,}$/.test(path) && request.method === "GET") {
-      const page = await env.ASSETS.fetch(new Request(url.origin + "/review.html", request));
+      let page = await env.ASSETS.fetch(new Request(url.origin + "/review", { headers: request.headers }));
+      if (page.status >= 300 && page.status < 400 && page.headers.get("Location")) page = await env.ASSETS.fetch(new Request(new URL(page.headers.get("Location"), url.origin).toString(), { headers: request.headers }));
       const h = new Headers(page.headers); h.set("Cache-Control", "no-store"); h.set("X-Robots-Tag", "noindex, nofollow"); h.set("Referrer-Policy", "no-referrer");
       return new Response(page.body, { status: page.status, headers: h });
     }

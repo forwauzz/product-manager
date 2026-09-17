@@ -4210,7 +4210,7 @@
     var meta = [r.subtitle, cur ? "revision " + cur.n + " · published " + stamp(cur.publishedAt.slice(0, 10)) : "not published yet", r.cards.length + " pages", counts.total ? counts.open + " open of " + counts.total + " feedback" : "no feedback yet", counts.finished ? "finished by " + (counts.finished.name || "the reader") + " on " + stamp(new Date(counts.finished.created).toISOString().slice(0, 10)) : (cur ? "not finished" : ""), r.lang === "fr" ? "French" : "English"];
     var side = [quietPill(r.status, r.status === "Published" ? "st-live" : r.status === "Disabled" ? "st-needs-work" : "")];
     if (open) side.push(chipBtn("Copy link", function (e) { e.stopPropagation(); copyReviewLink(cur); }));
-    side.push(chipBtn("Open preview", function (e) { e.stopPropagation(); window.open("/review.html?preview=" + encodeURIComponent(p.id + "/" + r.id), "_blank", "noopener"); }));
+    side.push(chipBtn("Open preview", function (e) { e.stopPropagation(); window.open("/review?preview=" + encodeURIComponent(p.id + "/" + r.id), "_blank", "noopener"); }));
     return xrow({ key: "rv:" + r.id, title: r.title || "Untitled review", meta: metaLine(meta), side: side, open: true, details: function (det) {
       var acts = el("div", "rowacts");
       acts.appendChild(chipBtn("Edit draft", function () { editReview(p, r, false); }));
