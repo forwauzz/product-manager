@@ -20,11 +20,11 @@ img { display:block; }
 .rv-brand .chev { color:var(--mute); font-size:11px; margin-left:2px; }
 .rv-sec { display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none; border:0; padding:0 8px 0 16px; height:42px; font-size:14px; font-weight:500; color:var(--ink); border-radius:8px; }
 .rv-sec .ic { width:14px; height:14px; border:1.5px solid #333; border-radius:3px; font-size:8px; line-height:11px; text-align:center; flex:none; color:#333; font-weight:600; }
-.rv-sec .t { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rv-sec .t { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.5; }
 .rv-sec .ch { color:#666; font-size:11px; padding-right:4px; }
 .rv-item { display:flex; align-items:center; gap:10px; width:calc(100% - 26px); margin-left:26px; text-align:left; background:none; border:0; padding:0 10px 0 10px; height:40px; border-radius:8px; font-size:14px; color:#3a3a3a; margin-bottom:2px; }
 .rv-item:hover { background:var(--hover); }
-.rv-item .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rv-item .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.5; }
 .rv-item .box { width:14px; height:14px; border:1.5px solid #555; border-radius:3px; flex:none; display:grid; place-items:center; }
 .rv-item .box.on { background:#1b1b1b; border-color:#1b1b1b; }
 .rv-item .box.on::after { content:""; width:4px; height:8px; border:solid #fff; border-width:0 2px 2px 0; transform:translateY(-1px) rotate(45deg); }
