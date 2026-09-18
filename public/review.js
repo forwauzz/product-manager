@@ -32,7 +32,7 @@ async function boot() {
   } catch (e) { return closed(true); }
   if (!preview && j && j.needsCode) return askCode(j);
   if (!r.ok || !j.snapshot) return closed(false, j && j.error);
-  snap = j.snapshot; revId = preview ? "preview" : j.revisionId;
+  snap = j.snapshot; revId = preview ? "preview:" + preview : j.revisionId;
   const wanted = store.get("alie.rv.lang", "") || (params.get("lang") || "");
   setLang(snapshotLangs(snap).indexOf(wanted) !== -1 ? wanted : snap.lang);
   name = store.get("alie.rv.name", ""); queue = store.get(K("q"), []); mine = store.get(K("mine"), {}); seen = store.get(K("seen"), {}); done = !!store.get(K("done"), false);
