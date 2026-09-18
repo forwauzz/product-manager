@@ -78,3 +78,22 @@ test("the code survives a whole-document save from the app and stays out of the 
   assert.equal(put.status, 200);
   assert.equal(put.body.state.pilots[0].reviews[0].code, "KEEP-CODE");
 });
+
+test("a comment can be linked to a numbered question; the author's preview carries feedback, the public link never does", async () => {
+  const s = normalize(seed());
+  const r = emptyReview({ title: "T", lang: "fr", cards: [{ id: "q", section: "S", title: "Questions", body: "Intro.\n\n1. First question?\n2. Second question?" }] });
+  s.pilots = [{ id: "p1", name: "Firm", status: "Discovery", people: [{ id: "x", name: "Sarah-Jeanne", side: "Client" }], reviews: [r] }];
+  const store = new MemoryStore(normalize(s));
+  const rid = (await store.load()).state.pilots[0].reviews[0].id;
+  const token = (await handleApi(req("POST", "/reviews/publish", { pilot: "p1", review: rid }), store)).body.revision.token;
+  await handlePublic(req("POST", "/public/review/" + token + "/feedback", { submission: "s_ans00001", kind: "comment", card: "q", text: "Oui, bien compris", name: "Sarah-Jeanne Dubé Mercure" }), store);
+  const doc = await store.load();
+  doc.state.pilots[0].reviews[0].feedback[0].item = { list: 0, index: 1 };
+  const put = await handleApi(req("PUT", "/state", { version: doc.version, state: doc.state }), store);
+  assert.deepEqual(put.body.state.pilots[0].reviews[0].feedback[0].item, { list: 0, index: 1 });
+  const pv = await handleApi(req("GET", "/reviews/preview", null, { query: { pilot: "p1", review: rid } }), store);
+  assert.equal(pv.body.feedback.length, 1); assert.equal(pv.body.feedback[0].revision, 1); assert.deepEqual(pv.body.feedback[0].item, { list: 0, index: 1 });
+  assert.equal(pv.body.people[0].name, "Sarah-Jeanne");
+  const pub = await handlePublic(req("GET", "/public/review/" + token), store);
+  assert.ok(!JSON.stringify(pub.body).includes("bien compris"), "readers never see each other's feedback");
+});

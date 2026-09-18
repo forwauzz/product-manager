@@ -445,3 +445,6 @@ button.zdecline:hover { border-color:var(--gold); }
 }
 .rvcoderow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; } .rvcoderow input { flex:1; min-width:160px; letter-spacing:.1em; text-transform:uppercase; }
 .rvcodeline { display:flex; align-items:center; gap:10px; margin:8px 0; font-size:14px; } .rvcodeline b { letter-spacing:.12em; font-size:16px; }
+.zav.live { color:#fff; }
+.rvfb-who { display:inline-flex; align-items:center; gap:8px; margin-right:6px; } .rvfb-who .zav { width:28px; height:28px; font-size:11.5px; } .rvfb-who b { font-size:14px; }
+.rvfb-page { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin:18px 0 6px; padding-top:10px; border-top:1px solid var(--line); } .rvfb-page b { font-size:14.5px; } .rvfb-page span { font-size:12.5px; color:var(--slate); }

@@ -365,3 +365,43 @@ img { display:block; }
   .rv-table td::before { content:attr(data-label); display:block; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--mute); font-weight:600; margin-bottom:2px; }
   .rv-table th.ans, .rv-table td.ans { width:auto; min-width:0; }
 }
+
+/* ---------- language switch: centred, full words ---------- */
+.rv-langs { left:50%; right:auto; transform:translateX(-50%); top:14px; box-shadow:0 2px 10px rgba(60,48,20,.12); border:1px solid #e2dccf; background:#fffefc; }
+.rv-langs button { min-width:104px; height:40px; font-size:15px; letter-spacing:0; font-weight:500; }
+.rv.has-editbar .rv-langs { top:58px; }
+@media (max-width:860px) {
+  .rv-langs { position:absolute; left:50%; right:auto; transform:translateX(-50%); top:10px; }
+  .rv-langs button { min-width:76px; height:36px; padding:0 12px; font-size:14px; }
+}
+
+/* ---------- author view: what readers wrote, in place ---------- */
+.fb-av { width:30px; height:30px; border-radius:50%; color:#fff; font-size:12px; font-weight:600; letter-spacing:.02em; display:inline-flex; align-items:center; justify-content:center; flex:none; font-family:var(--sans); font-style:normal; }
+.fb-in { display:flex; gap:10px; align-items:flex-start; margin:10px 0 0; padding:10px 12px; background:#f3f7f5; border:1px solid #d9e6df; border-radius:10px; font-style:normal; text-align:left; }
+.fb-body { min-width:0; flex:1; }
+.fb-who { display:flex; flex-wrap:wrap; gap:4px 8px; align-items:baseline; font-size:13px; } .fb-who b { font-weight:600; color:var(--ink); } .fb-who span { color:var(--mute); font-size:12px; }
+.fb-in p { margin:4px 0 0 !important; font-size:14.5px !important; line-height:1.45 !important; color:#1f2a24 !important; white-space:pre-wrap; font-weight:400; }
+.fb-in p.sug { color:#5c4a1e !important; }
+.fb-in q { display:block; margin-top:4px; font-size:13px; color:var(--mute); font-style:italic; }
+.fb-in q::before, .fb-in q::after { content:""; }
+.rv-num .fb-in { margin-top:12px; }
+.rv-table td.ans .fb-in { margin-top:6px; padding:8px 10px; }
+.fb-anchor { margin:-6px 0 18px; }
+.fb-page { margin-top:26px; padding-top:14px; border-top:1px dashed #cfd9d3; } .fb-page .lab { font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; color:#4f7a66; font-weight:600; }
+.rv-fbbtn { position:fixed; top:14px; right:22px; z-index:12; display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 12px 0 6px; border-radius:999px; border:1px solid #d9e6df; background:#fff; font-size:14px; color:var(--ink); cursor:pointer; box-shadow:0 2px 10px rgba(60,48,20,.1); }
+.rv-fbbtn em { font-style:normal; min-width:22px; height:22px; border-radius:11px; background:#4f7a66; color:#fff; font-size:12px; display:inline-flex; align-items:center; justify-content:center; padding:0 6px; }
+.rv.has-editbar .rv-fbbtn { top:58px; }
+.rv-fbpanel { position:fixed; top:66px; right:22px; bottom:22px; width:380px; z-index:14; background:#fffefc; border:1px solid var(--line); border-radius:14px; box-shadow:0 12px 40px rgba(60,48,20,.16); padding:20px 18px 24px; overflow:auto; }
+.rv.has-editbar .rv-fbpanel { top:108px; }
+.rv-fbpanel h2 { margin:0 0 10px; font-size:22px; font-weight:700; }
+.rv-fbpanel .x { position:absolute; right:12px; top:10px; border:0; background:none; font-size:24px; color:var(--mute); cursor:pointer; }
+.fb-toggle { display:flex; gap:8px; align-items:center; font-size:13.5px; color:#3a3a38; margin-bottom:14px; }
+.fb-fin { display:flex; gap:10px; align-items:center; font-size:13.5px; background:#eef4f0; border-radius:10px; padding:8px 10px; margin-bottom:10px; }
+.fb-pagehead { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; text-align:left; border:0; background:none; padding:14px 0 4px; font-size:14.5px; font-weight:600; color:var(--ink); cursor:pointer; border-top:1px solid var(--line); margin-top:10px; }
+.fb-pagehead em { font-style:normal; font-size:12px; color:var(--mute); } .fb-pagehead:hover span { color:var(--gold-t); }
+.fb-ans { margin-top:10px; font-size:12px; color:#4f7a66; font-weight:600; }
+.fb-none { color:var(--mute); font-size:14px; }
+@media (max-width:860px) {
+  .rv-fbbtn { top:auto; bottom:calc(150px + env(safe-area-inset-bottom,0px)); right:12px; position:fixed; }
+  .rv-fbpanel { left:0; right:0; top:auto; bottom:0; width:auto; max-height:80dvh; border-radius:16px 16px 0 0; }
+}

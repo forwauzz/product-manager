@@ -719,7 +719,11 @@ export async function handleApi(req, store) {
     const p = (doc.state.pilots || []).find(x => x.id === query.pilot);
     const r = p && p.reviews.find(x => x.id === query.review);
     if (!r) return json(404, { error: "Review not found." });
-    return json(200, { ok: true, preview: true, snapshot: snapshotOf(Object.assign({}, r, { date: new Date().toISOString().slice(0, 10) }), p, r.revisions.length + 1) });
+    /* the author's preview also carries what readers wrote, so it can be shown in place; this route needs a signed-in user */
+    const revN = Object.fromEntries(r.revisions.map(v => [v.id, v.n]));
+    const feedback = r.feedback.map(f => ({ id: f.id, card: f.card, block: f.block, row: f.row, item: f.item, kind: f.kind, quote: f.quote, text: f.text, suggestion: f.suggestion, name: f.name, lang: f.lang || r.lang, state: f.state, created: f.created, revision: revN[f.revision] || 0 }));
+    const snaps = r.revisions.filter(v => v.snapshot).map(v => ({ n: v.n, snapshot: v.snapshot }));
+    return json(200, { ok: true, preview: true, snapshot: snapshotOf(Object.assign({}, r, { date: new Date().toISOString().slice(0, 10) }), p, r.revisions.length + 1), feedback, revisions: snaps, people: (p.people || []).map(x => ({ name: x.name, role: x.role, side: x.side })), me: "Uzziel Tamon" });
   }
   /* editing on the page: a signed-in author reads the raw draft and writes it back; revisions and feedback are never touched here */
   if (seg[0] === "reviews" && seg[1] === "draft" && method === "GET") {

@@ -2,7 +2,7 @@
    better wording. No account. Everything sent goes to the published revision it was written against.
    Layout follows the reference cards: a navigation tree on the left, one white card, a full-height visual or a
    reading column, round back/next controls. */
-import { UI, snapshotCards, snapshotIn, snapshotLangs, LIMITS } from "/reviews.js";
+import { UI, snapshotCards, snapshotIn, snapshotLangs, LIMITS, avatarFor, matchPerson } from "/reviews.js";
 
 const root = document.getElementById("rv");
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]));
@@ -22,6 +22,8 @@ const K = k => "alie.rv." + revId + "." + k;
 const CODE_KEY = "alie.rv.code." + token;
 let accessCode = (() => { try { return sessionStorage.getItem(CODE_KEY) || ""; } catch (e) { return ""; } })();
 const withCode = h => accessCode ? Object.assign({}, h || {}, { "X-Review-Code": accessCode }) : (h || {});
+/* author view: what readers wrote, shown in place. Only the signed-in preview receives it. */
+let authorFb = null, authorRevs = [], authorPeople = [], showFb = true, fbPanel = false;
 const hooks = { afterRender: null }; /* the signed-in preview attaches its editing layer here */
 
 async function boot() {
@@ -33,8 +35,11 @@ async function boot() {
   if (!preview && j && j.needsCode) return askCode(j);
   if (!r.ok || !j.snapshot) return closed(false, j && j.error);
   snap = j.snapshot; revId = preview ? "preview:" + preview : j.revisionId;
-  const wanted = store.get("alie.rv.lang", "") || (params.get("lang") || "");
-  setLang(snapshotLangs(snap).indexOf(wanted) !== -1 ? wanted : snap.lang);
+  const langs = snapshotLangs(snap);
+  const browser = ((navigator.languages || [navigator.language || ""]).map(l => String(l).slice(0, 2).toLowerCase()).find(l => langs.indexOf(l) !== -1)) || "";
+  const wanted = store.get("alie.rv.lang", "") || (params.get("lang") || "") || browser;
+  setLang(langs.indexOf(wanted) !== -1 ? wanted : snap.lang);
+  if (preview) { authorFb = j.feedback || []; authorRevs = j.revisions || []; authorPeople = j.people || []; showFb = store.get("alie.rv.showfb", true) !== false; }
   name = store.get("alie.rv.name", ""); queue = store.get(K("q"), []); mine = store.get(K("mine"), {}); seen = store.get(K("seen"), {}); done = !!store.get(K("done"), false);
   idx = Math.min(cards.length, Math.max(0, Number(store.get(K("pos"), 0)) || 0));
   render();
@@ -74,14 +79,14 @@ function render() {
   const sections = cur.sections;
   const langs = snapshotLangs(snap);
   const other = langs.find(x => x !== lang);
-  const langBtn = other ? '<div class="rv-langs" role="group" aria-label="Language / Langue">' + ["fr", "en"].filter(x => langs.includes(x)).map(x => x === lang ? '<button aria-pressed="true" lang="' + x + '">' + x.toUpperCase() + "</button>" : '<button aria-pressed="false" data-lang="' + x + '" lang="' + x + '" title="' + (x === "fr" ? "Lire en français" : "Read in English") + '">' + x.toUpperCase() + "</button>").join("") + "</div>" : "";
+  const langBtn = other ? '<div class="rv-langs" role="group" aria-label="Language / Langue">' + ["fr", "en"].filter(x => langs.includes(x)).map(x => x === lang ? '<button aria-pressed="true" lang="' + x + '">' + (x === "fr" ? "Français" : "English") + "</button>" : '<button aria-pressed="false" data-lang="' + x + '" lang="' + x + '" title="' + (x === "fr" ? "Lire en français" : "Read in English") + '">' + (x === "fr" ? "Français" : "English") + "</button>").join("") + "</div>" : "";
   const seenCount = Object.keys(seen).length;
   const DOC = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/><path d="M14 3v4h4M9 13h6M9 17h4"/></svg>';
   let side = '<div class="rv-brandrow"><a class="rv-brand" href="#" data-go="0"><span class="wm">ALIE</span><span class="who">' + esc(cur.title) + "</span></a></div>";
   let n = 0;
   sections.forEach((s, si) => {
     side += '<button class="rv-sec"><span class="ic">' + (si + 1) + '</span><span class="t">' + esc(s.title) + '</span><span class="ch">⌃</span></button>';
-    s.cards.forEach(c => { n++; const m = (mine[c.id] || []).length; side += '<button class="rv-item" data-go="' + n + '" aria-current="' + (idx === n && !done) + '"><span class="box' + (seen[c.id] ? " on" : "") + '">' + DOC + '</span><span class="t">' + esc(c.title) + "</span>" + (m ? '<span class="dot">' + m + "</span>" : "") + "</button>"; });
+    s.cards.forEach(c => { n++; const m = authorFb ? liveFb(c.id).length : (mine[c.id] || []).length; side += '<button class="rv-item" data-go="' + n + '" aria-current="' + (idx === n && !done) + '"><span class="box' + (seen[c.id] ? " on" : "") + '">' + DOC + '</span><span class="t">' + esc(c.title) + "</span>" + (m ? '<span class="dot">' + m + "</span>" : "") + "</button>"; });
   });
   side += '<div class="foot"><span class="clock"></span><span>' + seenCount + " " + esc(T.of) + " " + N + " " + esc(lang === "fr" ? "pages lues" : "pages read") + "</span></div>";
 
@@ -107,10 +112,11 @@ function render() {
     }
   }
   root.setAttribute("data-panel", panel ? "open" : "closed");
-  root.innerHTML = '<aside class="rv-side" id="side">' + side + "</aside>" + langBtn + (preview ? '<div class="rv-preview">Preview · comments are off</div>' : "") + card;
+  root.innerHTML = '<aside class="rv-side" id="side">' + side + "</aside>" + langBtn + (authorFb ? fbButton() : "") + (preview ? '<div class="rv-preview">Preview · comments are off</div>' : "") + card;
   const cardEl = root.querySelector(".rv-card");
   if (panel && cardEl) { const pn = document.createElement("aside"); pn.className = "rv-panel"; pn.id = "panel"; pn.innerHTML = renderPanel(); cardEl.appendChild(pn); }
   if (cardEl) { const bg = document.createElement("div"); bg.className = "rv-bar-bg"; cardEl.appendChild(bg); }
+  if (authorFb) { if (showFb && !root.classList.contains("editing") && idx > 0 && !done) decorate(cards[idx - 1]); if (fbPanel) openFbPanel(); }
   wire();
   if (hooks.afterRender) hooks.afterRender();
 }
@@ -123,6 +129,78 @@ function controls(N) {
   else next = preview ? "" : '<button class="rv-next pill dark" data-finish>' + esc(T.finish) + "</button>";
   return back + count + next;
 }
+/* ---------- author view ---------- */
+const foldName = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+function who(name) {
+  const person = matchPerson(name, authorPeople);
+  const me = /^uzziel\b/.test(foldName(name).trim());
+  const display = me ? "Uzziel Tamon" : person ? person.name : (name || "?");
+  return { display, av: avatarFor(display, { me }) };
+}
+function avHtml(name) { const w = who(name); return '<span class="fb-av" style="background:' + w.av.colour + '" title="' + esc(w.display) + '">' + esc(w.av.initials) + "</span>"; }
+function liveFb(cardId) { return (authorFb || []).filter(f => f.kind !== "finish" && f.state !== "Closed" && (!cardId || f.card === cardId)); }
+function fbDate(t) { try { return new Intl.DateTimeFormat(lang === "fr" ? "fr-CA" : "en-CA", { day: "numeric", month: "short" }).format(new Date(t)); } catch (e) { return ""; } }
+function fbHtml(f, withQuote) {
+  const w = who(f.name);
+  const meta = [fbDate(f.created), f.revision ? T.fbVersion + " " + f.revision : "", f.lang && f.lang !== lang ? T.fbOther : ""].filter(Boolean).join(" · ");
+  return '<div class="fb-in">' + avHtml(f.name) + '<div class="fb-body"><div class="fb-who"><b>' + esc(w.display) + "</b><span>" + esc(meta) + "</span></div>" +
+    (withQuote && f.quote ? "<q>" + esc(f.quote.slice(0, 180)) + (f.quote.length > 180 ? "…" : "") + "</q>" : "") +
+    (f.suggestion ? '<p class="sug">→ ' + esc(f.suggestion) + "</p>" : "") + (f.text ? "<p>" + esc(f.text) + "</p>" : "") + "</div></div>";
+}
+/* where a comment belongs on the page now: the item it answers, the table row, the passage it was written on, or the page */
+function locate(f, c) {
+  if (f.item) { const lists = c.blocks.filter(b => b.kind === "steps"); const b = lists[f.item.list]; if (b && f.item.index < b.items.length) return { type: "item", block: b, index: f.item.index }; }
+  if (!f.block) return { type: "page" };
+  const direct = c.blocks.find(b => b.id === f.block);
+  if (direct) return f.row >= 0 && direct.kind === "table" ? { type: "row", block: direct, row: f.row } : { type: "block", block: direct };
+  const rv = authorRevs.find(r => r.n === f.revision);
+  const old = rv ? snapshotCards(rv.snapshot, f.lang).find(x => x.id === c.id) : null;
+  const ob = old ? old.blocks.find(b => b.id === f.block) : null;
+  if (!ob) return { type: "page" };
+  const same = old.blocks.filter(b => b.kind === ob.kind), k = same.indexOf(ob), now = c.blocks.filter(b => b.kind === ob.kind)[k];
+  if (!now) return { type: "page" };
+  return f.row >= 0 && now.kind === "table" ? { type: "row", block: now, row: f.row } : { type: "block", block: now };
+}
+function decorate(c) {
+  const page = [];
+  liveFb(c.id).sort((a, b) => a.created - b.created).forEach(f => {
+    const at = locate(f, c);
+    const wrap = at.block ? root.querySelector('.rv-block[data-block="' + at.block.id + '"]') : null;
+    if (at.type === "item" && wrap) { const it = wrap.querySelectorAll(".rv-num")[at.index]; if (it) { it.insertAdjacentHTML("beforeend", fbHtml(f, false)); return; } }
+    if (at.type === "row" && wrap) { const tr = wrap.querySelectorAll("tbody tr")[at.row]; const td = tr && tr.querySelector("td.ans"); if (td) { td.insertAdjacentHTML("beforeend", fbHtml(f, false)); return; } }
+    if (at.type === "block" && wrap) { wrap.insertAdjacentHTML("afterend", '<div class="fb-anchor">' + fbHtml(f, true) + "</div>"); return; }
+    page.push(f);
+  });
+  const body = root.querySelector(".rv-body[data-card]");
+  if (page.length && body) body.insertAdjacentHTML("beforeend", '<div class="fb-page"><div class="lab">' + esc(T.fbOnPage) + " · " + page.length + "</div>" + page.map(f => fbHtml(f, true)).join("") + "</div>");
+}
+function fbButton() { const n = liveFb().length; return '<button class="rv-fbbtn" data-fb-open aria-expanded="' + fbPanel + '">' + avHtml("Uzziel") + "<span>" + esc(T.fbTitle) + "</span><em>" + n + "</em></button>"; }
+function openFbPanel() {
+  const all = liveFb(), closedN = (authorFb || []).filter(f => f.state === "Closed" && f.kind !== "finish").length;
+  const fin = (authorFb || []).filter(f => f.kind === "finish");
+  let h = '<button class="x" data-fb-close aria-label="' + esc(T.cancel) + '">×</button><h2>' + esc(T.fbTitle) + "</h2>";
+  h += '<label class="fb-toggle"><input type="checkbox" data-fb-toggle' + (showFb ? " checked" : "") + "> " + esc(T.fbShow) + "</label>";
+  fin.forEach(f => { h += '<div class="fb-fin">' + avHtml(f.name) + "<span><b>" + esc(who(f.name).display) + "</b> " + esc(T.fbFinished) + " " + f.revision + " · " + esc(fbDate(f.created)) + "</span></div>"; });
+  if (!all.length) h += '<p class="fb-none">' + esc(T.fbNone) + "</p>";
+  cards.forEach((c, i) => {
+    const list = all.filter(f => f.card === c.id).sort((a, b) => a.created - b.created);
+    if (!list.length) return;
+    h += '<button class="fb-pagehead" data-go="' + (i + 1) + '"><span>' + (i + 1) + ". " + esc(c.title) + "</span><em>" + list.length + "</em></button>";
+    list.forEach(f => {
+      const lists = c.blocks.filter(b => b.kind === "steps");
+      const item = f.item && lists[f.item.list] ? lists[f.item.list].items[f.item.index] : "";
+      h += (item ? '<div class="fb-ans">' + esc(T.fbAnswers) + " " + (f.item.index + 1) + ". " + esc(String(item).replace(/\*\*/g, "").slice(0, 90)) + "</div>" : "") + fbHtml(f, !item);
+    });
+  });
+  if (closedN) h += '<p class="fb-none">' + closedN + " " + esc(T.fbClosed) + "</p>";
+  let pn = document.getElementById("fbpanel");
+  if (!pn) { pn = document.createElement("aside"); pn.id = "fbpanel"; pn.className = "rv-fbpanel"; root.appendChild(pn); }
+  pn.innerHTML = h;
+  pn.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { go(Number(b.dataset.go)); }));
+  pn.querySelector("[data-fb-close]").addEventListener("click", () => { fbPanel = false; render(); });
+  pn.querySelector("[data-fb-toggle]").addEventListener("change", e => { showFb = e.target.checked; store.set("alie.rv.showfb", showFb); render(); });
+}
+
 function flowItem(i, cls) { return '<div class="fl-node' + (cls ? " " + cls : "") + '">' + (i.actor ? '<span class="fl-actor">' + inline(i.actor) + "</span>" : "") + '<span class="fl-label">' + inline(i.label) + "</span>" + (i.note ? '<span class="fl-note">' + inline(i.note) + "</span>" : "") + "</div>"; }
 function renderFlow(b) {
   const arrow = '<div class="fl-arrow" aria-hidden="true"></div>';
@@ -202,6 +280,7 @@ function wire() {
   side.addEventListener("click", e => { if (e.target.closest("[data-go]")) root.setAttribute("data-menu", "closed"); });
   const cardEl = root.querySelector(".rv-card");
   if (cardEl) cardEl.addEventListener("click", e => { if (root.getAttribute("data-menu") === "open" && !e.target.closest("[data-menu]")) root.setAttribute("data-menu", "closed"); });
+  const fbo = root.querySelector("[data-fb-open]"); if (fbo) fbo.addEventListener("click", () => { fbPanel = !fbPanel; render(); });
   const pc = root.querySelector("[data-page-comment]"); if (pc) pc.addEventListener("click", () => openPanel("page", cards[idx - 1].id));
   const fin = root.querySelector("[data-finish]"); if (fin) fin.addEventListener("click", finish);
   root.querySelectorAll("[data-panel-close]").forEach(b => b.addEventListener("click", closePanel));

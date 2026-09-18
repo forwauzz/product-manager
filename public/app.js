@@ -3882,9 +3882,18 @@
         det.appendChild(share);
       }
       det.appendChild(el("div", "lab", "Feedback"));
-      var fbs = r.feedback.slice().sort(function (a, b) { return b.created - a.created; });
+      var fbs = r.feedback.slice().sort(function (a, b) { return a.created - b.created; });
       if (!fbs.length) det.appendChild(emptyNote(cur ? "Nothing yet. Comments and suggested corrections appear here as soon as they are saved." : "Publish and share the link to receive feedback."));
-      fbs.forEach(function (fb) { det.appendChild(feedbackRow(p, r, fb)); });
+      if (fbs.length) det.appendChild(el("p", "note", "Tip: open the preview to see each comment in place, next to the question or passage it answers."));
+      fbs.filter(function (fb) { return fb.kind === "finish"; }).forEach(function (fb) { det.appendChild(feedbackRow(p, r, fb)); });
+      var order = r.cards.map(function (c) { return c.id; });
+      var byCard = {};
+      fbs.filter(function (fb) { return fb.kind !== "finish"; }).forEach(function (fb) { (byCard[fb.card] = byCard[fb.card] || []).push(fb); });
+      Object.keys(byCard).sort(function (a, b) { var ia = order.indexOf(a), ib = order.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib); }).forEach(function (cid) {
+        var gh = el("div", "rvfb-page"); gh.appendChild(el("b", null, (order.indexOf(cid) >= 0 ? (order.indexOf(cid) + 1) + ". " : "") + reviewCardTitle(r, cid))); gh.appendChild(el("span", null, byCard[cid].length + (byCard[cid].length === 1 ? " comment" : " comments")));
+        det.appendChild(gh);
+        byCard[cid].forEach(function (fb) { det.appendChild(feedbackRow(p, r, fb)); });
+      });
     } });
   }
   function copyReviewLink(rev) {
@@ -3924,10 +3933,12 @@
     var R = RV();
     var row = el("div", "rvfb");
     var head = el("div", "rvfb-head");
+    var who = fbPerson(p, fb.name);
+    var wb = el("span", "rvfb-who"); wb.appendChild(zAvatar(who)); wb.appendChild(el("b", null, who)); head.appendChild(wb);
     head.appendChild(quietPill(fb.kind === "suggestion" ? "suggested correction" : fb.kind === "finish" ? "finished review" : fb.row >= 0 ? "answer to line " + (fb.row + 1) : "comment", fb.kind === "suggestion" ? "st-planned" : fb.kind === "finish" ? "st-live" : fb.row >= 0 ? "st-building" : ""));
     if (R.hasFrench(r)) head.appendChild(quietPill(R.feedbackLang(r, fb) === "fr" ? "FR" : "EN", "st-planned"));
     var rev = r.revisions.filter(function (x) { return x.id === fb.revision; })[0];
-    head.appendChild(el("span", "note", [fb.name || "unnamed", new Date(fb.created).toLocaleString(), rev ? "revision " + rev.n : "", fb.card ? reviewCardTitle(r, fb.card) : ""].filter(Boolean).join(" · ")));
+    head.appendChild(el("span", "note", [new Date(fb.created).toLocaleString(), rev ? "revision " + rev.n : "", fb.card ? reviewCardTitle(r, fb.card) : ""].filter(Boolean).join(" · ")));
     var anchor = R.anchorStatus(r, fb);
     if (anchor === "changed" || anchor === "card missing" || anchor === "ambiguous") head.appendChild(quietPill(anchor === "changed" ? "passage changed since" : anchor === "ambiguous" ? "passage appears twice" : "page removed", "st-needs-work"));
     if (fb.kind !== "finish") {
@@ -3949,6 +3960,17 @@
       var steps = p.steps.slice().sort(function (a, b) { return a.order - b.order; }).map(function (s) { return [s.id, s.title]; });
       var qs = p.questions.filter(function (x) { return x.status !== "Answered"; }).map(function (x) { return [x.id, x.text.slice(0, 80)]; });
       var lk = el("div", "rvlinks");
+      var fcard = r.cards.filter(function (c) { return c.id === fb.card; })[0];
+      if (fcard) {
+        var flang = R.feedbackLang(r, fb), fbody = R.cardIn(fcard, flang).body;
+        var opts = [];
+        R.parseBlocks(fbody).filter(function (b) { return b.kind === "steps"; }).forEach(function (b, k) { b.items.forEach(function (it, i) { opts.push([k + ":" + i, "Answers " + (i + 1) + ". " + String(it).replace(/\*\*/g, "").slice(0, 70)]); }); });
+        if (opts.length) {
+          var cur2 = fb.item ? fb.item.list + ":" + fb.item.index : "";
+          var itSel = selIn([["", "Not an answer to a numbered question"]].concat(opts), cur2, function (v) { fb.item = v ? { list: Number(v.split(":")[0]), index: Number(v.split(":")[1]) } : null; r.updated = Date.now(); touchPilot(p); save(); });
+          itSel.className = "selbox"; lk.appendChild(itSel);
+        }
+      }
       var stepSel = selIn([["", "Link to a workflow step…"]].concat(steps), fb.links.step, function (v) { fb.links.step = v; r.updated = Date.now(); touchPilot(p); save(); }); stepSel.className = "selbox"; lk.appendChild(stepSel);
       var qSel = selIn([["", "Link to an open question…"]].concat(qs), fb.links.question, function (v) { fb.links.question = v; r.updated = Date.now(); touchPilot(p); save(); }); qSel.className = "selbox"; lk.appendChild(qSel);
       acts.appendChild(lk);
@@ -7094,7 +7116,13 @@
     var parts = String(name || "").replace(/\(.*?\)/g, "").trim().split(/[\s-]+/).filter(Boolean);
     return ((parts[0] || "?").charAt(0) + (parts.length > 1 ? parts[1].charAt(0) : "")).toUpperCase();
   }
-  function zAvatar(name, tone) { var a = el("span", "zav" + (tone ? " t" + tone : ""), zInitials(name)); a.setAttribute("aria-hidden", "true"); return a; }
+  function zAvatar(name, tone) {
+    var R = window.ALIE_REVIEWS;
+    if (R && R.avatarFor) { var av = R.avatarFor(name, { me: /^uzziel\b/i.test(String(name || "")) }); var s = el("span", "zav live", av.initials); s.style.background = av.colour; s.setAttribute("aria-hidden", "true"); return s; }
+    var a = el("span", "zav" + (tone ? " t" + tone : ""), zInitials(name)); a.setAttribute("aria-hidden", "true"); return a;
+  }
+  /* the person behind a review comment: the pilot's own record when the name matches, so the avatar is the same everywhere */
+  function fbPerson(p, name) { var R = RV(); var m = R.matchPerson(name, p.people); return /^uzziel\b/i.test(String(name || "")) ? "Uzziel Tamon" : m ? m.name : (name || "unnamed"); }
   function zCrumbs(parts) {
     var c = el("nav", "zcrumbs"); c.setAttribute("aria-label", "Breadcrumb");
     parts.forEach(function (x, i) {
