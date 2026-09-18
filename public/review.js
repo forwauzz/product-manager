@@ -19,14 +19,18 @@ const visualSrc = n => "/visuals/v" + (/^[1-6]$/.test(String(n)) ? n : "1") + ".
 let snap = null, cur = null, lang = "en", revId = "", T = UI.en, cards = [], idx = 0, name = "", queue = [], mine = {}, seen = {}, done = false, panel = null, toastTimer = 0;
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } } };
 const K = k => "alie.rv." + revId + "." + k;
+const CODE_KEY = "alie.rv.code." + token;
+let accessCode = (() => { try { return sessionStorage.getItem(CODE_KEY) || ""; } catch (e) { return ""; } })();
+const withCode = h => accessCode ? Object.assign({}, h || {}, { "X-Review-Code": accessCode }) : (h || {});
 const hooks = { afterRender: null }; /* the signed-in preview attaches its editing layer here */
 
 async function boot() {
   let r, j;
   try {
-    r = preview ? await fetch("/api/reviews/preview?pilot=" + encodeURIComponent(preview.split("/")[0]) + "&review=" + encodeURIComponent(preview.split("/")[1] || "")) : await fetch("/api/public/review/" + encodeURIComponent(token));
+    r = preview ? await fetch("/api/reviews/preview?pilot=" + encodeURIComponent(preview.split("/")[0]) + "&review=" + encodeURIComponent(preview.split("/")[1] || "")) : await fetch("/api/public/review/" + encodeURIComponent(token), { headers: withCode() });
     j = await r.json();
   } catch (e) { return closed(true); }
+  if (!preview && j && j.needsCode) return askCode(j);
   if (!r.ok || !j.snapshot) return closed(false, j && j.error);
   snap = j.snapshot; revId = preview ? "preview" : j.revisionId;
   const wanted = store.get("alie.rv.lang", "") || (params.get("lang") || "");
@@ -43,6 +47,22 @@ function setLang(l) {
   lang = l; cur = snapshotIn(snap, lang); T = UI[lang] || UI.en; cards = snapshotCards(snap, lang);
   document.documentElement.lang = lang; document.title = (cur.title || "ALIE") + " · " + T.cover;
   store.set("alie.rv.lang", lang);
+}
+/* a protected link: ask for the code before anything else is shown; the title stays hidden until it is right */
+function askCode(j) {
+  const L = (navigator.language || "fr").toLowerCase().startsWith("en") ? UI.en : UI.fr;
+  const O = L === UI.en ? UI.fr : UI.en;
+  root.innerHTML = '<form class="rv-code" id="rvcode"><div class="wm">ALIE</div><h1>' + esc(L.codeTitle) + '</h1><p>' + esc(L.codeHint) + '<br><span class="alt">' + esc(O.codeHint) + '</span></p>' +
+    '<label for="rvc">' + esc(L.codeLabel) + ' · ' + esc(O.codeLabel) + '</label><input id="rvc" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="24" required>' +
+    '<button type="submit">' + esc(L.codeOpen) + '</button><div class="err" role="alert">' + (j.wrong ? esc(L.codeWrong) : j.error ? esc(j.error) : "") + "</div></form>";
+  const f = document.getElementById("rvcode"), inp = document.getElementById("rvc");
+  inp.focus();
+  f.addEventListener("submit", e => {
+    e.preventDefault();
+    accessCode = inp.value.trim();
+    try { sessionStorage.setItem(CODE_KEY, accessCode); } catch (err) { /* private mode */ }
+    boot();
+  });
 }
 function closed(network, why) {
   root.innerHTML = '<div class="rv-closed"><h1>' + esc(network ? "Cannot reach the server" : T.closed) + "</h1><p>" + esc(network ? "Check your connection and reload." : (why || T.closedHint)) + "</p></div>";
@@ -128,12 +148,32 @@ function renderBlock(b, compact) {
   else if (b.kind === "callout") inner = '<div class="rv-quote' + (/^(to confirm|à confirmer)/i.test(b.text) ? " pink" : "") + '">' + inline(b.text) + "</div>";
   else if (b.kind === "steps") inner = b.items.map((it, i) => { const m = /^\*\*(.+?)\*\*\s*(.*)$/.exec(it); return '<div class="rv-num"><span class="n">' + (i + 1) + "</span>" + (m ? "<b>" + inline(m[1]) + "</b>" + inline(m[2]) : inline(it)) + "</div>"; }).join("");
   else if (b.kind === "list") inner = "<ul>" + b.items.map(i => "<li>" + inline(i) + "</li>").join("") + "</ul>";
+  else if (b.kind === "table") inner = renderTable(b);
   else if (b.kind === "columns") inner = '<div class="rv-grid">' + b.head.map((h, i) => '<div><img class="ico" src="' + visualSrc(2 + i) + '" alt=""><b>' + inline(h) + "</b>" + b.rows.map(r => "<p>" + inline(r[i] || "") + "</p>").join("") + "</div>").join("") + "</div>";
   else inner = '<p class="' + (b.text.length <= 70 && /:$/.test(b.text) ? "lead" : "") + '">' + inline(b.text) + "</p>";
   return '<div class="rv-block" data-block="' + esc(b.id) + '">' + inner + "</div>";
 }
+function answerFor(cardId, blockId, row) {
+  const pend = queue.filter(q => q.payload.card === cardId && q.payload.block === blockId && q.payload.row === row).pop();
+  if (pend) return { text: pend.payload.text, pending: pend.status };
+  const saved = (mine[cardId] || []).filter(m => m.block === blockId && m.row === row).pop();
+  return saved ? { text: saved.text } : null;
+}
+function renderTable(b) {
+  const cardId = cards[idx - 1] ? cards[idx - 1].id : "";
+  let h = (!name && !preview ? '<div class="rv-namebar"><label>' + esc(T.name) + '</label><input data-rv-name maxlength="' + LIMITS.name + '" autocomplete="name"><span>' + esc(T.nameHint) + "</span></div>" : "") + '<div class="rv-tablewrap"><table class="rv-table"><thead><tr>' + b.head.map(c => "<th>" + inline(c) + "</th>").join("") + '<th class="ans">' + esc(T.answerCol) + "</th></tr></thead><tbody>";
+  b.rows.forEach((r, i) => {
+    const a = answerFor(cardId, b.id, i);
+    const cells = b.head.map((_, j) => '<td data-label="' + esc(b.head[j] || "") + '">' + inline(r[j] || "") + "</td>").join("");
+    let ans;
+    if (a && !(openRows[b.id + ":" + i])) ans = '<div class="given"><p>' + esc(a.text) + "</p>" + (a.pending ? '<span class="st">' + esc(a.pending === "failed" ? T.failed : T.pending) + "</span>" : '<span class="ok">✓ ' + esc(T.answerSaved) + "</span>") + '<button type="button" class="lnk" data-row-edit="' + esc(b.id) + ":" + i + '">' + esc(T.answerEdit) + "</button></div>";
+    else ans = '<textarea rows="2" maxlength="' + LIMITS.text + '" placeholder="' + esc(T.answerPh) + '" data-row-text="' + esc(b.id) + ":" + i + '"' + (preview ? " disabled" : "") + ">" + esc(drafts[b.id + ":" + i] || (a ? a.text : "")) + '</textarea><button type="button" class="rv-rowsave" data-row-save="' + esc(b.id) + ":" + i + '"' + (preview ? " disabled" : "") + ">" + esc(T.answerSave) + "</button>";
+    h += "<tr>" + cells + '<td class="ans" data-label="' + esc(T.answerCol) + '">' + ans + "</td></tr>";
+  });
+  return h + "</tbody></table></div>";
+}
 function renderMine(cardId) {
-  const list = (mine[cardId] || []).concat(queue.filter(q => q.payload.card === cardId).map(q => ({ id: q.id, kind: q.payload.kind, quote: q.payload.quote, text: q.payload.text || q.payload.suggestion, pending: q.status })));
+  const list = (mine[cardId] || []).filter(m => !(m.row >= 0)).concat(queue.filter(q => q.payload.card === cardId && !(q.payload.row >= 0)).map(q => ({ id: q.id, kind: q.payload.kind, quote: q.payload.quote, text: q.payload.text || q.payload.suggestion, pending: q.status })));
   if (!list.length) return "";
   return '<div class="rv-mine"><div class="lab">' + esc(T.yours) + "</div>" + list.map(it => '<div class="it"><b>' + esc(it.kind === "suggestion" ? T.suggest : T.commentSel) + "</b>" + (it.quote ? " · <q>" + esc(it.quote.slice(0, 90)) + (it.quote.length > 90 ? "…" : "") + "</q>" : "") + " — " + esc((it.text || "").slice(0, 140)) + (it.pending ? '<span class="st">' + esc(it.pending === "failed" ? T.failed : T.pending) + "</span>" : "") + "</div>").join("") + "</div>";
 }
@@ -171,6 +211,9 @@ function wire() {
   const sug = document.getElementById("pf-sug"); if (sug) sug.addEventListener("input", () => { panel.suggestion = sug.value; });
   const nmi = document.getElementById("pf-name"); if (nmi) nmi.addEventListener("input", () => { panel.name = nmi.value; });
   if (panel && !panel.focused) { panel.focused = true; const f = document.getElementById(panel.mode === "suggest" ? "pf-sug" : "pf-txt"); if (f && window.innerWidth > 860) f.focus(); }
+  root.querySelectorAll("[data-row-text]").forEach(t => t.addEventListener("input", () => { drafts[t.dataset.rowText] = t.value; }));
+  root.querySelectorAll("[data-row-edit]").forEach(b => b.addEventListener("click", () => { openRows[b.dataset.rowEdit] = true; render(); const t = root.querySelector('[data-row-text="' + b.dataset.rowEdit + '"]'); if (t) t.focus(); }));
+  root.querySelectorAll("[data-row-save]").forEach(b => b.addEventListener("click", () => saveRow(b.dataset.rowSave)));
   const body = root.querySelector(".rv-body[data-card]");
   if (body && !preview) { body.addEventListener("mouseup", onSelect); body.addEventListener("touchend", () => setTimeout(onSelect, 60)); body.addEventListener("keyup", e => { if (e.shiftKey) onSelect(); }); }
   const sc = root.querySelector(".rv-scroll, .rv-text"); if (sc) sc.scrollTop = 0;
@@ -230,6 +273,30 @@ function nodeEl(n) { return n.nodeType === 1 ? n : n.parentElement; }
 function removeSelbar() { const b = document.getElementById("selbar"); if (b) b.remove(); }
 document.addEventListener("mousedown", e => { if (!e.target.closest("#selbar")) removeSelbar(); });
 
+/* one answer per table row: sent like a comment anchored to that row; a changed answer is sent again and the latest one shows */
+const drafts = {}, openRows = {};
+async function saveRow(key) {
+  if (preview) return;
+  const [blockId, rowStr] = key.split(":"); const row = Number(rowStr);
+  const t = root.querySelector('[data-row-text="' + key + '"]');
+  const text = (t ? t.value : drafts[key] || "").trim();
+  if (!text) { if (t) t.focus(); return; }
+  if (!name) {
+    const ni = root.querySelector("[data-rv-name]");
+    const v = ni ? ni.value.trim() : "";
+    if (!v) { drafts[key] = text; if (ni) { ni.focus(); ni.classList.add("need"); } return; }
+    name = v; store.set("alie.rv.name", name);
+  }
+  const payload = { submission: rnd(), kind: "comment", card: cards[idx - 1].id, block: blockId, row, quote: "", start: -1, end: -1, context: "", text, suggestion: "", name, lang };
+  const item = { id: payload.submission, payload, status: "sending", at: Date.now() };
+  queue.push(item); store.set(K("q"), queue);
+  delete drafts[key]; delete openRows[key];
+  render();
+  const ok = await send(item);
+  if (ok) toast(T.answerSaved); else toast(T.failed);
+  render();
+}
+
 /* ---------- sending: a queue in this browser, one id per submission so a retry never doubles a comment ---------- */
 async function submit() {
   if (preview) return;
@@ -248,11 +315,11 @@ async function submit() {
 }
 async function send(item) {
   try {
-    const r = await fetch("/api/public/review/" + encodeURIComponent(token) + (item.payload.kind === "finish" ? "/finish" : "/feedback"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item.payload) });
+    const r = await fetch("/api/public/review/" + encodeURIComponent(token) + (item.payload.kind === "finish" ? "/finish" : "/feedback"), { method: "POST", headers: withCode({ "Content-Type": "application/json" }), body: JSON.stringify(item.payload) });
     const j = await r.json().catch(() => ({}));
     if (r.ok && j.ok) {
       queue = queue.filter(q => q.id !== item.id); store.set(K("q"), queue);
-      if (item.payload.kind !== "finish") { const c = item.payload.card; mine[c] = (mine[c] || []).concat([{ id: j.id, kind: item.payload.kind, quote: item.payload.quote, text: item.payload.text || item.payload.suggestion }]); store.set(K("mine"), mine); }
+      if (item.payload.kind !== "finish") { const c = item.payload.card; mine[c] = (mine[c] || []).concat([{ id: j.id, kind: item.payload.kind, quote: item.payload.quote, text: item.payload.text || item.payload.suggestion, block: item.payload.block, row: item.payload.row >= 0 ? item.payload.row : -1 }]); store.set(K("mine"), mine); }
       return true;
     }
     if (r.status === 400 || r.status === 404) { queue = queue.filter(q => q.id !== item.id); store.set(K("q"), queue); toast(j.error || T.failed); return false; }

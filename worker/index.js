@@ -122,7 +122,7 @@ export default {
       let pbody = null;
       if (request.method === "POST") { const text = await request.text(); if (text.length > 64000) return jsonResponse(413, { error: "Too large." }); try { pbody = text.trim() ? JSON.parse(text) : {}; } catch (_) { return jsonResponse(400, { error: "Body must be JSON." }); } }
       try {
-        const out = await handlePublic({ method: request.method, path: path.replace(/^\/api/, ""), body: pbody, ip: request.headers.get("CF-Connecting-IP") || "" }, new D1Store(env.DB));
+        const out = await handlePublic({ method: request.method, path: path.replace(/^\/api/, ""), body: pbody, ip: request.headers.get("CF-Connecting-IP") || "", code: request.headers.get("X-Review-Code") || "" }, new D1Store(env.DB));
         return jsonResponse(out.status, out.body, out.headers);
       } catch (e) { return jsonResponse(500, { error: "Server error" }); }
     }

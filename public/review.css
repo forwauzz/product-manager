@@ -325,3 +325,43 @@ img { display:block; }
   .rv-panel { top:auto; right:0; bottom:0; width:auto; max-height:min(78dvh, calc(100dvh - 40px)); border-radius:16px 16px 0 0; }
 }
 @media (max-width:420px) { .rv-back .lb { display:none; } .rv-back, .rv-card.visual .rv-back { padding:0 15px; } }
+
+/* ---------- tables the reader answers row by row ---------- */
+.rv-tablewrap { margin:8px 0 26px; overflow-x:auto; }
+.rv-table { width:100%; border-collapse:separate; border-spacing:0; font-size:14.5px; line-height:1.45; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+.rv-table th { text-align:left; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--mute); font-weight:600; background:#f6f3ee; padding:10px 12px; border-bottom:1px solid var(--line); }
+.rv-table td { vertical-align:top; padding:12px; border-bottom:1px solid var(--line); color:#222; }
+.rv-table tr:last-child td { border-bottom:0; }
+.rv-table td:first-child { font-weight:600; color:var(--ink); }
+.rv-table th.ans, .rv-table td.ans { width:30%; min-width:220px; background:#fbf8f1; }
+.rv-table td.ans textarea { width:100%; min-height:62px; border:1px solid #ddd7cb; border-radius:8px; padding:8px 10px; font:inherit; font-size:14px; background:#fff; resize:vertical; }
+.rv-table td.ans textarea:focus { outline:2px solid var(--gold); outline-offset:0; }
+.rv-rowsave { margin-top:6px; height:32px; padding:0 14px; border:0; border-radius:8px; background:linear-gradient(180deg,#b19354,#a08244); color:#fff; font-size:13px; font-weight:500; cursor:pointer; }
+.rv-rowsave:disabled { opacity:.5; cursor:default; }
+.rv-table .given p { margin:0 0 6px; font-weight:400; white-space:pre-wrap; }
+.rv-table .given .ok { font-size:12.5px; color:#2f6b3a; margin-right:10px; }
+.rv-table .given .st { font-size:12.5px; color:#a12626; margin-right:10px; }
+.rv-table .lnk { border:0; background:none; padding:0; color:var(--gold-t); font-size:12.5px; text-decoration:underline; cursor:pointer; }
+.rv-namebar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin:4px 0 10px; font-size:13.5px; color:var(--mute); }
+.rv-namebar label { font-weight:600; color:var(--ink); }
+.rv-namebar input { height:34px; border:1px solid #ddd7cb; border-radius:8px; padding:0 10px; font:inherit; min-width:200px; }
+.rv-namebar input.need { border-color:#a12626; }
+.rv-text .rv-tablewrap { font-size:14px; }
+/* ---------- access code ---------- */
+.rv-code { max-width:420px; margin:14vh auto; padding:0 24px; text-align:left; }
+.rv-code .wm { font-size:22px; letter-spacing:.2em; margin-bottom:28px; }
+.rv-code h1 { font-size:28px; font-weight:700; margin:0 0 10px; }
+.rv-code p { color:var(--mute); margin:0 0 22px; } .rv-code .alt { font-size:14px; }
+.rv-code label { display:block; font-size:13px; color:var(--mute); margin-bottom:6px; }
+.rv-code input { width:100%; height:48px; border:1px solid #ddd7cb; border-radius:10px; padding:0 14px; font-size:20px; letter-spacing:.14em; text-transform:uppercase; font-family:var(--sans); }
+.rv-code input:focus { outline:2px solid var(--gold); }
+.rv-code button { margin-top:14px; width:100%; height:48px; border:0; border-radius:10px; background:linear-gradient(180deg,#b19354,#a08244); color:#fff; font-size:16px; font-weight:500; cursor:pointer; }
+.rv-code .err { margin-top:12px; color:#a12626; font-size:14px; min-height:20px; }
+@media (max-width:860px) {
+  .rv-table thead { display:none; }
+  .rv-table, .rv-table tbody, .rv-table tr, .rv-table td { display:block; width:100%; }
+  .rv-table tr { border-bottom:1px solid var(--line); padding:6px 0; }
+  .rv-table td { border:0; padding:6px 14px; }
+  .rv-table td::before { content:attr(data-label); display:block; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--mute); font-weight:600; margin-bottom:2px; }
+  .rv-table th.ans, .rv-table td.ans { width:auto; min-width:0; }
+}

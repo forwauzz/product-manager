@@ -3873,6 +3873,7 @@
         share.appendChild(el("div", "lab", "Share"));
         var inp = el("input", "rvlink"); inp.readOnly = true; inp.value = reviewLink(cur); inp.onclick = function () { inp.select(); };
         share.appendChild(inp);
+        if (r.code) { var cl = el("div", "rvcodeline"); cl.appendChild(el("span", null, "Access code")); cl.appendChild(el("b", null, r.code)); cl.appendChild(chipBtn("Copy code", function () { if (navigator.clipboard) navigator.clipboard.writeText(r.code).then(function () { toast("Code copied. Send it separately from the link."); }); })); share.appendChild(cl); }
         var srow = el("div", "row");
         srow.appendChild(chipBtn("Copy link", function () { copyReviewLink(cur); }));
         var exp = el("div", "fld inline"); exp.appendChild(el("label", null, "Expires")); var ed = txtIn(cur.expires || "", "", function (v) { cur.expires = v; r.updated = Date.now(); touchPilot(p); save(); }, "date"); exp.appendChild(ed); srow.appendChild(exp);
@@ -3888,7 +3889,8 @@
   }
   function copyReviewLink(rev) {
     var url = reviewLink(rev);
-    var done = function () { toast("Link copied. Anyone with it can read this revision."); };
+    var owner = null; pilots().forEach(function (pp) { (pp.reviews || []).forEach(function (rr) { if (rr.revisions.indexOf(rev) !== -1) owner = rr; }); });
+    var done = function () { toast(owner && owner.code ? "Link copied. The reader also needs the access code " + owner.code + "; send it separately." : "Link copied. Anyone with it can read this revision."); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { window.prompt("Copy this link", url); });
     else window.prompt("Copy this link", url);
   }
@@ -3922,7 +3924,7 @@
     var R = RV();
     var row = el("div", "rvfb");
     var head = el("div", "rvfb-head");
-    head.appendChild(quietPill(fb.kind === "suggestion" ? "suggested correction" : fb.kind === "finish" ? "finished review" : "comment", fb.kind === "suggestion" ? "st-planned" : fb.kind === "finish" ? "st-live" : ""));
+    head.appendChild(quietPill(fb.kind === "suggestion" ? "suggested correction" : fb.kind === "finish" ? "finished review" : fb.row >= 0 ? "answer to line " + (fb.row + 1) : "comment", fb.kind === "suggestion" ? "st-planned" : fb.kind === "finish" ? "st-live" : fb.row >= 0 ? "st-building" : ""));
     if (R.hasFrench(r)) head.appendChild(quietPill(R.feedbackLang(r, fb) === "fr" ? "FR" : "EN", "st-planned"));
     var rev = r.revisions.filter(function (x) { return x.id === fb.revision; })[0];
     head.appendChild(el("span", "note", [fb.name || "unnamed", new Date(fb.created).toLocaleString(), rev ? "revision " + rev.n : "", fb.card ? reviewCardTitle(r, fb.card) : ""].filter(Boolean).join(" · ")));
@@ -3963,7 +3965,7 @@
   function editReview(p, r, isNew) {
     var d = JSON.parse(JSON.stringify(r));
     sideDrawer(isNew ? "Draft the review" : d.title || "Review", function (body, close) {
-      body.appendChild(el("p", "note", "Write for the firm, not for us: short pages, one idea each, “my understanding” and “to confirm” where you are not sure. No case names, client details or internal notes. Publishing freezes a copy; edits here need a new revision."));
+      body.appendChild(el("p", "note", "Write for the firm, not for us: short pages, one idea each, “my understanding” and “to confirm” where you are not sure. No internal notes, and no case names or client details unless the review has an access code. Publishing freezes a copy; edits here need a new revision."));
       var r1 = el("div", "fld two");
       r1.appendChild(fld("Title", txtIn(d.title, "Le Cabinet M", function (v) { d.title = v; })));
       r1.appendChild(fld("Subtitle", txtIn(d.subtitle, "What I understand about your business so far", function (v) { d.subtitle = v; })));
@@ -3973,6 +3975,17 @@
       r2.appendChild(fld("Date shown", txtIn(d.date, "", function (v) { d.date = v; }, "date")));
       body.appendChild(r2);
       body.appendChild(fld("Written for", txtIn(d.reader || "", "Sarah-Jeanne, or Amélie and Claudine", function (v) { d.reader = v; }), "Only for you: names the review in the app. The reader never sees it."));
+      var codeBox = el("div", "fld");
+      codeBox.appendChild(el("label", null, "Access code"));
+      var codeRow = el("div", "rvcoderow");
+      var codeIn = txtIn(d.code || "", "No code: anyone with the link can open it", function (v) { d.code = v.toUpperCase(); });
+      codeIn.setAttribute("aria-label", "Access code");
+      codeRow.appendChild(codeIn);
+      codeRow.appendChild(chipBtn(d.code ? "New code" : "Require a code", function () { d.code = RV().newAccessCode(); codeIn.value = d.code; }));
+      codeRow.appendChild(chipBtn("Remove", function () { d.code = ""; codeIn.value = ""; }));
+      codeBox.appendChild(codeRow);
+      codeBox.appendChild(el("span", "hint", "Use a code whenever the pages carry names, dates or medical details. The reader types it before anything shows. Send it separately from the link, for example in the email. Changing it takes effect at once, on every link of this review."));
+      body.appendChild(codeBox);
       body.appendChild(fld("Language shown first", selIn([["en", "English"], ["fr", "Français"]], d.lang, function (v) { d.lang = v; }), "The reader can switch to the other language when its text is filled in below. Comments keep the language, page and revision they were written against."));
       body.appendChild(fld("Welcome text (kept for the record; the cover shows title, subtitle and date, page 1 carries the welcome)", areaIn(d.intro, "", function (v) { d.intro = v; }, 2)));
       body.appendChild(fld("Closing text", areaIn(d.closing, "Shown on the last page above Finish review.", function (v) { d.closing = v; }, 2)));

@@ -135,7 +135,7 @@ export async function attach(api) {
     const box = document.createElement("div"); box.className = "rv-srcbox";
     const ta = document.createElement("textarea"); ta.value = b.src; ta.rows = Math.min(24, Math.max(3, b.src.split("\n").length + 1));
     const hint = document.createElement("div"); hint.className = "hint";
-    hint.textContent = "Plain text is a paragraph. “## ” heading · “> ” callout (“> To confirm…” turns pink) · “1. ” numbered steps · “- ” bullets · “| left | right |” columns · “@ Name | Title | Role” team · “~ [Who] Stage :: note”, “~? Question :: yes → A / no → B”, “~| A || B” side by side, “~> A || B” paths, “~= …” band · **bold**, *italic*. Ctrl+Enter saves.";
+    hint.textContent = "Plain text is a paragraph. “## ” heading · “> ” callout (“> To confirm…” turns pink) · “1. ” numbered steps · “- ” bullets · “| left | right |” columns · “?| Head | Head |” then “?| cell | cell |” a table the reader answers row by row · “@ Name | Title | Role” team · “~ [Who] Stage :: note”, “~? Question :: yes → A / no → B”, “~| A || B” side by side, “~> A || B” paths, “~= …” band · **bold**, *italic*. Ctrl+Enter saves.";
     const acts = document.createElement("div"); acts.className = "acts";
     const ok = document.createElement("button"); ok.className = "primary"; ok.textContent = "Save";
     const no = document.createElement("button"); no.textContent = "Cancel";

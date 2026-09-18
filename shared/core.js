@@ -1,7 +1,7 @@
 /* Runtime-neutral core: data model, seed, normalisation, and the HTTP API handler.
    Used by the local Express server and by the Cloudflare Worker. No Node or Workers APIs here. */
 
-import { normalizeReview, snapshotOf, revisionOpen, validateSubmission, LIMITS as REVIEW_LIMITS } from "../public/reviews.js";
+import { normalizeReview, normalizeCode, snapshotOf, revisionOpen, validateSubmission, LIMITS as REVIEW_LIMITS } from "../public/reviews.js";
 
 export const STATES = ["Proposed", "Research", "Planned", "Building", "Live", "Needs work", "Feature flag"];
 /* States that mean the thing exists in the product. Reaching one of them without ever being Planned is drift. */
@@ -422,6 +422,7 @@ const EFFORT_UNITS = ["days", "weeks", "months"];
    A whole-document save from the app carries a copy of each pilot; feedback and revisions written on the server
    between two saves must survive that copy, so they are unioned back in by id. */
 const DRAFT_FIELDS = ["title", "subtitle", "author", "lang", "intro", "closing", "titleFr", "subtitleFr", "introFr", "closingFr"];
+/* reader and access code live on the review, set only from the signed-in app */
 function draftOf(r) { const d = { id: r.id, date: r.date, cards: r.cards }; DRAFT_FIELDS.forEach(k => { d[k] = r[k]; }); return d; }
 function keepServerSideReviewData(currentState, next) {
   (currentState.pilots || []).forEach(cp => {
@@ -459,6 +460,10 @@ function rateLimited(key) {
   if (publicRate.size > 5000) publicRate.clear();
   return false;
 }
+const codeFails = new Map();
+const CODE_TRIES = 8, CODE_WINDOW = 15 * 60 * 1000;
+function codeLimited(key) { const now = Date.now(); const l = (codeFails.get(key) || []).filter(t => now - t < CODE_WINDOW); codeFails.set(key, l); return l.length >= CODE_TRIES; }
+function codeFailed(key) { const l = codeFails.get(key) || []; l.push(Date.now()); codeFails.set(key, l); if (codeFails.size > 5000) codeFails.clear(); }
 /* Requests under /api/public/review/<token>: read one frozen revision, or leave feedback inside its scope. Nothing else. */
 export async function handlePublic(req, store) {
   const method = String(req.method || "GET").toUpperCase();
@@ -471,6 +476,14 @@ export async function handlePublic(req, store) {
   const doc = await store.load();
   const hit = findRevisionByToken(doc.state, token);
   if (!hit || !revisionOpen(hit.rev)) return json(404, { error: "This link is not active." }, noStore);
+  /* a protected link answers nothing, not even the title, until the reader gives the code; wrong guesses are rate-limited per address and per link */
+  const want = normalizeCode(hit.r.code);
+  if (want) {
+    const given = normalizeCode(req.code);
+    if (!given) return json(401, { needsCode: true }, noStore);
+    if (codeLimited("c:" + ip) || codeLimited("t:" + token)) return json(429, { needsCode: true, error: "Too many attempts. Try again in fifteen minutes." }, noStore);
+    if (given.length !== want.length || !timingEqual(given, want)) { codeFailed("c:" + ip); codeFailed("t:" + token); return json(401, { needsCode: true, wrong: true }, noStore); }
+  }
   if (seg.length === 3 && method === "GET") {
     return json(200, { ok: true, revisionId: hit.rev.id, snapshot: hit.rev.snapshot, expires: hit.rev.expires || "" }, noStore);
   }

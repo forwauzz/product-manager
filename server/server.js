@@ -105,7 +105,7 @@ export function createApp(opts = {}) {
   app.get(/^\/r\/[A-Za-z0-9_-]{20,}$/, (req, res) => { res.set("Cache-Control", "no-store"); res.set("X-Robots-Tag", "noindex, nofollow"); res.set("Referrer-Policy", "no-referrer"); res.sendFile(path.join(here, "..", "public", "review.html")); });
   app.all("/api/*", async (req, res, next) => {
     try {
-      const out = await handleApi({ method: req.method, path: req.path.replace(/^\/api/, ""), query: req.query, body: req.body, ip: req.ip }, store);
+      const out = await handleApi({ method: req.method, path: req.path.replace(/^\/api/, ""), query: req.query, body: req.body, ip: req.ip, code: req.get("X-Review-Code") || "" }, store);
       Object.entries(out.headers || {}).forEach(([k, v]) => res.setHeader(k, v));
       if (out.status === 204) return res.status(204).end();
       res.status(out.status).json(out.body);

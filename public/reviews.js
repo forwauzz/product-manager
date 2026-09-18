@@ -41,6 +41,10 @@ export function parseBlocks(body) {
     let b;
     if (lines.every(l => /^>\s?/.test(l))) b = { kind: "callout", text: lines.map(l => l.replace(/^>\s?/, "")).join(" ") };
     else if (lines.every(l => /^~/.test(l))) b = { kind: "flow", nodes: lines.map(parseFlowLine) };
+    else if (lines.every(l => /^\?\|.*\|$/.test(l))) {
+      const rows = lines.map(l => l.slice(2, -1).split("|").map(c => c.trim())).filter(r => !r.every(c => /^:?-+:?$/.test(c)));
+      b = { kind: "table", head: rows[0] || [], rows: rows.slice(1) };
+    }
     else if (lines.every(l => /^@\s/.test(l))) b = { kind: "team", people: lines.map(l => { const p = l.replace(/^@\s*/, "").split("|").map(x => x.trim()); return { name: p[0] || "", title: p[1] || "", role: p[2] || "" }; }) };
     else if (lines[0].startsWith("## ")) b = { kind: "h", text: lines[0].slice(3).trim(), rest: lines.slice(1).join(" ") };
     else if (lines.every(l => /^\d+[.)]\s/.test(l))) b = { kind: "steps", items: lines.map(l => l.replace(/^\d+[.)]\s/, "")) };
@@ -79,7 +83,7 @@ export function blockText(b) {
   if (b.kind === "flow") return flowText(b);
   if (b.kind === "team") return (b.people || []).map(p => [p.name, p.title, p.role].filter(Boolean).join(" · ")).join("\n");
   if (b.kind === "steps" || b.kind === "list") return (b.items || []).join("\n");
-  if (b.kind === "columns") return [b.head || []].concat(b.rows || []).map(r => r.join(" | ")).join("\n");
+  if (b.kind === "columns" || b.kind === "table") return [b.head || []].concat(b.rows || []).map(r => r.join(" | ")).join("\n");
   if (b.kind === "h") return [b.text, b.rest].filter(Boolean).join("\n");
   return b.text || "";
 }
@@ -103,6 +107,7 @@ export function normalizeReview(r) {
     quote: str(x.quote).slice(0, LIMITS.quote), start: num(x.start, -1), end: num(x.end, -1), context: str(x.context).slice(0, LIMITS.context),
     suggestion: str(x.suggestion).slice(0, LIMITS.suggestion), text: str(x.text).slice(0, LIMITS.text), name: str(x.name).slice(0, LIMITS.name), submission: str(x.submission),
     lang: x.lang === "fr" ? "fr" : x.lang === "en" ? "en" : "",
+    row: Number.isInteger(x.row) && x.row >= 0 ? x.row : -1,
     state: oneOf(FEEDBACK_STATES, x.state, "Open"), links: { step: str(x.links && x.links.step), question: str(x.links && x.links.question) }, note: str(x.note),
     applied: x.applied && typeof x.applied === "object" ? { at: num(x.applied.at, 0), before: str(x.applied.before), after: str(x.applied.after), card: str(x.applied.card), lang: str(x.applied.lang) } : null,
     created: num(x.created, Date.now())
@@ -110,6 +115,7 @@ export function normalizeReview(r) {
   const status = oneOf(REVIEW_STATUS, r.status, revisions.length ? "Published" : "Draft");
   return { id: str(r.id || uid()), title: str(r.title), subtitle: str(r.subtitle), author: str(r.author), date: str(r.date), lang: r.lang === "fr" ? "fr" : "en", intro: str(r.intro), closing: str(r.closing),
     titleFr: str(r.titleFr), subtitleFr: str(r.subtitleFr), introFr: str(r.introFr), closingFr: str(r.closingFr), reader: str(r.reader).slice(0, 120),
+    code: str(r.code).toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 24),
     status, cards, revisions, feedback, draftAt: num(r.draftAt, 0), created: num(r.created, Date.now()), updated: num(r.updated, Date.now()) };
 }
 /* French text exists when at least one page carries it */
@@ -219,7 +225,7 @@ export function validateSubmission(body, rev, now) {
   if (text.length > LIMITS.text || suggestion.length > LIMITS.suggestion || quote.length > LIMITS.quote) return { ok: false, error: "That is longer than this form accepts." };
   const langs = snapshotLangs(rev.snapshot);
   const lang = langs.indexOf(body.lang) !== -1 ? body.lang : (rev.snapshot && rev.snapshot.lang) || "en";
-  const fb = { id: uid(), revision: rev.id, card: "", block: "", kind, quote: "", start: -1, end: -1, context: "", suggestion: "", text: "", name, submission, lang, state: "Open", links: { step: "", question: "" }, note: "", applied: null, created: now || Date.now() };
+  const fb = { id: uid(), revision: rev.id, card: "", block: "", row: -1, kind, quote: "", start: -1, end: -1, context: "", suggestion: "", text: "", name, submission, lang, state: "Open", links: { step: "", question: "" }, note: "", applied: null, created: now || Date.now() };
   if (kind === "finish") return { ok: true, feedback: fb };
   const card = snapshotCards(rev.snapshot, lang).find(c => c.id === str(body.card));
   if (!card) return { ok: false, error: "That page is not part of this review." };
@@ -229,6 +235,11 @@ export function validateSubmission(body, rev, now) {
     if (!block) return { ok: false, error: "That passage is not part of this page." };
     fb.block = block.id;
     fb.quote = quote; fb.start = num(body.start, -1); fb.end = num(body.end, -1); fb.context = str(body.context).slice(0, LIMITS.context);
+    if (body.row !== undefined && body.row !== null && body.row !== -1) {
+      const row = Number(body.row);
+      if (block.kind !== "table" || !Number.isInteger(row) || row < 0 || row >= block.rows.length) return { ok: false, error: "That line is not part of this table." };
+      fb.row = row; fb.quote = block.rows[row].join(" · ").slice(0, LIMITS.quote);
+    }
   }
   if (kind === "suggestion") {
     if (!fb.quote) return { ok: false, error: "Select the passage to correct first." };
@@ -295,12 +306,22 @@ export function addCabinetMFrench(review) {
   return changed;
 }
 
+/* Access codes: an optional second key for a shared link, sent to the reader separately (for example by email).
+   Letters and digits only, without look-alikes; stored upper-case, compared upper-case. */
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+export function normalizeCode(c) { return String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 24); }
+export function newAccessCode() {
+  const bytes = new Uint8Array(8); globalThis.crypto.getRandomValues(bytes);
+  let s = ""; bytes.forEach(b => { s += CODE_ALPHABET[b % CODE_ALPHABET.length]; });
+  return s.slice(0, 4) + "-" + s.slice(4);
+}
+
 /* Guest-facing UI strings, by the review's language */
 export const UI = {
-  en: { start: "Start reading", next: "Next", back: "Back", of: "of", sections: "Sections", comment: "Add a comment", prompt: "Anything to correct or add?", suggest: "Suggest a correction", commentSel: "Comment", original: "Original passage", replacement: "Your wording", why: "Why (optional)", name: "Your name", nameHint: "So I know who wrote this. Remembered on this device only.", send: "Save", sending: "Saving…", saved: "Saved. Thank you.", failed: "Not saved. Check your connection and retry.", retry: "Retry", cancel: "Cancel", finish: "Finish review", finished: "Thank you. I have your comments and will go through the remaining questions with you at our next meeting.", finishNote: "This records that you have been through the pages, not that you agree with every sentence.", pageComment: "Comment on this page", flowAria: "Flow of a client matter, from first contact to the end", lastUpdated: "Last updated", onPage: "On page", revision: "Revision", prepared: "Prepared by", closed: "This link is no longer active.", closedHint: "Ask Uzziel for a fresh one.", cover: "For your review", pending: "waiting to send", yours: "Your comments on this page", unsent: "You have an unsent comment. It stays here until you save or cancel it.", welcomeMeta: "About ten short pages. Read in any order." },
-  fr: { start: "Commencer la lecture", next: "Suivant", back: "Retour", of: "sur", sections: "Sections", comment: "Ajouter un commentaire", prompt: "Quelque chose à corriger ou à ajouter?", suggest: "Proposer une correction", commentSel: "Commenter", original: "Passage original", replacement: "Votre formulation", why: "Pourquoi (facultatif)", name: "Votre nom", nameHint: "Pour que je sache qui a écrit ceci. Mémorisé sur cet appareil seulement.", send: "Enregistrer", sending: "Enregistrement…", saved: "Enregistré. Merci.", failed: "Non enregistré. Vérifiez la connexion et réessayez.", retry: "Réessayer", cancel: "Annuler", finish: "Terminer la relecture", finished: "Merci. J’ai vos commentaires et nous passerons les questions restantes ensemble à notre prochaine rencontre.", finishNote: "Ceci indique que vous avez parcouru les pages, pas que vous approuvez chaque phrase.", pageComment: "Commenter cette page", flowAria: "Parcours d’un dossier client, du premier contact à la fin", lastUpdated: "Dernière mise à jour", onPage: "Sur la page", revision: "Révision", prepared: "Préparé par", closed: "Ce lien n’est plus actif.", closedHint: "Demandez un nouveau lien à Uzziel.", cover: "Pour votre relecture", pending: "en attente d’envoi", yours: "Vos commentaires sur cette page", unsent: "Un commentaire n’est pas envoyé. Il reste ici jusqu’à ce que vous l’enregistriez ou l’annuliez.", welcomeMeta: "Une dizaine de courtes pages. Lisez dans l’ordre que vous voulez." }
+  en: { start: "Start reading", next: "Next", back: "Back", of: "of", sections: "Sections", comment: "Add a comment", prompt: "Anything to correct or add?", suggest: "Suggest a correction", commentSel: "Comment", original: "Original passage", replacement: "Your wording", why: "Why (optional)", name: "Your name", nameHint: "So I know who wrote this. Remembered on this device only.", send: "Save", sending: "Saving…", saved: "Saved. Thank you.", failed: "Not saved. Check your connection and retry.", retry: "Retry", cancel: "Cancel", finish: "Finish review", finished: "Thank you. I have your comments and will go through the remaining questions with you at our next meeting.", finishNote: "This records that you have been through the pages, not that you agree with every sentence.", pageComment: "Comment on this page", flowAria: "Flow of a client matter, from first contact to the end", lastUpdated: "Last updated", onPage: "On page", revision: "Revision", prepared: "Prepared by", closed: "This link is no longer active.", closedHint: "Ask Uzziel for a fresh one.", cover: "For your review", pending: "waiting to send", yours: "Your comments on this page", unsent: "You have an unsent comment. It stays here until you save or cancel it.", welcomeMeta: "About ten short pages. Read in any order.", answerCol: "Your answer", answerPh: "Correct, add, or explain…", answerSave: "Save", answerSaved: "Saved", answerEdit: "Change my answer", codeTitle: "This link is protected", codeHint: "Enter the access code you received by email.", codeLabel: "Access code", codeOpen: "Open", codeWrong: "That code does not match. Check it and try again." },
+  fr: { start: "Commencer la lecture", next: "Suivant", back: "Retour", of: "sur", sections: "Sections", comment: "Ajouter un commentaire", prompt: "Quelque chose à corriger ou à ajouter?", suggest: "Proposer une correction", commentSel: "Commenter", original: "Passage original", replacement: "Votre formulation", why: "Pourquoi (facultatif)", name: "Votre nom", nameHint: "Pour que je sache qui a écrit ceci. Mémorisé sur cet appareil seulement.", send: "Enregistrer", sending: "Enregistrement…", saved: "Enregistré. Merci.", failed: "Non enregistré. Vérifiez la connexion et réessayez.", retry: "Réessayer", cancel: "Annuler", finish: "Terminer la relecture", finished: "Merci. J’ai vos commentaires et nous passerons les questions restantes ensemble à notre prochaine rencontre.", finishNote: "Ceci indique que vous avez parcouru les pages, pas que vous approuvez chaque phrase.", pageComment: "Commenter cette page", flowAria: "Parcours d’un dossier client, du premier contact à la fin", lastUpdated: "Dernière mise à jour", onPage: "Sur la page", revision: "Révision", prepared: "Préparé par", closed: "Ce lien n’est plus actif.", closedHint: "Demandez un nouveau lien à Uzziel.", cover: "Pour votre relecture", pending: "en attente d’envoi", yours: "Vos commentaires sur cette page", unsent: "Un commentaire n’est pas envoyé. Il reste ici jusqu’à ce que vous l’enregistriez ou l’annuliez.", welcomeMeta: "Une dizaine de courtes pages. Lisez dans l’ordre que vous voulez.", answerCol: "Votre réponse", answerPh: "Confirmez, corrigez ou expliquez…", answerSave: "Enregistrer", answerSaved: "Enregistré", answerEdit: "Modifier ma réponse", codeTitle: "Ce lien est protégé", codeHint: "Entrez le code d’accès reçu par courriel.", codeLabel: "Code d’accès", codeOpen: "Ouvrir", codeWrong: "Ce code ne correspond pas. Vérifiez-le et réessayez." }
 };
 
 if (typeof window !== "undefined") {
-  window.ALIE_REVIEWS = { REVIEW_STATUS, FEEDBACK_STATES, FEEDBACK_KINDS, LAYOUTS, LIMITS, UI, parseBlocks, blockText, cardPlainText, emptyReview, normalizeReview, snapshotOf, snapshotCards, snapshotBlock, snapshotLangs, snapshotIn, revisionOpen, currentRevision, anchorStatus, applySuggestion, feedbackCounts, validateSubmission, cabinetMDraft, addCabinetMFrench, hasFrench, cardIn, reviewIn, feedbackLang, hashText };
+  window.ALIE_REVIEWS = { REVIEW_STATUS, FEEDBACK_STATES, FEEDBACK_KINDS, LAYOUTS, LIMITS, UI, parseBlocks, blockText, cardPlainText, emptyReview, normalizeReview, normalizeCode, newAccessCode, snapshotOf, snapshotCards, snapshotBlock, snapshotLangs, snapshotIn, revisionOpen, currentRevision, anchorStatus, applySuggestion, feedbackCounts, validateSubmission, cabinetMDraft, addCabinetMFrench, hasFrench, cardIn, reviewIn, feedbackLang, hashText };
 }
