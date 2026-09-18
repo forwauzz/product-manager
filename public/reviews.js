@@ -88,7 +88,7 @@ export function cardPlainText(card, lang) { return parseBlocks(card[cardBodyKey(
 
 export function emptyReview(o) {
   o = o || {};
-  return { id: o.id || uid(), title: o.title || "", subtitle: o.subtitle || "", author: o.author || "Uzziel Tamon", date: o.date || new Date().toISOString().slice(0, 10), lang: o.lang === "fr" ? "fr" : "en",
+  return { id: o.id || uid(), title: o.title || "", subtitle: o.subtitle || "", author: o.author || "Uzziel Tamon", reader: o.reader || "", date: o.date || new Date().toISOString().slice(0, 10), lang: o.lang === "fr" ? "fr" : "en",
     intro: o.intro || "", closing: o.closing || "", status: "Draft", cards: o.cards || [], revisions: [], feedback: [], created: Date.now(), updated: Date.now() };
 }
 export function normalizeReview(r) {
@@ -109,7 +109,7 @@ export function normalizeReview(r) {
   }));
   const status = oneOf(REVIEW_STATUS, r.status, revisions.length ? "Published" : "Draft");
   return { id: str(r.id || uid()), title: str(r.title), subtitle: str(r.subtitle), author: str(r.author), date: str(r.date), lang: r.lang === "fr" ? "fr" : "en", intro: str(r.intro), closing: str(r.closing),
-    titleFr: str(r.titleFr), subtitleFr: str(r.subtitleFr), introFr: str(r.introFr), closingFr: str(r.closingFr),
+    titleFr: str(r.titleFr), subtitleFr: str(r.subtitleFr), introFr: str(r.introFr), closingFr: str(r.closingFr), reader: str(r.reader).slice(0, 120),
     status, cards, revisions, feedback, draftAt: num(r.draftAt, 0), created: num(r.created, Date.now()), updated: num(r.updated, Date.now()) };
 }
 /* French text exists when at least one page carries it */

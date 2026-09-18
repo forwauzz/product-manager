@@ -3972,6 +3972,7 @@
       r2.appendChild(fld("Prepared by", txtIn(d.author, "", function (v) { d.author = v; })));
       r2.appendChild(fld("Date shown", txtIn(d.date, "", function (v) { d.date = v; }, "date")));
       body.appendChild(r2);
+      body.appendChild(fld("Written for", txtIn(d.reader || "", "Sarah-Jeanne, or Amélie and Claudine", function (v) { d.reader = v; }), "Only for you: names the review in the app. The reader never sees it."));
       body.appendChild(fld("Language shown first", selIn([["en", "English"], ["fr", "Français"]], d.lang, function (v) { d.lang = v; }), "The reader can switch to the other language when its text is filled in below. Comments keep the language, page and revision they were written against."));
       body.appendChild(fld("Welcome text (kept for the record; the cover shows title, subtitle and date, page 1 carries the welcome)", areaIn(d.intro, "", function (v) { d.intro = v; }, 2)));
       body.appendChild(fld("Closing text", areaIn(d.closing, "Shown on the last page above Finish review.", function (v) { d.closing = v; }, 2)));
@@ -7469,10 +7470,13 @@
     if (ui.pilotTab === "delivery") ui.pilotTab = "improvements";
     if (["overview", "meetings", "business", "improvements", "files"].indexOf(ui.pilotTab) === -1) ui.pilotTab = "overview";
   }
-  function zPrimaryReview(p) {
-    var list = p.reviews.filter(function (r) { return r.status !== "Disabled"; }).sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
-    return list[0] || null;
+  function zActiveReviews(p) {
+    return p.reviews.filter(function (r) { return r.status !== "Disabled"; }).sort(function (a, b) {
+      var pa = a.status === "Published" ? 0 : 1, pb = b.status === "Published" ? 0 : 1;
+      return pa - pb || (b.updated || 0) - (a.updated || 0);
+    });
   }
+  function zPrimaryReview(p) { return zActiveReviews(p)[0] || null; }
   function zReviewReader(p, r) {
     if (r && r.reader) return r.reader;
     var c = p.people.filter(function (x) { return x.side !== "Internal"; })[0];
@@ -7525,13 +7529,12 @@
     var hl = el("div", "ttl"); hl.appendChild(el("h1", "zh1", p.name)); hl.appendChild(zStatusPill(p)); head.appendChild(hl);
     var acts = el("div", "zheadacts");
     acts.appendChild(zBtn("Files & links" + (nFiles ? " (" + nFiles + ")" : ""), "doc", "", function () { goPilot(p, "files"); }));
-    var rv = zPrimaryReview(p);
-    var share = menu("Share update", [
-      rv ? ["Review with " + zReviewReader(p, rv), function () { goPilot(p, "business"); }] : ["Create a client review", function () { goPilot(p, "business", "reviews"); newReview(p); }],
+    var rvs = zActiveReviews(p);
+    var share = menu("Share update", rvs.map(function (rv) { return ["Review with " + zReviewReader(p, rv) + (rv.status === "Published" ? "" : " (draft)"), function () { goPilot(p, "business"); }]; }).concat(rvs.length ? [] : [["Create a client review", function () { goPilot(p, "business", "reviews"); newReview(p); }]]).concat([
       ["Weekly recaps", function () { goPilot(p, "improvements", "recaps"); }],
       p.driveDoc ? ["Open the pilot record in Drive", function () { window.open("https://docs.google.com/document/d/" + p.driveDoc + "/edit", "_blank", "noopener"); }] : null,
       ["Push the pilot record to Drive now", function () { fetch("/api/drive/sync", { method: "POST" }).then(function (r) { return r.json(); }).then(function (j) { toast(j.ok ? "Drive copy updated." : "Drive: " + (j.error || "failed"), !j.ok); }).catch(function () { toast("Could not reach the server.", true); }); }]
-    ], "zbtn zshare");
+    ]), "zbtn zshare");
     var sb = share.querySelector("button"); sb.insertBefore(zIcon("share", 18), sb.firstChild);
     acts.appendChild(share);
     var moreM = menu("", [
@@ -7779,15 +7782,16 @@
     var hl = el("div"); hl.appendChild(el("h2", "zh2 big", "Their business")); hl.appendChild(el("p", "zlead small", "Our understanding so far. Updated after each visit.")); hd.appendChild(hl);
     body.appendChild(hd);
 
-    /* the review entry: always first, always honest about its state */
-    var r = zPrimaryReview(p);
+    /* one entry per active review, published first, each honest about its state */
+    var active = zActiveReviews(p);
+    (active.length ? active : [null]).forEach(function (r) {
     var banner = el("section", "zreview");
     var ic = el("span", "zround big"); ic.appendChild(zIcon("user", 30)); banner.appendChild(ic);
     var t = el("div", "t");
     if (r) {
       var who = zReviewReader(p, r), counts = RV().feedbackCounts(r);
       t.appendChild(el("h3", null, "Review with " + who));
-      t.appendChild(el("p", null, "Let " + who + " confirm the workflow and leave feedback."));
+      t.appendChild(el("p", null, (RV().reviewIn(r, r.lang).subtitle || "Let " + who + " confirm what we understood") + "."));
       var stt = el("span", "state" + (r.status === "Published" ? " live" : "")); stt.appendChild(el("i")); stt.appendChild(el("span", null, zReviewState(r))); t.appendChild(stt);
       banner.appendChild(t);
       var acts = el("div", "acts");
@@ -7806,6 +7810,7 @@
       var a2 = el("div", "acts"); a2.appendChild(zBtn("Create the review", "plus", "gold", function () { goPilot(p, "business", "reviews"); newReview(p); })); banner.appendChild(a2);
     }
     body.appendChild(banner);
+    });
 
     /* workflow strip */
     var steps = p.steps.filter(function (s) { return (s.version || "current") === "current"; }).sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
